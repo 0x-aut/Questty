@@ -11,7 +11,7 @@
 
   .panel-content {
     flex-direction: column;
-    gap: 7px;
+    gap: 6px;
     padding: 22px;
   }
 
@@ -57,13 +57,120 @@
   .button-label {
     transform-translate-y: 1px;
   }
+
+  .section-label {
+    color: #6b5a00;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+  }
+
+  .section-label:dark {
+    color: #f5d90a;
+  }
+
+  .template-row {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .template-button {
+    width: 180px;
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-bottom: 0px;
+  }
+
+  .template-button-wide {
+    width: 376px;
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-bottom: 0px;
+  }
+
+  .quest-status {
+    flex-direction: row;
+    justify-content: center;
+    padding-top: 7px;
+    padding-bottom: 7px;
+    padding-left: 12px;
+    padding-right: 12px;
+    border-radius: 16px;
+    background-color: #e8dfc9;
+  }
+
+  .quest-status-text {
+    color: #202226;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .quest-status-text:dark {
+    color: #202226;
+  }
+
+  .session-status {
+    width: 376px;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .progress-status {
+    color: #64666b;
+    font-size: 14px;
+  }
+
+  .progress-status:dark {
+    color: #b9bcc2;
+  }
+
+  .skip-button {
+    margin-left: 8px;
+    margin-right: 0px;
+    margin-bottom: 0px;
+  }
 </style>
 <Panel class="panel-root">
   <div class="panel-content">
-    <div class="eyebrow">IMMERSIVE WEB SDK</div>
-    <div class="heading">Hello, Immersive Web!</div>
-    <div class="body">Try each station around you,</div>
-    <div class="body">then make this scene your own.</div>
+    <div class="eyebrow">QUESTTY</div>
+    <div class="heading">Choose a quest</div>
+    <div class="body">Speak a task or pick a template.</div>
+    <span id="progress-status" class="progress-status">Level 1 | 0 XP | 0 day streak</span>
+    <div class="section-label">QUICK QUESTS</div>
+    <div class="template-row">
+      <Button id="template-email" class="template-button">
+        <ButtonLabel class="button-label">Email reply</ButtonLabel>
+      </Button>
+      <Button id="template-deep-work" class="template-button">
+        <ButtonLabel class="button-label">Deep work 25m</ButtonLabel>
+      </Button>
+    </div>
+    <div class="template-row">
+      <Button id="template-errand" class="template-button">
+        <ButtonLabel class="button-label">Errand</ButtonLabel>
+      </Button>
+      <Button id="template-exercise" class="template-button">
+        <ButtonLabel class="button-label">Exercise</ButtonLabel>
+      </Button>
+    </div>
+    <div class="template-row">
+      <Button id="template-plan" class="template-button-wide">
+        <ButtonLabel class="button-label">Plan tomorrow</ButtonLabel>
+      </Button>
+    </div>
+    <Button id="voice-button" class="button">
+      <ButtonLabel class="button-label">Speak a quest</ButtonLabel>
+    </Button>
+    <div id="quest-status" class="quest-status" style="display: none">
+      <span id="quest-status-text" class="quest-status-text">Listening...</span>
+    </div>
+    <div id="session-status" class="quest-status session-status" style="display: none">
+      <span id="session-status-text" class="quest-status-text">Focus</span>
+      <Button id="skip-break" class="skip-button" style="display: none">
+        <ButtonLabel>Skip break</ButtonLabel>
+      </Button>
+    </div>
   </div>
   <Button id="xr-button" class="button">
     <ButtonIcon>
@@ -76,5 +183,8 @@
       <LogIn></LogIn>
     </ButtonIcon>
     <ButtonLabel class="button-label">Exit to Browser</ButtonLabel>
+  </Button>
+  <Button id="room-debug-toggle" class="button">
+    <ButtonLabel id="room-debug-toggle-label" class="button-label">Show room planes</ButtonLabel>
   </Button>
 </Panel>

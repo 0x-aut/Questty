@@ -1,0 +1,71 @@
+<style>
+  .quest-card {
+    flex-direction: column;
+    width: 260px;
+    gap: 15px;
+    padding: 20px;
+  }
+
+  .card-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .eyebrow {
+    color: #675b47;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+  }
+
+  .eyebrow:dark {
+    color: #d7c7a7;
+  }
+
+  .xp-badge {
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: 12px;
+    padding-right: 12px;
+    border-radius: 18px;
+    background-color: #f0d787;
+  }
+
+  .xp-value {
+    color: #33280e;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .quest-title {
+    color: #202226;
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1.08;
+  }
+
+  .quest-title:dark {
+    color: #fbfaf5;
+  }
+
+  .grab-hint {
+    color: #64666b;
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  .grab-hint:dark {
+    color: #b9bcc2;
+  }
+
+</style>
+<Panel class="quest-card">
+  <div class="card-header">
+    <span class="eyebrow">FOCUS QUEST</span>
+    <div class="xp-badge"><span id="quest-xp" class="xp-value">+25 XP</span></div>
+  </div>
+  <span id="quest-title" class="quest-title">A small next step</span>
+  <span id="quest-card-state" class="grab-hint">Grab and pin to a zone</span>
+</Panel>

@@ -1,0 +1,29 @@
+<style>
+  .focus-action-panel {
+    flex-direction: column;
+    width: 150px;
+    padding: 4px;
+  }
+
+  .focus-action-button {
+    justify-content: center;
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-bottom: 0px;
+  }
+
+  .focus-action-label {
+    color: #202226;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .focus-action-label:dark {
+    color: #202226;
+  }
+</style>
+<Panel class="focus-action-panel">
+  <Button id="focus-action-button" class="focus-action-button">
+    <ButtonLabel id="focus-action-label" class="focus-action-label">Start focus</ButtonLabel>
+  </Button>
+</Panel>

@@ -6,6 +6,7 @@
  */
 
 import { AssetType, defineAssets } from '@iwsdk/core';
+import { createFocusDome } from './scene-assets/focus-dome.scene-asset.js';
 import {
   createGallerySet,
   createSideboardSet,
@@ -41,6 +42,7 @@ const uikitml = (fileName: string, name: string) => ({
 });
 
 export default defineAssets({
+  'focus-dome': createFocusDome(),
   'studio-floor': createStudioFloor(),
   stage: createStage(),
   plinth: createPlinth(),
@@ -57,6 +59,8 @@ export default defineAssets({
     priority: 'lazy',
   },
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
+  'quest-card': uikitml('quest-card.uikitml', 'Quest Card'),
+  'focus-action': uikitml('focus-action.uikitml', 'Focus Action'),
   'label-grab': uikitml('label-grab.uikitml', 'Grab Label'),
   'label-select': uikitml('label-select.uikitml', 'Select Label'),
   'label-spin': uikitml('label-spin.uikitml', 'Spin Label'),

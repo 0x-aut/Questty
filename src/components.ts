@@ -6,6 +6,18 @@
  */
 
 import { defineComponents } from '@iwsdk/core';
+import {
+  QuestCard,
+  QuestCardTween,
+  QuestFocusAction,
+  ZoneMarker,
+} from './quest-component.js';
 import { Robot } from './robot-component.js';
 
-export default defineComponents([Robot]);
+export default defineComponents([
+  Robot,
+  QuestCard,
+  QuestCardTween,
+  QuestFocusAction,
+  ZoneMarker,
+]);
