@@ -2,6 +2,7 @@
   .focus-action-panel {
     flex-direction: column;
     width: 150px;
+    gap: 6px;
     padding: 4px;
   }
 
@@ -21,9 +22,19 @@
   .focus-action-label:dark {
     color: #202226;
   }
+
+  .nudge-action-button {
+    justify-content: center;
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-bottom: 0px;
+  }
 </style>
 <Panel class="focus-action-panel">
   <Button id="focus-action-button" class="focus-action-button">
     <ButtonLabel id="focus-action-label" class="focus-action-label">Start focus</ButtonLabel>
+  </Button>
+  <Button id="nudge-action-button" class="nudge-action-button" style="display: none">
+    <ButtonLabel>Need a nudge</ButtonLabel>
   </Button>
 </Panel>

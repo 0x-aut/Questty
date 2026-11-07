@@ -48,4 +48,26 @@ projects have no sky or floor, so passthrough stays visible, and a
 
 Questty is a mixed reality focus space for Meta Quest. Pinch and speak everything on your mind, and AI turns it into quest cards with XP. Pin them to zones in your real room, then start a focus session: passthrough fades into a calm scene, a visual timer counts down, and a quiet AI buddy works alongside you. Breaks are enforced, finishing a quest earns XP, and your room grows as you level up. No typing, no controllers.
 
+### OpenAI setup
+
+Copy `.env.example` to `.env` and set `OPENAI_API_KEY` for a Vercel-compatible
+local API runtime, or add it to the deployment platform's server-side environment
+variables (for example, Vercel Project Settings). Never use a `VITE_` prefix or
+commit `.env`: the key is read only by `api/quests.ts`. Voice quest generation
+and the optional in-focus **Need a nudge** action use this server endpoint. The
+managed IWSDK Vite session does not itself run the Vercel `api/` function, so
+without a local function runtime voice input uses local parsing and AI nudges
+are unavailable.
+
 Built for the Meta VR Start Developer Competition 2026 (Productivity track) with the Immersive Web SDK.
+
+### Moving around
+
+In the desktop XR emulator, click the app viewport to focus it, then use
+**W/A/S/D** or the **arrow keys** to walk. In a Quest headset, use the **left
+thumbstick** to move and the **right thumbstick** to snap-turn; physical walking
+also works within your tracked play space. A hand-only session has no thumbstick:
+use a focused keyboard in the emulator, or physically walk in your room. Card
+grabs use a **near-hand pinch** (close enough to touch the card), not a distant
+pointing ray. Release near a desk, wall, or door marker to pin a compact card in
+the closest free slot (up to six per zone).

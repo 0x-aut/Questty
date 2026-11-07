@@ -1,7 +1,11 @@
 import {
   AudioSource,
+  BoxGeometry,
   createSystem,
+  DoubleSide,
   Grabbed,
+  Mesh,
+  MeshBasicMaterial,
   OneHandGrabbable,
   PokeInteractable,
   Quaternion,
@@ -15,6 +19,7 @@ import { QuestCard, QuestCardTween, QuestFocusAction } from './quest-component.j
 import {
   requestCardCompletion,
   requestCardFocus,
+  requestCardNudge,
   setCardActionModeHandler,
 } from './session-events.js';
 import {
@@ -22,6 +27,7 @@ import {
   endZoneHold,
   findNearestZone,
   getZonePlacement,
+  MAX_CARDS_PER_ZONE,
 } from './zones.js';
 
 export type QuestCardOptions = {
@@ -29,13 +35,13 @@ export type QuestCardOptions = {
   xp: number;
   position: Vector3 | readonly [number, number, number];
   zoneId?: 'desk' | 'door' | 'wall';
+  slot?: number;
 };
 
 const CARD_SCALE = 0.16;
-const FOCUS_ACTION_SCALE = 0.16;
+const PINNED_CARD_SCALE = 0.12;
+const FOCUS_ACTION_SCALE = 0.12;
 const localCardFront = new Vector3(0, 0, 1);
-const localCardRight = new Vector3(1, 0, 0);
-const localCardNormal = new Vector3(0, 0, 1);
 let activeWorld: World | undefined;
 let nextCardId = 1;
 const FOCUS_ACTION_ASSET_ID = 'focus-action';
@@ -56,6 +62,7 @@ export async function createQuestCard({
   xp,
   position,
   zoneId,
+  slot,
 }: QuestCardOptions): Promise<Entity> {
   if (activeWorld === undefined) {
     throw new Error('Quest cards have not been initialized with a world.');
@@ -74,7 +81,25 @@ export async function createQuestCard({
     .setProperties({ text: `+${Math.round(xp)} XP` });
   panel.name = `Quest Card: ${title}`;
   panel.position.copy(worldPosition);
-  panel.scale.setScalar(CARD_SCALE);
+  panel.scale.setScalar(zoneId ? PINNED_CARD_SCALE : CARD_SCALE);
+  const placement = zoneId ? getZonePlacement(zoneId, slot ?? 0) : null;
+  if (placement !== null) {
+    panel.quaternion.setFromUnitVectors(localCardFront, placement.normal.normalize());
+  }
+  const hitbox = new Mesh(
+    new BoxGeometry(2.6, 2.83, 0.5),
+    new MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      colorWrite: false,
+      depthWrite: false,
+      side: DoubleSide,
+    }),
+  );
+  hitbox.name = 'QuestCardHitbox';
+  hitbox.position.z = 0;
+  panel.add(hitbox);
 
   const entity = activeWorld.createTransformEntity(panel);
   const cardId = `quest-${nextCardId}`;
@@ -86,6 +111,7 @@ export async function createQuestCard({
     zoneId: zoneId ?? '',
     previousZoneId: '',
     previousPosition: worldPosition.toArray(),
+    slot: zoneId ? (slot ?? 0) : -1,
   });
   entity.addComponent(OneHandGrabbable);
   entity.addComponent(AudioSource, {
@@ -131,6 +157,7 @@ export class QuestCardSystem extends createSystem({
     });
     this.queries.cards.subscribe('disqualify', (entity) => {
       this.removeActionsForCard(entity.getValue(QuestCard, 'cardId') as string);
+      this.disposeHitbox(entity);
     });
     this.queries.tweeningCards.subscribe('qualify', (entity) => {
       this.removeActionsForCard(entity.getValue(QuestCard, 'cardId') as string);
@@ -175,8 +202,22 @@ export class QuestCardSystem extends createSystem({
   private onGrab(entity: Entity): void {
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
     const zoneId = entity.getValue(QuestCard, 'zoneId') as string;
+    const object = entity.object3D;
+    if (object != null) {
+      object.updateWorldMatrix(true, false);
+      object.getWorldQuaternion(this.orientationBuffer);
+      const previousOrientation = entity.getVectorView(QuestCard, 'previousOrientation');
+      previousOrientation[0] = this.orientationBuffer.x;
+      previousOrientation[1] = this.orientationBuffer.y;
+      previousOrientation[2] = this.orientationBuffer.z;
+      previousOrientation[3] = this.orientationBuffer.w;
+      entity.setValue(QuestCard, 'previousScale', object.scale.x);
+    }
     entity.setValue(QuestCard, 'previousZoneId', zoneId);
+    entity.setValue(QuestCard, 'previousSlot', entity.getValue(QuestCard, 'slot') as number);
     entity.setValue(QuestCard, 'zoneId', '');
+    entity.setValue(QuestCard, 'slot', -1);
+    object?.scale.setScalar(CARD_SCALE);
     setQuestCardState(entity, 'Move to a zone, then release');
     this.removeActionsForCard(cardId);
     beginZoneHold(cardId);
@@ -191,23 +232,44 @@ export class QuestCardSystem extends createSystem({
     object.updateWorldMatrix(true, false);
     object.getWorldPosition(this.positionBuffer);
 
-    const nearest = findNearestZone(this.positionBuffer, 0.4);
+    const nearest = findNearestZone(this.positionBuffer, 0.85);
     if (nearest === null) {
+      entity.setValue(QuestCard, 'zoneId', '');
+      entity.setValue(QuestCard, 'previousZoneId', '');
+      entity.setValue(QuestCard, 'slot', -1);
+      entity.setValue(QuestCard, 'previousSlot', -1);
+      this.storePreviousPosition(entity, this.positionBuffer);
+      setQuestCardState(entity, 'Floating - move near a surface to pin');
+      return;
+    }
+    const occupied = new Set<number>();
+    for (const card of this.queries.cards.entities) {
+      if (card !== entity && card.getValue(QuestCard, 'zoneId') === nearest.zone.id) {
+        occupied.add(card.getValue(QuestCard, 'slot') as number);
+      }
+    }
+    let selectedSlot = -1;
+    let bestDistance = Infinity;
+    for (let slot = 0; slot < MAX_CARDS_PER_ZONE; slot += 1) {
+      if (occupied.has(slot)) continue;
+      const candidate = getZonePlacement(nearest.zone.id, slot);
+      if (candidate == null) continue;
+      const distance = candidate.position.distanceToSquared(this.positionBuffer);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        selectedSlot = slot;
+      }
+    }
+    if (selectedSlot < 0) {
       this.restorePreviousPosition(entity, object);
       return;
     }
 
-    let stackIndex = 0;
-    for (const card of this.queries.cards.entities) {
-      if (
-        card !== entity &&
-        card.getValue(QuestCard, 'zoneId') === nearest.zone.id
-      ) {
-        stackIndex += 1;
-      }
+    const placement = getZonePlacement(nearest.zone.id, selectedSlot);
+    if (placement === null) {
+      this.restorePreviousPosition(entity, object);
+      return;
     }
-
-    const placement = getZonePlacement(nearest.zone.id, stackIndex);
     this.normalBuffer
       .copy(placement?.normal ?? nearest.zone.normal)
       .normalize();
@@ -216,7 +278,9 @@ export class QuestCardSystem extends createSystem({
     this.setWorldPosition(object, this.targetPosition);
     this.orientationBuffer.setFromUnitVectors(localCardFront, this.normalBuffer);
     this.setWorldQuaternion(object, this.orientationBuffer);
+    object.scale.setScalar(PINNED_CARD_SCALE);
     entity.setValue(QuestCard, 'zoneId', nearest.zone.id);
+    entity.setValue(QuestCard, 'slot', selectedSlot);
     entity.setValue(QuestCard, 'previousZoneId', '');
     this.storePreviousPosition(entity, this.targetPosition);
     setQuestCardState(entity, `Pinned to ${nearest.zone.label} - poke to focus`);
@@ -227,8 +291,13 @@ export class QuestCardSystem extends createSystem({
     const previous = entity.getVectorView(QuestCard, 'previousPosition');
     this.targetPosition.set(previous[0], previous[1], previous[2]);
     this.setWorldPosition(object, this.targetPosition);
+    const orientation = entity.getVectorView(QuestCard, 'previousOrientation');
+    this.orientationBuffer.set(orientation[0], orientation[1], orientation[2], orientation[3]);
+    this.setWorldQuaternion(object, this.orientationBuffer);
+    object.scale.setScalar(entity.getValue(QuestCard, 'previousScale') as number);
     const previousZoneId = entity.getValue(QuestCard, 'previousZoneId') as string;
     entity.setValue(QuestCard, 'zoneId', previousZoneId);
+    entity.setValue(QuestCard, 'slot', entity.getValue(QuestCard, 'previousSlot') as number);
     entity.setValue(QuestCard, 'previousZoneId', '');
     setQuestCardState(
       entity,
@@ -307,13 +376,19 @@ export class QuestCardSystem extends createSystem({
       action.addComponent(QuestFocusAction, { cardId, mode: 'focus' });
       action.addComponent(PokeInteractable);
       const button = panel.requireElementById('focus-action-button');
+      const nudgeButton = panel.requireElementById('nudge-action-button');
       const onClick = () => {
         const mode = action.getValue(QuestFocusAction, 'mode') as string;
         if (mode === 'focus') requestCardFocus(card);
         else if (mode === 'done') requestCardCompletion(card);
       };
+      const onNudge = () => requestCardNudge(card);
       button.addEventListener('click', onClick);
-      this.actionListeners.set(action, () => button.removeEventListener('click', onClick));
+      nudgeButton.addEventListener('click', onNudge);
+      this.actionListeners.set(action, () => {
+        button.removeEventListener('click', onClick);
+        nudgeButton.removeEventListener('click', onNudge);
+      });
     } catch (error) {
       panel?.dispose();
       console.warn('[quest] Could not create a card focus control.', error);
@@ -331,7 +406,7 @@ export class QuestCardSystem extends createSystem({
     const normalOffset = Math.abs(this.actionNormal.y) >= 0.7 ? 0.35 : 0.08;
     this.actionPosition
       .copy(this.cardWorldPosition)
-      .addScaledVector(this.actionRight, 0.39)
+      .addScaledVector(this.actionRight, 0.32)
       .addScaledVector(this.actionNormal, normalOffset);
     panel.position.copy(this.actionPosition);
     panel.quaternion.copy(this.cardWorldQuaternion);
@@ -359,6 +434,9 @@ export class QuestCardSystem extends createSystem({
         .requireElementById<UIKit.Text>('focus-action-label')
         .setProperties({ text: mode === 'done' ? 'Done' : 'Start focus' });
     }
+    panel
+      .requireElementById<UIKit.Text>('nudge-action-button')
+      .setProperties({ display: mode === 'done' ? 'flex' : 'none' });
   }
 
   private removeActionsForCard(cardId: string): void {
@@ -373,6 +451,17 @@ export class QuestCardSystem extends createSystem({
     this.actionListeners.get(action)?.();
     this.actionListeners.delete(action);
     if (action.active) action.dispose();
+  }
+
+  private disposeHitbox(entity: Entity): void {
+    const hitbox = entity.object3D?.getObjectByName('QuestCardHitbox');
+    if (!(hitbox instanceof Mesh)) return;
+    hitbox.geometry.dispose();
+    const materials = Array.isArray(hitbox.material)
+      ? hitbox.material
+      : [hitbox.material];
+    for (const material of materials) material.dispose();
+    hitbox.removeFromParent();
   }
 }
 

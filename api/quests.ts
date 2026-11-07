@@ -55,6 +55,68 @@ function validateQuests(value: unknown): GeneratedQuest[] | null {
   return quests;
 }
 
+async function handleNudge(
+  title: string,
+  apiKey: string,
+  response: VercelResponseLike,
+): Promise<void> {
+  if (title.trim().length === 0) {
+    response.status(400).json({ error: 'title-required' });
+    return;
+  }
+  if (Array.from(title).length > 160) {
+    response.status(413).json({ error: 'title-too-long' });
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 48,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a quiet focus buddy. Give one calm, practical next action for the task in at most 12 words. No greeting, praise, questions, or extra commentary.',
+          },
+          { role: 'user', content: title.trim() },
+        ],
+      }),
+    });
+    if (!openAIResponse.ok) {
+      response.status(502).json({ error: 'nudge-generation-failed' });
+      return;
+    }
+    const completion = (await openAIResponse.json()) as {
+      choices?: Array<{ message?: { content?: unknown } }>;
+    };
+    const nudge =
+      typeof completion.choices?.[0]?.message?.content === 'string'
+        ? completion.choices[0].message.content.trim()
+        : '';
+    if (nudge.length === 0 || nudge.length > 140) {
+      response.status(502).json({ error: 'invalid-model-response' });
+      return;
+    }
+    response.status(200).json({ nudge });
+  } catch {
+    response
+      .status(controller.signal.aborted ? 504 : 502)
+      .json({ error: controller.signal.aborted ? 'timeout' : 'nudge-generation-failed' });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export default async function handler(
   request: VercelRequestLike,
   response: VercelResponseLike,
@@ -65,6 +127,16 @@ export default async function handler(
   }
 
   const body = request.body;
+  if (isRecord(body) && body.mode === 'nudge') {
+    const apiKey = readApiKey();
+    if (!apiKey) {
+      response.status(500).json({ error: 'server-not-configured' });
+      return;
+    }
+    await handleNudge(typeof body.title === 'string' ? body.title : '', apiKey, response);
+    return;
+  }
+
   const text = isRecord(body) && typeof body.text === 'string' ? body.text : '';
   const length = Array.from(text).length;
   if (text.trim().length === 0) {

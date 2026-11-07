@@ -34,7 +34,7 @@ world.registerSystem(QuestInputSystem);
 world.registerSystem(SessionSystem);
 
 configureQuestCards(world);
-const cardRadius = 0.6;
+const cardRadius = 0.65;
 const starterCards = [
   { title: 'Plan the next milestone', xp: 20, angle: -55 },
   { title: 'Ship one small feature', xp: 35, angle: 0 },
@@ -48,8 +48,8 @@ void Promise.all(
       xp,
       position: new Vector3(
         Math.sin(radians) * cardRadius,
-        1.35,
-        -Math.cos(radians) * cardRadius,
+        1.6,
+        -1.2 - Math.cos(radians) * 0.2,
       ),
     });
   }),

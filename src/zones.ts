@@ -20,12 +20,16 @@ export type Zone = {
   label: string;
   position: Vector3;
   normal: Vector3;
+  width: number;
+  height: number;
 };
 
 const localMarkerNormal = new Vector3(0, 0, 1);
 const worldUp = new Vector3(0, 1, 0);
 const zoneClearance = 0.035;
-const verticalStackStep = 0.44;
+export const MAX_CARDS_PER_ZONE = 6;
+const gridSpacingX = 0.58;
+const gridSpacingY = 0.4;
 const fallbackPosition = {
   desk: new Vector3(0, 0.75, -0.6),
   door: new Vector3(-0.9, 1.1, -1.1),
@@ -44,6 +48,7 @@ let currentZones: Zone[] = [
 ];
 let activeZoneSystem: ZoneSystem | undefined;
 const heldCardIds = new Set<string>();
+const viewerPosition = new Vector3();
 
 function fallbackZone(id: Zone['id'], label: string): Zone {
   return {
@@ -51,6 +56,8 @@ function fallbackZone(id: Zone['id'], label: string): Zone {
     label,
     position: fallbackPosition[id].clone(),
     normal: fallbackNormal[id].clone(),
+    width: 1.2,
+    height: 1.2,
   };
 }
 
@@ -61,11 +68,18 @@ function zoneFromPlane(
 ): Zone {
   const plane = findPlane(kind);
   if (plane === null) return fallbackZone(id, label);
+  const normal = plane.normal.clone();
+  if (id !== 'desk' && activeZoneSystem !== undefined) {
+    activeZoneSystem.getViewerPosition(viewerPosition);
+    if (normal.dot(viewerPosition.sub(plane.position)) < 0) normal.negate();
+  }
   return {
     id,
     label,
     position: plane.position,
-    normal: plane.normal,
+    normal,
+    width: plane.width,
+    height: plane.height,
   };
 }
 
@@ -110,15 +124,25 @@ export function getZonePlacement(
   stackIndex = 0,
 ): { zone: Zone; position: Vector3; normal: Vector3 } | null {
   const zone = currentZones.find((candidate) => candidate.id === id);
-  if (zone === undefined) return null;
+  if (zone === undefined || stackIndex < 0 || stackIndex >= MAX_CARDS_PER_ZONE) return null;
   const normal = zone.normal.clone().normalize();
   const position = zone.position.clone();
+  const columns = zone.width >= 1.35 ? 3 : 2;
+  const rows = MAX_CARDS_PER_ZONE / columns;
+  const column = stackIndex % columns;
+  const row = Math.floor(stackIndex / columns);
+  const lateral = (column - (columns - 1) / 2) * gridSpacingX;
+  const vertical = ((rows - 1) / 2 - row) * gridSpacingY;
   if (Math.abs(normal.y) >= 0.7) {
-    position.addScaledVector(normal, zoneClearance + stackIndex * zoneClearance);
-  } else {
     position
       .addScaledVector(normal, zoneClearance)
-      .addScaledVector(worldUp, stackIndex * verticalStackStep);
+      .add(new Vector3(lateral, 0, vertical));
+  } else {
+    const right = new Vector3(normal.z, 0, -normal.x).normalize();
+    position
+      .addScaledVector(normal, zoneClearance)
+      .addScaledVector(right, lateral)
+      .addScaledVector(worldUp, vertical);
   }
   return { zone: getZoneSnapshot(zone), position, normal };
 }
@@ -209,6 +233,10 @@ export class ZoneSystem extends createSystem({
 }) {
   private readonly worldNormal = new Vector3();
   private readonly rotation = new Quaternion();
+
+  getViewerPosition(target: Vector3): void {
+    this.world.player.head.getWorldPosition(target);
+  }
 
   init(): void {
     activeZoneSystem = this;

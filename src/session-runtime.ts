@@ -19,6 +19,7 @@ import { setQuestCardState, tweenQuestCardTo } from './quest-card.js';
 import {
   setCardActionMode,
   setCardCompleter,
+  setCardNudger,
   setFocusStarter,
 } from './session-events.js';
 import {
@@ -31,6 +32,7 @@ import {
   type SessionState,
 } from './session.js';
 import { awardXp, getProgress, type ProgressState } from './progress.js';
+import { syncRoomGrowth } from './room-growth.js';
 
 const FOCUS_FADE_MS = 3_000;
 const BREAK_FADE_MS = 2_000;
@@ -112,6 +114,9 @@ export class SessionSystem extends createSystem({}) {
   private readonly timerRotation = new Quaternion();
   private lastPieSegment = -1;
   private trophyShelfEntity: Entity | undefined;
+  private trophyShelfLoading = false;
+  private pendingNudgeFor: Entity | undefined;
+  private nudgeController: AbortController | undefined;
   private progress: ProgressState = getProgress();
   private domeDestroyed = false;
   private fadeFrom = 0;
@@ -127,11 +132,12 @@ export class SessionSystem extends createSystem({}) {
     this.skipButton = panel?.getElementById<UIKit.Text>('skip-break') ?? undefined;
     this.progressStatus = panel?.getElementById<UIKit.Text>('progress-status') ?? undefined;
     this.updateProgressStatus();
+    void syncRoomGrowth(this.world, this.progress.level);
     setFocusStarter((entity) => this.beginFocus(entity));
     setCardCompleter((entity) => this.completeActiveCard(entity));
+    setCardNudger((entity) => void this.requestNudge(entity));
     void this.loadDome();
     this.loadTimerDisk();
-    void this.loadTrophyShelf();
 
     const onSkip = () => this.skipCurrentBreak();
     this.skipButton?.addEventListener('click', onSkip);
@@ -139,9 +145,12 @@ export class SessionSystem extends createSystem({}) {
     this.cleanupFuncs.push(() => {
       setFocusStarter(undefined);
       setCardCompleter(undefined);
+      setCardNudger(undefined);
       this.domeDestroyed = true;
       if (this.transitionTimer !== undefined) window.clearTimeout(this.transitionTimer);
       if (this.countdownTimer !== undefined) window.clearTimeout(this.countdownTimer);
+      this.nudgeController?.abort();
+      this.nudgeController = undefined;
       this.skipButton?.removeEventListener('click', onSkip);
       this.transitionTimer = undefined;
       this.countdownTimer = undefined;
@@ -169,17 +178,6 @@ export class SessionSystem extends createSystem({}) {
       );
       this.domeMaterial.opacity = this.fadeFrom + (this.fadeTarget - this.fadeFrom) * progress;
       if (progress >= 1) this.fadeAnimating = false;
-    }
-    if (this.state.phase === 'focus' && this.timerDisk !== undefined) {
-      const remaining = Math.max(
-        0,
-        Math.min(1, (this.state.endsAt - Date.now()) / FOCUS_MS),
-      );
-      const segments = Math.floor(remaining * TIMER_SEGMENTS);
-      if (segments !== this.lastPieSegment) {
-        this.timerDisk.pie.setDrawRange(0, segments * 3);
-        this.lastPieSegment = segments;
-      }
     }
     if (this.state.phase === 'focus' && this.timerDisk !== undefined) {
       const remaining = Math.max(
@@ -330,10 +328,12 @@ export class SessionSystem extends createSystem({}) {
 
   private completeActiveCard(entity: Entity): void {
     if (this.state.phase !== 'focus' || this.activeCard !== entity) return;
+    void this.loadTrophyShelf();
     const xp = entity.getValue(QuestCard, 'xp') as number;
     const progress = awardXp(xp);
     this.progress = progress;
     this.updateProgressStatus();
+    void syncRoomGrowth(this.world, progress.level);
     try {
       AudioUtils.play(entity);
     } catch {
@@ -349,6 +349,55 @@ export class SessionSystem extends createSystem({}) {
     this.state = completeFocus(this.state, Date.now());
     this.enterBreak();
     this.scheduleTransition();
+  }
+
+  private async requestNudge(entity: Entity): Promise<void> {
+    if (
+      this.state.phase !== 'focus' ||
+      this.activeCard !== entity ||
+      this.pendingNudgeFor === entity
+    ) {
+      return;
+    }
+    const cardId = entity.getValue(QuestCard, 'cardId') as string;
+    const title = entity.getValue(QuestCard, 'title') as string;
+    this.pendingNudgeFor = entity;
+    const controller = new AbortController();
+    this.nudgeController = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 8_000);
+    setQuestCardState(entity, 'Thinking of one small next step...');
+    try {
+      const response = await fetch('/api/quests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'nudge', title }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`Nudge API returned ${response.status}`);
+      const payload = (await response.json()) as { nudge?: unknown };
+      if (
+        typeof payload.nudge !== 'string' ||
+        payload.nudge.trim().length === 0 ||
+        payload.nudge.length > 140
+      ) {
+        throw new Error('Nudge API returned invalid text');
+      }
+      if (
+        this.state.phase === 'focus' &&
+        this.activeCard === entity &&
+        entity.getValue(QuestCard, 'cardId') === cardId
+      ) {
+        setQuestCardState(entity, payload.nudge.trim());
+      }
+    } catch {
+      if (this.state.phase === 'focus' && this.activeCard === entity) {
+        setQuestCardState(entity, 'AI nudge unavailable. Check the server key.');
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      if (this.pendingNudgeFor === entity) this.pendingNudgeFor = undefined;
+      if (this.nudgeController === controller) this.nudgeController = undefined;
+    }
   }
 
   private updateProgressStatus(): void {
@@ -423,14 +472,21 @@ export class SessionSystem extends createSystem({}) {
   }
 
   private async loadTrophyShelf(): Promise<void> {
+    if (this.trophyShelfEntity !== undefined || this.trophyShelfLoading) return;
+    this.trophyShelfLoading = true;
     try {
       const shelf = await this.world.assets.instantiate<Group>('plinth');
-      if (this.domeDestroyed) return;
+      if (this.domeDestroyed) {
+        shelf.removeFromParent();
+        return;
+      }
       shelf.name = 'Trophy Shelf';
       shelf.position.copy(TROPHY_SHELF_ORIGIN);
       this.trophyShelfEntity = this.world.createTransformEntity(shelf);
     } catch (error) {
       console.warn('[session] Trophy shelf could not be loaded.', error);
+    } finally {
+      this.trophyShelfLoading = false;
     }
   }
 }

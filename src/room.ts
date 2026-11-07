@@ -1,5 +1,6 @@
 import {
   BufferGeometry,
+  BoxGeometry,
   CanvasTexture,
   createSystem,
   DoubleSide,
@@ -7,6 +8,8 @@ import {
   Group,
   Line,
   LineBasicMaterial,
+  LocomotionEnvironment,
+  LocomotionSystem,
   Mesh,
   MeshBasicMaterial,
   Quaternion,
@@ -281,8 +284,13 @@ export class RoomSystem extends createSystem({
   private readonly quaternionBuffer = new Quaternion();
   private labelLogTimer: number | undefined;
   private noPlaneTimer: number | undefined;
+  private fallbackFloorEntity: Entity | undefined;
+  private fallbackFloorGeometry: BoxGeometry | undefined;
+  private fallbackFloorMaterial: MeshBasicMaterial | undefined;
+  private readonly recoveryPosition = new Vector3();
 
   init(): void {
+    this.createFallbackWalkableFloor();
     this.queries.planes.subscribe('qualify', (entity) => this.handlePlaneSetChanged(entity));
     this.queries.planes.subscribe('disqualify', (entity) => {
       this.removeOverlay(entity);
@@ -308,10 +316,47 @@ export class RoomSystem extends createSystem({
       () => {
         activeRoomSystems.delete(this);
         for (const entity of this.queries.planes.entities) this.removeOverlay(entity);
+        this.fallbackFloorEntity?.dispose();
+        this.fallbackFloorEntity = undefined;
+        this.fallbackFloorGeometry?.dispose();
+        this.fallbackFloorGeometry = undefined;
+        this.fallbackFloorMaterial?.dispose();
+        this.fallbackFloorMaterial = undefined;
         currentPlanes = [];
         notifySubscribers();
       },
     );
+  }
+
+  private createFallbackWalkableFloor(): void {
+    const floor = new Mesh(
+      new BoxGeometry(200, 0.1, 200),
+      new MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0,
+        colorWrite: false,
+        depthWrite: false,
+        side: DoubleSide,
+      }),
+    );
+    floor.name = 'Questty Walkable Floor';
+    floor.position.y = -0.05;
+    this.fallbackFloorGeometry = floor.geometry as BoxGeometry;
+    this.fallbackFloorMaterial = floor.material as MeshBasicMaterial;
+    this.fallbackFloorEntity = this.world.createTransformEntity(floor);
+    this.fallbackFloorEntity.addComponent(LocomotionEnvironment);
+  }
+
+  private recoverFallenPlayer(): void {
+    const locomotion = this.world.getSystem(LocomotionSystem);
+    if (locomotion == null || this.world.player.position.y >= -5) return;
+    this.recoveryPosition.set(
+      this.world.player.position.x,
+      0,
+      this.world.player.position.z,
+    );
+    locomotion.setPlayerPosition(this.recoveryPosition);
   }
 
   setDebugVisible(visible: boolean): void {
@@ -390,6 +435,14 @@ export class RoomSystem extends createSystem({
         this.normalBuffer.copy(localPlaneNormal).applyQuaternion(this.quaternionBuffer).normalize();
 
         const label = plane.semanticLabel ?? '';
+        if (
+          (label.toLowerCase() === 'floor' ||
+            (plane.orientation === 'horizontal' && this.positionBuffer.y <= 0.18)) &&
+          !entity.hasComponent(LocomotionEnvironment)
+        ) {
+          entity.addComponent(LocomotionEnvironment);
+        }
+        if (entity.hasComponent(LocomotionEnvironment)) this.recoverFallenPlayer();
         next.push({
           id: stableId(plane as object),
           label,

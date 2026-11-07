@@ -38,7 +38,13 @@
       }
     },
     "features": {
-      "locomotion": false,
+      "locomotion": {
+        "useWorker": true,
+        "comfortAssistLevel": 0.5,
+        "turningMethod": "snap",
+        "enableJumping": false,
+        "browserControls": { "keyboard": true, "gamepad": true }
+      },
       "grabbing": true,
       "physics": false,
       "sceneUnderstanding": {

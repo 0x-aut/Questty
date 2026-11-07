@@ -7,6 +7,10 @@ export const QuestCard = createComponent('QuestCard', {
   zoneId: { type: Types.String, default: '' },
   previousZoneId: { type: Types.String, default: '' },
   previousPosition: { type: Types.Vec3, default: [0, 0, 0] },
+  slot: { type: Types.Int8, default: -1 },
+  previousSlot: { type: Types.Int8, default: -1 },
+  previousOrientation: { type: Types.Vec4, default: [0, 0, 0, 1] },
+  previousScale: { type: Types.Float32, default: 0.16 },
 });
 
 export const ZoneMarker = createComponent('ZoneMarker', {
