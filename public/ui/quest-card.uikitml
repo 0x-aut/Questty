@@ -24,6 +24,11 @@
     color: #d7c7a7;
   }
 
+  .chip-slot {
+    width: 118px;
+    height: 36px;
+  }
+
   .xp-badge {
     padding-top: 6px;
     padding-bottom: 6px;
@@ -63,7 +68,8 @@
 </style>
 <Panel id="quest-card-root" class="quest-card">
   <div class="card-header">
-    <span class="eyebrow">FOCUS QUEST</span>
+    <!-- PR 5: the time category chip (its own entity, category-chip.uikitml) sits over this slot. -->
+    <div id="quest-chip-slot" class="chip-slot"></div>
     <div class="xp-badge"><span id="quest-xp" class="xp-value">+25 XP</span></div>
   </div>
   <span id="quest-title" class="quest-title">A small next step</span>

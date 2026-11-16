@@ -16,6 +16,7 @@ import { restoreSavedFocus, SessionSystem } from './session-runtime.js';
 import { SurfaceSystem } from './surfaces.js';
 import { CardPersistenceSystem, restoreSavedCards } from './persistence.js';
 import { CoachSystem } from './coach.js';
+import { CategorySystem } from './categories.js';
 
 const sceneContainer = document.getElementById('scene-container');
 if (!(sceneContainer instanceof HTMLDivElement)) {
@@ -32,6 +33,7 @@ world.registerSystem(QuestInputSystem);
 world.registerSystem(SessionSystem);
 world.registerSystem(CardPersistenceSystem);
 world.registerSystem(CoachSystem);
+world.registerSystem(CategorySystem);
 
 configureQuestCards(world);
 // The room starts empty for a new user: cards appear only after they speak or

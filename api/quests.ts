@@ -8,14 +8,19 @@ type VercelResponseLike = {
   json(body: unknown): void;
 };
 
+type When = 'today' | 'later' | 'before-leave' | 'unsorted';
+
 type GeneratedQuest = {
   title: string;
   xp: number;
   zone: 'desk' | 'door' | 'wall';
+  /** Optional time category (PR 5). Clients that predate it ignore it. */
+  when?: When;
 };
 
 const REQUEST_TIMEOUT_MS = 8_000;
 const ZONES = new Set<GeneratedQuest['zone']>(['desk', 'door', 'wall']);
+const WHENS = new Set<When>(['today', 'later', 'before-leave', 'unsorted']);
 
 function readApiKey(): string | undefined {
   // Read Vercel's process.env.OPENAI_API_KEY only here; this module is server-only.
@@ -50,7 +55,10 @@ function validateQuests(value: unknown): GeneratedQuest[] | null {
     ) {
       return null;
     }
-    quests.push({ title, xp: xp as number, zone: zone as GeneratedQuest['zone'] });
+    const quest: GeneratedQuest = { title, xp: xp as number, zone: zone as GeneratedQuest['zone'] };
+    // `when` is optional and never fails the reply: an unknown value is dropped.
+    if (typeof item.when === 'string' && WHENS.has(item.when as When)) quest.when = item.when as When;
+    quests.push(quest);
   }
   return quests;
 }
@@ -170,7 +178,7 @@ export default async function handler(
           {
             role: 'system',
             content:
-              'Turn the spoken task list into 3 to 5 concise, actionable quest cards. Titles must use at most six words. Assign each quest to desk, door, or wall. Award 10 to 50 XP based on effort.',
+              'Turn the spoken task list into 3 to 5 concise, actionable quest cards. Titles must use at most six words. Assign each quest to desk, door, or wall. Award 10 to 50 XP based on effort. Set when from the timing words the user used for that task: today, tonight or this morning -> today; later, tomorrow, next week or this weekend -> later; before I leave or on my way out -> before-leave; no timing -> unsorted. A timing phrase at the start of a sentence covers the tasks that follow it.',
           },
           { role: 'user', content: text },
         ],
@@ -192,8 +200,9 @@ export default async function handler(
                       title: { type: 'string' },
                       xp: { type: 'integer', minimum: 10, maximum: 50 },
                       zone: { type: 'string', enum: ['desk', 'door', 'wall'] },
+                      when: { type: 'string', enum: ['today', 'later', 'before-leave', 'unsorted'] },
                     },
-                    required: ['title', 'xp', 'zone'],
+                    required: ['title', 'xp', 'zone', 'when'],
                   },
                 },
               },

@@ -33,6 +33,10 @@ export type SavedCard = {
   pose: { position: Vec3; quaternion: Quat; scale: number };
   surface?: SavedSurface;
   anchor?: string;
+  /**
+   * Time category id (PR 5). Optional: cards saved before it load as Unsorted.
+   */
+  category?: string;
 };
 
 const CARDS_KEY = 'questty.cards.v1';
@@ -63,6 +67,8 @@ function validCard(v: unknown): v is SavedCard {
     return false;
   }
   if (c.anchor !== undefined && typeof c.anchor !== 'string') return false;
+  // A bad category never drops the card: it just loads as Unsorted.
+  if (c.category !== undefined && (typeof c.category !== 'string' || c.category.length > 64)) delete c.category;
   const s = c.surface;
   if (
     s !== undefined &&

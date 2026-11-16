@@ -10,6 +10,8 @@ export const QuestCard = createComponent('QuestCard', {
   surfaceId: { type: Types.String, default: '' },
   /** True once the user has moved the card; the spawn layout never moves it again. */
   userPlaced: { type: Types.Boolean, default: false },
+  /** Time category (category-config.ts): 'today' | 'later' | 'before-leave' | 'unsorted' | custom id. */
+  category: { type: Types.String, default: 'unsorted' },
 });
 
 /**

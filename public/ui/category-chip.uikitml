@@ -1,0 +1,38 @@
+<!--
+  Time category chip (PR 5): a small matte paper tab under a quest card.
+  It sits over the card's header slot (quest-chip-slot). Pinch it to open the category picker. Element ids used by code:
+  cat-chip, cat-chip-dot, cat-chip-label.
+  Sizes are card units x 100 (the chip is scaled with its card).
+-->
+<style>
+  .chip {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: 118px;
+    height: 36px;
+    border-radius: 18px;
+    background-color: #ece6d8;
+    border-width: 1px;
+    border-color: #cfc7b5;
+    cursor: pointer;
+  }
+
+  .dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 6px;
+    background-color: #9a9488;
+  }
+
+  .label {
+    color: #2b2a27;
+    font-size: 15px;
+    font-weight: 700;
+  }
+</style>
+<div id="cat-chip" class="chip">
+  <div id="cat-chip-dot" class="dot"></div>
+  <span id="cat-chip-label" class="label">When?</span>
+</div>

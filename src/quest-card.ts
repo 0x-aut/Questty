@@ -26,9 +26,10 @@ import {
   type FocusCommand,
   type FocusPanelInfo,
 } from './session-events.js';
+import { normalizeCategory } from './category-config.js';
 import { DEFAULT_FOCUS_MIN, focusChoices, suggestedFocusMinutes } from './session.js';
 import { primeChime, type BlurLevel } from './focus-store.js';
-import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE } from './card-layout.js';
+import { CARD_HIT_DEPTH, CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE } from './card-layout.js';
 import {
   type SnapTarget,
   flyCard,
@@ -49,9 +50,19 @@ export type QuestCardOptions = {
   focusReady?: boolean;
   /** True when re-created from saved state (not a new card the user asked for). */
   restored?: boolean;
+  /** Time category (category-config.ts); Unsorted when omitted or unknown. */
+  category?: string;
 };
 
-export type CardEventType = 'created' | 'grabbed' | 'pinned' | 'floated' | 'focused' | 'completed' | 'removed';
+export type CardEventType =
+  | 'created'
+  | 'grabbed'
+  | 'pinned'
+  | 'floated'
+  | 'focused'
+  | 'completed'
+  | 'removed'
+  | 'categorized';
 export type CardEventDetail = { restored?: boolean; target?: SnapTarget; focusReady?: boolean };
 type CardListener = (type: CardEventType, entity: Entity, detail: CardEventDetail) => void;
 const cardListeners = new Set<CardListener>();
@@ -61,6 +72,11 @@ const cardsById = new Map<string, Entity>();
 export function onCardEvent(listener: CardListener): () => void {
   cardListeners.add(listener);
   return () => cardListeners.delete(listener);
+}
+
+/** Emit a card event from another module (categories.ts: 'categorized'). */
+export function emitCardEvent(type: CardEventType, entity: Entity, detail: CardEventDetail = {}): void {
+  emitCard(type, entity, detail);
 }
 
 function emitCard(type: CardEventType, entity: Entity, detail: CardEventDetail = {}): void {
@@ -152,6 +168,7 @@ export async function createQuestCard({
   id,
   restored = false,
   focusReady = false,
+  category,
 }: QuestCardOptions): Promise<Entity> {
   if (activeWorld === undefined) {
     throw new Error('Quest cards have not been initialized with a world.');
@@ -173,7 +190,10 @@ export async function createQuestCard({
   if (quaternion !== undefined) panel.quaternion.copy(quaternion);
   panel.scale.setScalar(FLOAT_CARD_SCALE);
   const hitbox = new Mesh(
-    new BoxGeometry(CARD_UNITS_W, CARD_UNITS_H, 0.5),
+    // Thin (about +-6 mm), so a pinch-ray at a shallow angle (a card on a desk
+    // seen from a chair) can reach the category chip in the card's header;
+    // CategorySystem also trims its top below the chip (PR 5).
+    new BoxGeometry(CARD_UNITS_W, CARD_UNITS_H, CARD_HIT_DEPTH),
     new MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
@@ -197,6 +217,7 @@ export async function createQuestCard({
     zoneId: '',
     surfaceId: '',
     userPlaced: false,
+    category: normalizeCategory(category),
   });
   // Pinch-ray grab by default; SurfaceSystem switches to a direct grab when a
   // hand comes within reach of the card.
