@@ -250,7 +250,7 @@ export function parseCommand(input: string, cards: readonly BuddyCard[]): ParseR
 
   // ---- arrange (PR 7): "line up my today cards on the desk", "arrange everything on the left wall"
   const arrange =
-    /^(?:line up|line|arrange|lay out|lay|tidy(?: up)?|organi[sz]e|put|move|stick|pin)\s+(?:up\s+)?(?:all\s+(?:of\s+)?)?(?:the\s+|my\s+)?(.*?)\b(cards|quests|tasks|everything|them all|them)\b(?:\s+up)?\s+(?:on|onto|along|across|to|against|over)\s+(.+)$/u.exec(lower);
+    /^(?:line up|line|arrange|lay out|lay|tidy(?: up)?|organi[sz]e|put|move|stick|pin)\s+(?:up\s+)?(?:all\s+(?:of\s+)?)?(?:the\s+|my\s+)?(.*?)\b(cards|quests|tasks|everything|them all|them)\b(?:\s+up)?\s+(?:on|onto|along|across|to|against|over|in|(?=here\b))\s*(.+)$/u.exec(lower);
   if (arrange !== null) {
     const place = placeFromWords(arrange[3]);
     if (place !== null && place.target !== 'next_to') {

@@ -232,7 +232,8 @@ export function validateActions(raw: unknown, cardIds: ReadonlySet<string>): Val
 /** A reply line from the AI: plain text, short; null when unusable. */
 export function cleanReply(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const text = value.replace(/\s+/gu, ' ').trim();
+  // The UI font has no em/en dash glyphs (Luna likes them): use a plain hyphen.
+  const text = value.replace(/\s*[\u2014\u2013]\s*/gu, ' - ').replace(/\s+/gu, ' ').trim();
   if (text.length === 0) return null;
   const chars = Array.from(text);
   return chars.length <= MAX_REPLY ? text : `${chars.slice(0, MAX_REPLY - 3).join('')}...`;
