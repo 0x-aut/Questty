@@ -1,0 +1,96 @@
+{
+  "surfaces": [
+    {
+      "id": "virtual-1",
+      "kind": "wall",
+      "source": "virtual",
+      "position": [
+        0.3,
+        1.35,
+        -2.6
+      ],
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "width": 2.6,
+      "height": 1.8
+    },
+    {
+      "id": "virtual-2",
+      "kind": "door",
+      "source": "virtual",
+      "position": [
+        -1.55,
+        1.03,
+        -2.58
+      ],
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "width": 0.85,
+      "height": 2.06
+    },
+    {
+      "id": "virtual-3",
+      "kind": "wall",
+      "source": "virtual",
+      "position": [
+        2,
+        1.35,
+        -0.6
+      ],
+      "normal": [
+        -1,
+        0,
+        0
+      ],
+      "width": 2.6,
+      "height": 1.8
+    },
+    {
+      "id": "virtual-4",
+      "kind": "desk",
+      "source": "virtual",
+      "position": [
+        0,
+        0.72,
+        -0.85
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ],
+      "width": 1.3,
+      "height": 0.6
+    }
+  ],
+  "after": {
+    "title": "Ship one small feature",
+    "pos": [
+      0.9,
+      1.511,
+      -2.596
+    ],
+    "normal": [
+      0,
+      0,
+      1
+    ],
+    "scale": 0.193,
+    "state": "Pinned to Wall - pinch Start focus"
+  },
+  "ecs": {
+    "title": "Ship one small feature",
+    "zoneId": "wall",
+    "surfaceId": "virtual-1",
+    "comps": [
+      "DistanceGrabbable",
+      "Handle"
+    ]
+  }
+}

@@ -1,0 +1,818 @@
+{
+  "marks": [
+    {
+      "name": "start",
+      "t": 34
+    },
+    {
+      "name": "mic-pinch",
+      "t": 42.7
+    },
+    {
+      "name": "done-pinch",
+      "t": 58
+    },
+    {
+      "name": "cards-spawned",
+      "t": 67.7
+    },
+    {
+      "name": "template-pinch",
+      "t": 80.4
+    },
+    {
+      "name": "grab front wall",
+      "t": 104.3
+    },
+    {
+      "name": "grab desk (coffee table)",
+      "t": 144.8
+    },
+    {
+      "name": "grab right wall",
+      "t": 191.5
+    },
+    {
+      "name": "grab door",
+      "t": 223.5
+    },
+    {
+      "name": "near-grab float",
+      "t": 274.6
+    },
+    {
+      "name": "start-focus",
+      "t": 319.6
+    },
+    {
+      "name": "end",
+      "t": 339.1
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "room-1",
+      "kind": "desk",
+      "source": "room",
+      "position": [
+        0,
+        0.42,
+        -1.95
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ],
+      "width": 1.15,
+      "height": 0.6
+    },
+    {
+      "id": "room-2",
+      "kind": "door",
+      "source": "room",
+      "position": [
+        1.45,
+        1.028,
+        2.378
+      ],
+      "normal": [
+        0,
+        0,
+        -1
+      ],
+      "width": 0.85,
+      "height": 2.06
+    },
+    {
+      "id": "room-3",
+      "kind": "desk",
+      "source": "room",
+      "position": [
+        -0.95,
+        0.74,
+        1.35
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ],
+      "width": 0.9,
+      "height": 0.9
+    },
+    {
+      "id": "room-4",
+      "kind": "wall",
+      "source": "room",
+      "position": [
+        -2.5,
+        1.35,
+        -0.5
+      ],
+      "normal": [
+        1,
+        0,
+        0
+      ],
+      "width": 5.8,
+      "height": 2.7
+    },
+    {
+      "id": "room-5",
+      "kind": "wall",
+      "source": "room",
+      "position": [
+        2.5,
+        1.35,
+        -0.5
+      ],
+      "normal": [
+        -1,
+        0,
+        0
+      ],
+      "width": 5.8,
+      "height": 2.7
+    },
+    {
+      "id": "room-6",
+      "kind": "wall",
+      "source": "room",
+      "position": [
+        0,
+        1.35,
+        -3.4
+      ],
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "width": 5,
+      "height": 2.7
+    },
+    {
+      "id": "room-7",
+      "kind": "wall",
+      "source": "room",
+      "position": [
+        0,
+        1.35,
+        2.4
+      ],
+      "normal": [
+        0,
+        0,
+        -1
+      ],
+      "width": 5,
+      "height": 2.7
+    }
+  ],
+  "cardsBefore": [
+    {
+      "title": "Plan the next milestone",
+      "pos": [
+        0,
+        1.31,
+        -0.58
+      ],
+      "normal": [
+        0,
+        0.46,
+        0.89
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Ship one small feature",
+      "pos": [
+        -0.281,
+        1.31,
+        -0.507
+      ],
+      "normal": [
+        0.43,
+        0.46,
+        0.78
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Take a short reset",
+      "pos": [
+        0.281,
+        1.31,
+        -0.507
+      ],
+      "normal": [
+        -0.43,
+        0.46,
+        0.78
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    }
+  ],
+  "micPinchAttempts": 1,
+  "donePinchAttempts": 1,
+  "voiceStatus": {
+    "text": "Added 4 quests.",
+    "displayed": true
+  },
+  "cardsAfterVoice": [
+    {
+      "title": "Plan the next milestone",
+      "pos": [
+        0,
+        1.31,
+        -0.58
+      ],
+      "normal": [
+        0,
+        0.46,
+        0.89
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Ship one small feature",
+      "pos": [
+        -0.281,
+        1.31,
+        -0.507
+      ],
+      "normal": [
+        0.43,
+        0.46,
+        0.78
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Take a short reset",
+      "pos": [
+        0.281,
+        1.31,
+        -0.507
+      ],
+      "normal": [
+        -0.43,
+        0.46,
+        0.78
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Email Sam about launch",
+      "pos": [
+        -0.492,
+        1.311,
+        -0.307
+      ],
+      "normal": [
+        0.75,
+        0.46,
+        0.47
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Finish the pitch deck",
+      "pos": [
+        0.492,
+        1.311,
+        -0.307
+      ],
+      "normal": [
+        -0.75,
+        0.46,
+        0.47
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Gym after lunch",
+      "pos": [
+        -0.145,
+        1.031,
+        -0.562
+      ],
+      "normal": [
+        0.18,
+        0.71,
+        0.68
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Call landlord about sink",
+      "pos": [
+        0.145,
+        1.031,
+        -0.562
+      ],
+      "normal": [
+        -0.18,
+        0.71,
+        0.68
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    }
+  ],
+  "templatePinchAttempts": 1,
+  "cardsAfterTemplate": [
+    {
+      "title": "Plan the next milestone",
+      "pos": [
+        0,
+        1.31,
+        -0.58
+      ],
+      "normal": [
+        0,
+        0.46,
+        0.89
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Ship one small feature",
+      "pos": [
+        -0.281,
+        1.31,
+        -0.507
+      ],
+      "normal": [
+        0.43,
+        0.46,
+        0.78
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Take a short reset",
+      "pos": [
+        0.281,
+        1.31,
+        -0.507
+      ],
+      "normal": [
+        -0.43,
+        0.46,
+        0.78
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Email Sam about launch",
+      "pos": [
+        -0.492,
+        1.311,
+        -0.307
+      ],
+      "normal": [
+        0.75,
+        0.46,
+        0.47
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Finish the pitch deck",
+      "pos": [
+        0.492,
+        1.311,
+        -0.307
+      ],
+      "normal": [
+        -0.75,
+        0.46,
+        0.47
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Gym after lunch",
+      "pos": [
+        -0.145,
+        1.031,
+        -0.562
+      ],
+      "normal": [
+        0.18,
+        0.71,
+        0.68
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Call landlord about sink",
+      "pos": [
+        0.145,
+        1.031,
+        -0.562
+      ],
+      "normal": [
+        -0.18,
+        0.71,
+        0.68
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    },
+    {
+      "title": "Email reply",
+      "pos": [
+        -0.399,
+        1.031,
+        -0.421
+      ],
+      "normal": [
+        0.49,
+        0.71,
+        0.51
+      ],
+      "scale": 0.09,
+      "state": "Pinch to grab, drop on a wall, desk or door"
+    }
+  ],
+  "floatingMinCentreDistance": 0.29,
+  "drops": [
+    {
+      "title": "Finish the pitch deck",
+      "name": "front wall",
+      "way": [
+        {
+          "x": 1.25,
+          "y": 1.45,
+          "z": -3.4
+        }
+      ],
+      "shotHold": "04-wall-preview.png",
+      "shotAfter": "05-wall-pinned.png",
+      "lookAt": {
+        "x": 0.9,
+        "y": 1.3,
+        "z": -3.4
+      },
+      "previewWhileHeld": {
+        "id": "quest-5",
+        "kind": "wall",
+        "surfaceId": "room-6",
+        "via": "ray"
+      },
+      "after": {
+        "title": "Finish the pitch deck",
+        "pos": [
+          1.25,
+          1.461,
+          -3.396
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "scale": 0.254,
+        "state": "Pinned to Wall - pinch Start focus"
+      },
+      "ecs": {
+        "title": "Finish the pitch deck",
+        "zoneId": "wall",
+        "surfaceId": "room-6",
+        "comps": [
+          "DistanceGrabbable",
+          "Handle"
+        ]
+      }
+    },
+    {
+      "title": "Plan the next milestone",
+      "name": "desk (coffee table)",
+      "way": [
+        {
+          "x": 0,
+          "y": 0.42,
+          "z": -1.85
+        }
+      ],
+      "shotHold": "06-desk-preview.png",
+      "shotAfter": "07-desk-pinned.png",
+      "lookAt": {
+        "x": 0,
+        "y": 0.5,
+        "z": -1.9
+      },
+      "previewWhileHeld": {
+        "id": "quest-1",
+        "kind": "desk",
+        "surfaceId": "room-1",
+        "via": "ray"
+      },
+      "after": {
+        "title": "Plan the next milestone",
+        "pos": [
+          -0.003,
+          0.506,
+          -1.868
+        ],
+        "normal": [
+          0,
+          0.93,
+          0.37
+        ],
+        "scale": 0.155,
+        "state": "Pinned to Desk - pinch Start focus"
+      },
+      "ecs": {
+        "title": "Plan the next milestone",
+        "zoneId": "desk",
+        "surfaceId": "room-1",
+        "comps": [
+          "DistanceGrabbable",
+          "Handle"
+        ]
+      }
+    },
+    {
+      "title": "Call landlord about sink",
+      "name": "right wall",
+      "way": [
+        {
+          "x": 2.5,
+          "y": 1.45,
+          "z": -0.2
+        }
+      ],
+      "shotHold": null,
+      "shotAfter": "08-right-wall-pinned.png",
+      "lookAt": {
+        "x": 2.5,
+        "y": 1.4,
+        "z": -0.2
+      },
+      "previewWhileHeld": {
+        "id": "quest-7",
+        "kind": "wall",
+        "surfaceId": "room-5",
+        "via": "ray"
+      },
+      "after": {
+        "title": "Call landlord about sink",
+        "pos": [
+          2.496,
+          1.461,
+          -0.2
+        ],
+        "normal": [
+          -1,
+          0,
+          0
+        ],
+        "scale": 0.176,
+        "state": "Pinned to Wall - pinch Start focus"
+      },
+      "ecs": {
+        "title": "Call landlord about sink",
+        "zoneId": "wall",
+        "surfaceId": "room-5",
+        "comps": [
+          "DistanceGrabbable",
+          "Handle"
+        ]
+      }
+    },
+    {
+      "title": "Gym after lunch",
+      "name": "door",
+      "way": [
+        {
+          "x": 2.5,
+          "y": 1.4,
+          "z": 0.6
+        },
+        {
+          "x": 1.45,
+          "y": 1.2,
+          "z": 2.38
+        }
+      ],
+      "shotHold": "09-door-preview.png",
+      "shotAfter": "10-door-pinned.png",
+      "lookAt": {
+        "x": 1.45,
+        "y": 1.15,
+        "z": 2.38
+      },
+      "previewWhileHeld": {
+        "id": "quest-6",
+        "kind": "door",
+        "surfaceId": "room-2",
+        "via": "ray"
+      },
+      "after": {
+        "title": "Gym after lunch",
+        "pos": [
+          1.449,
+          1.211,
+          2.374
+        ],
+        "normal": [
+          0,
+          0,
+          -1
+        ],
+        "scale": 0.197,
+        "state": "Pinned to Door - pinch Start focus"
+      },
+      "ecs": {
+        "title": "Gym after lunch",
+        "zoneId": "door",
+        "surfaceId": "room-2",
+        "comps": [
+          "DistanceGrabbable",
+          "Handle"
+        ]
+      }
+    }
+  ],
+  "nearFloat": {
+    "title": "Ship one small feature",
+    "from": [
+      -0.281,
+      1.31,
+      -0.507
+    ],
+    "released": {
+      "x": -0.16100000000000003,
+      "y": 1.53,
+      "z": -0.557
+    },
+    "after": {
+      "title": "Ship one small feature",
+      "pos": [
+        -0.161,
+        1.53,
+        -0.557
+      ],
+      "normal": [
+        0.43,
+        0.46,
+        0.78
+      ],
+      "scale": 0.09,
+      "state": "Floating - pinch it onto a wall, desk or door"
+    },
+    "grabMode": [
+      "OneHandGrabbable",
+      "Handle"
+    ],
+    "ecs": {
+      "title": "Ship one small feature",
+      "zoneId": "",
+      "surfaceId": "",
+      "comps": [
+        "OneHandGrabbable",
+        "Handle"
+      ]
+    }
+  },
+  "tapGuard": {
+    "title": "Take a short reset",
+    "before": [
+      0.281,
+      1.31,
+      -0.507
+    ],
+    "after": [
+      0.281,
+      1.31,
+      -0.507
+    ],
+    "movedMetres": 0,
+    "state": "Floating - pinch it onto a wall, desk or door"
+  },
+  "stayPut": [
+    {
+      "title": "Finish the pitch deck",
+      "movedMetres": 0
+    },
+    {
+      "title": "Plan the next milestone",
+      "movedMetres": 0
+    },
+    {
+      "title": "Call landlord about sink",
+      "movedMetres": 0
+    },
+    {
+      "title": "Gym after lunch",
+      "movedMetres": 0
+    }
+  ],
+  "allEcs": [
+    {
+      "title": "Plan the next milestone",
+      "zoneId": "desk",
+      "surfaceId": "room-1",
+      "comps": [
+        "DistanceGrabbable",
+        "Handle"
+      ]
+    },
+    {
+      "title": "Ship one small feature",
+      "zoneId": "",
+      "surfaceId": "",
+      "comps": [
+        "OneHandGrabbable",
+        "Handle"
+      ]
+    },
+    {
+      "title": "Take a short reset",
+      "zoneId": "",
+      "surfaceId": "",
+      "comps": [
+        "DistanceGrabbable",
+        "Handle"
+      ]
+    },
+    {
+      "title": "Email Sam about launch",
+      "zoneId": "",
+      "surfaceId": "",
+      "comps": [
+        "DistanceGrabbable",
+        "Handle"
+      ]
+    },
+    {
+      "title": "Finish the pitch deck",
+      "zoneId": "wall",
+      "surfaceId": "room-6",
+      "comps": [
+        "DistanceGrabbable",
+        "Handle"
+      ]
+    },
+    {
+      "title": "Gym after lunch",
+      "zoneId": "door",
+      "surfaceId": "room-2",
+      "comps": [
+        "DistanceGrabbable",
+        "Handle"
+      ]
+    },
+    {
+      "title": "Call landlord about sink",
+      "zoneId": "wall",
+      "surfaceId": "room-5",
+      "comps": [
+        "DistanceGrabbable",
+        "Handle"
+      ]
+    },
+    {
+      "title": "Email reply",
+      "zoneId": "",
+      "surfaceId": "",
+      "comps": [
+        "DistanceGrabbable",
+        "Handle"
+      ]
+    }
+  ],
+  "focusButton": {
+    "deskBtn": {
+      "x": 0.33033666014671326,
+      "y": 0.5154606103897095,
+      "z": -1.8645092248916626,
+      "action": "Focus Action quest-1"
+    },
+    "anyAction": "Focus Action quest-5"
+  },
+  "focusStatus": {
+    "text": "Focus: Plan the next milestone | 0:29",
+    "displayed": true
+  },
+  "focusPinchAttempts": 1
+}
