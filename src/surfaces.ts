@@ -24,6 +24,8 @@ import {
 } from '@iwsdk/core';
 import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE } from './card-layout.js';
 import { QuestCard, QuestCardTween, SnapSurface } from './quest-component.js';
+import { syncCardDecor } from './card-decor.js';
+import { playTap } from './focus-store.js';
 
 /**
  * Surfaces quest cards snap to: every wall, desk/table top and door in the room.
@@ -52,6 +54,8 @@ export type SnapTarget = {
   quaternion: Quaternion;
   scale: number;
   via: 'near' | 'ray';
+  /** True when no free spot was left and the card overlaps another one. */
+  crowded?: boolean;
 };
 
 type Frame = {
@@ -64,6 +68,11 @@ type Frame = {
   v: Vector3;
   width: number;
   height: number;
+  /** Centre of the plane's polygon extent in plane-local coords (x along u, z along v). */
+  cx: number;
+  cz: number;
+  /** Plane polygon (plane-local), or null for a plain rectangle centred on the origin. */
+  poly: readonly { x: number; z: number }[] | null;
 };
 
 type Blocker = { origin: Vector3; normal: Vector3; u: Vector3; v: Vector3; width: number; height: number };
@@ -82,16 +91,23 @@ type Flight = {
   sFrom: number;
   sTo: number;
   startedAt: number;
+  /** Surface normal the card settles along (null: no settle, e.g. a restore). */
+  normal: Vector3 | null;
+  tapped: boolean;
 };
 
-const SURFACE_GAP = 0.004; // metres between card and surface (no z-fighting)
-const DESK_TILT = (22 * Math.PI) / 180; // desk cards lean back toward the user
+const SURFACE_GAP = 0.0025; // metres between card and surface (flush, no z-fighting)
+const EDGE_INSET = 0.015; // keep a pinned card this far inside the surface's edges
+const SETTLE_LIFT = 0.012; // the flight ends this far off the surface, then settles in
+const SETTLE_MS = 150;
 const NEAR_SNAP_DISTANCE = 0.22; // card centre to surface, for a near drop
 const BOUNDS_MARGIN = 0.12;
 const RAY_MAX = 8;
 const CARD_GAP = 0.03;
 const PINNED_NEAR_SCALE = 0.12;
-const FLIGHT_MS = 280;
+const FLIGHT_MS = 260;
+/** Width of a card's focus panel (focus-action.uikitml, 200px) in card units. */
+const FOCUS_PANEL_UNITS = 2.0;
 const NEAR_ENTER = 0.12; // hand within this of a card -> direct (near) grab
 const NEAR_EXIT = 0.2;
 const MIN_RAY_HOLD_MS = 350;
@@ -129,6 +145,30 @@ export function getDropTarget(cardId: string): SnapTarget | null {
 /** Animate a released card to its pinned pose. */
 export function flyCard(entity: Entity, target: SnapTarget): void {
   activeSystem?.fly(entity, target);
+}
+
+export type SurfaceInfo = {
+  surfaceId: string;
+  kind: SurfaceKind;
+  /** Semantic label of the room plane ('table', 'wall', ...) or the source for non-room surfaces. */
+  label: string;
+  origin: Vector3;
+  quaternion: Quaternion;
+};
+
+/** World pose of a snap surface's own frame (normal = local +Y), or null. */
+export function surfaceInfo(surfaceId: string): SurfaceInfo | null {
+  return activeSystem?.info(surfaceId) ?? null;
+}
+
+/** All current snap surfaces with their world frames. */
+export function allSurfaceInfo(): SurfaceInfo[] {
+  return activeSystem?.infos() ?? [];
+}
+
+/** Gently light up every snap surface outline for `ms` (placement coach mark). */
+export function glowSurfaces(ms: number): void {
+  if (activeSystem !== undefined) activeSystem.glowUntil = performance.now() + ms;
 }
 
 /** Debug/test view of every snap surface (also on window.__questty in dev). */
@@ -190,6 +230,7 @@ export class SurfaceSystem extends createSystem({
       (window as unknown as { __questty?: object }).__questty = {
         listSurfaces,
         getDropTarget,
+        pinnedFit: () => this.pinnedFit(),
       };
     }
     this.cleanupFuncs.push(() => {
@@ -197,6 +238,31 @@ export class SurfaceSystem extends createSystem({
       window.clearTimeout(this.fallbackTimer);
       if (activeSystem === this) activeSystem = undefined;
     });
+  }
+
+  glowUntil = 0;
+
+  info(surfaceId: string): SurfaceInfo | null {
+    this.refreshFrames(true);
+    const frame = this.frames.find((f) => f.id === surfaceId);
+    return frame === undefined ? null : this.frameInfo(frame);
+  }
+
+  infos(): SurfaceInfo[] {
+    this.refreshFrames(true);
+    return this.frames.map((f) => this.frameInfo(f));
+  }
+
+  private frameInfo(frame: Frame): SurfaceInfo {
+    const object = frame.entity.object3D!;
+    object.updateWorldMatrix(true, false);
+    const quaternion = object.getWorldQuaternion(new Quaternion());
+    let label = frame.entity.getValue(SnapSurface, 'source') as string;
+    if (frame.entity.hasComponent(XRPlane)) {
+      const plane = frame.entity.getValue(XRPlane, '_plane') as unknown as DetectedPlane | undefined;
+      label = plane?.semanticLabel ?? label;
+    }
+    return { surfaceId: frame.id, kind: frame.kind, label, origin: frame.origin.clone(), quaternion };
   }
 
   getPreview(cardId: string): SnapTarget | null {
@@ -221,6 +287,8 @@ export class SurfaceSystem extends createSystem({
     if (object == null) return;
     object.updateWorldMatrix(true, false);
     this.flights.set(entity, {
+      normal: new Vector3(0, 0, 1).applyQuaternion(target.quaternion),
+      tapped: false,
       from: object.getWorldPosition(new Vector3()),
       to: target.position.clone(),
       qFrom: object.getWorldQuaternion(new Quaternion()),
@@ -233,12 +301,14 @@ export class SurfaceSystem extends createSystem({
 
   update(delta: number, time: number): void {
     this.updateFlights();
+    syncCardDecor(this.queries.cards.entities);
     this.updateGrabModes();
     const held = this.queries.held.entities;
     for (const card of this.grabStarts.keys()) if (!held.has(card)) this.grabStarts.delete(card);
     if (held.size === 0) {
       if (this.previews.size > 0) this.previews.clear();
       this.setPreviewVisible(false);
+      this.updateGlow();
       if (time - this.framesAt > 1) this.refreshFrames(true, time);
       return;
     }
@@ -326,12 +396,18 @@ export class SurfaceSystem extends createSystem({
       const object = entity.object3D;
       if (object == null) continue;
       // Room planes can grow as the headset scans; keep their extent fresh.
+      let cx = 0;
+      let cz = 0;
+      let poly: Frame['poly'] = null;
       if (entity.hasComponent(XRPlane)) {
         const plane = entity.getValue(XRPlane, '_plane') as unknown as DetectedPlane | undefined;
         if (plane !== undefined) {
           const ext = polygonExtent(plane.polygon);
           entity.setValue(SnapSurface, 'width', ext.width);
           entity.setValue(SnapSurface, 'height', ext.height);
+          cx = ext.cx;
+          cz = ext.cz;
+          poly = plane.polygon.length >= 3 ? plane.polygon.map((p) => ({ x: p.x, z: p.z })) : null;
         }
       }
       object.updateWorldMatrix(true, false);
@@ -356,6 +432,9 @@ export class SurfaceSystem extends createSystem({
         v,
         width: entity.getValue(SnapSurface, 'width') as number,
         height: entity.getValue(SnapSurface, 'height') as number,
+        cx,
+        cz,
+        poly,
       });
     }
     this.frames = frames;
@@ -370,11 +449,13 @@ export class SurfaceSystem extends createSystem({
       object.updateWorldMatrix(true, false);
       const e = object.matrixWorld.elements;
       const ext = polygonExtent(plane.polygon);
+      const bu = new Vector3(e[0], e[1], e[2]).normalize();
+      const bv = new Vector3(e[8], e[9], e[10]).normalize();
       blockers.push({
-        origin: new Vector3(e[12], e[13], e[14]),
-        u: new Vector3(e[0], e[1], e[2]).normalize(),
+        origin: new Vector3(e[12], e[13], e[14]).addScaledVector(bu, ext.cx).addScaledVector(bv, ext.cz),
+        u: bu,
         normal: new Vector3(e[4], e[5], e[6]).normalize(),
-        v: new Vector3(e[8], e[9], e[10]).normalize(),
+        v: bv,
         width: ext.width,
         height: ext.height,
       });
@@ -398,8 +479,8 @@ export class SurfaceSystem extends createSystem({
       const toCard = this.tmpA.copy(center).sub(frame.origin);
       const d = toCard.dot(frame.normal);
       if (d < -0.06 || d > NEAR_SNAP_DISTANCE) continue;
-      const pu = toCard.dot(frame.u);
-      const pv = toCard.dot(frame.v);
+      const pu = toCard.dot(frame.u) - frame.cx;
+      const pv = toCard.dot(frame.v) - frame.cz;
       if (Math.abs(pu) > frame.width / 2 + BOUNDS_MARGIN || Math.abs(pv) > frame.height / 2 + BOUNDS_MARGIN) continue;
       const distance = Math.abs(d);
       if (best === null || distance < best.distance) {
@@ -430,7 +511,7 @@ export class SurfaceSystem extends createSystem({
       if (t === null || t > RAY_MAX || (hit !== null && t >= hit.t)) continue;
       const p = origin.clone().addScaledVector(dir, t);
       const rel = this.tmpB.copy(p).sub(frame.origin);
-      if (Math.abs(rel.dot(frame.u)) > frame.width / 2 + 0.02 || Math.abs(rel.dot(frame.v)) > frame.height / 2 + 0.02) continue;
+      if (Math.abs(rel.dot(frame.u) - frame.cx) > frame.width / 2 + 0.02 || Math.abs(rel.dot(frame.v) - frame.cz) > frame.height / 2 + 0.02) continue;
       hit = { frame, point: p, t };
     }
     if (hit === null) return null;
@@ -443,84 +524,126 @@ export class SurfaceSystem extends createSystem({
     return this.placeOn(hit.frame, hit.point, cardId, 'ray');
   }
 
-  /** Flush, upright, non-overlapping pose for a card dropped at `point` on `frame`. */
-  private placeOn(frame: Frame, point: Vector3, cardId: string, via: 'near' | 'ray'): SnapTarget {
+  private liesOn(object: NonNullable<Entity['object3D']>, frame: Frame): boolean {
+    if ((object.parent ?? null) === null) return false;
+    const rel = object.getWorldPosition(this.tmpC).sub(frame.origin);
+    return (
+      Math.abs(rel.dot(frame.normal)) < 0.15 &&
+      Math.abs(rel.dot(frame.u) - frame.cx) <= frame.width / 2 + 0.05 &&
+      Math.abs(rel.dot(frame.v) - frame.cz) <= frame.height / 2 + 0.05
+    );
+  }
+
+  /**
+   * In-surface "up" for a card on a desk: perpendicular to the desk edge
+   * nearest the user, pointing away from them, so the card reads straight on.
+   */
+  private deskUp(frame: Frame): Vector3 {
+    const rel = this.tmpA.copy(this.head).sub(frame.origin);
+    const hu = rel.dot(frame.u) - frame.cx;
+    const hv = rel.dot(frame.v) - frame.cz;
+    // How far the head is beyond each edge (largest = the edge the user faces).
+    const candidates: Array<[number, Vector3]> = [
+      [hu - frame.width / 2, frame.u],
+      [-hu - frame.width / 2, frame.u.clone().negate()],
+      [hv - frame.height / 2, frame.v],
+      [-hv - frame.height / 2, frame.v.clone().negate()],
+    ];
+    candidates.sort((x, y) => y[0] - x[0]);
+    return candidates[0][1].clone().negate().normalize();
+  }
+
+  /**
+   * Flush pose for a card dropped at `point` on `frame`: lying in the plane
+   * (normal = the plane's own normal), axis-aligned to it (text upright to
+   * gravity on walls and doors; on desks square to the edge nearest the
+   * user), ~2.5 mm off it, fully inside its polygon, not overlapping others.
+   */
+  private placeOn(frame: Frame, point: Vector3, cardId: string, via: 'near' | 'ray', maxScale = 0.28): SnapTarget {
     this.world.player.head.getWorldPosition(this.head);
     const distance = this.head.distanceTo(point);
-    // Bigger the farther away it is (readable from the seat), but never wider
-    // or taller than the surface it sits on.
-    const fit = Math.min(
-      (Math.max(frame.width, frame.height) - 0.04) / CARD_UNITS_W,
-      (Math.min(frame.width, frame.height) - 0.04) / CARD_UNITS_H / (frame.kind === 'desk' ? Math.cos(DESK_TILT) : 1),
-    );
-    const scale = Math.max(0.08, Math.min(0.28, fit, Math.max(PINNED_NEAR_SCALE, distance * 0.07)));
+
+    // Card axes in world space: +Z is the surface normal, +Y the text's up.
+    const zAxis = frame.normal.clone();
+    const yAxis = new Vector3();
+    if (frame.kind === 'desk') {
+      yAxis.copy(this.deskUp(frame));
+    } else {
+      yAxis.set(0, 1, 0).addScaledVector(zAxis, -zAxis.y);
+      if (yAxis.lengthSq() < 1e-4) yAxis.copy(frame.v);
+      yAxis.normalize();
+    }
+    const xAxis = new Vector3().crossVectors(yAxis, zAxis).normalize();
+    const gridRight = xAxis;
+    const gridUp = yAxis;
+
+    // Surface extent along the card's axes, around the polygon's centre.
+    const ru = gridRight.dot(frame.u);
+    const rv = gridRight.dot(frame.v);
+    const uu = gridUp.dot(frame.u);
+    const uv = gridUp.dot(frame.v);
+    const halfA = Math.abs(ru) * frame.width / 2 + Math.abs(rv) * frame.height / 2 - EDGE_INSET;
+    const halfB = Math.abs(uu) * frame.width / 2 + Math.abs(uv) * frame.height / 2 - EDGE_INSET;
+    const cA = frame.cx * ru + frame.cz * rv;
+    const cB = frame.cx * uu + frame.cz * uv;
+
+    // Bigger the farther away it is (readable from the seat), never bigger than the surface.
+    // On a desk one card may take at most ~2/3 of it, so a second card still fits beside it.
+    const fit = Math.min((2 * halfA) / CARD_UNITS_W, (2 * halfB) / CARD_UNITS_H) * (frame.kind === 'desk' ? 0.65 : 1);
+    let scale = Math.max(0.06, Math.min(maxScale, fit, Math.max(PINNED_NEAR_SCALE, distance * 0.07)));
+    // A door is narrow: centre the card on it, small enough that its focus panel fits beside it.
+    const centred = frame.kind === 'door';
+    if (centred) {
+      const groupFit = (halfA - 0.015) / (CARD_UNITS_W / 2 + FOCUS_PANEL_UNITS);
+      if (groupFit >= 0.08) scale = Math.min(scale, groupFit);
+    }
     const w = CARD_UNITS_W * scale;
     const h = CARD_UNITS_H * scale;
+    const panelExtra = FOCUS_PANEL_UNITS * scale + 0.015;
+    const groupFits = w + panelExtra <= 2 * halfA;
 
-    // Card axes in world space.
-    const xAxis = new Vector3();
-    const yAxis = new Vector3();
-    const zAxis = new Vector3();
-    let footprintH = h; // card extent along the surface's "up" direction
-    let lift = SURFACE_GAP;
-    // In-surface "up" for the grid: world up for walls/doors, away-from-user on desks.
-    const gridUp = new Vector3();
-    if (frame.kind === 'desk') {
-      const away = this.tmpA.copy(point).sub(this.head);
-      away.addScaledVector(frame.normal, -away.dot(frame.normal));
-      if (away.lengthSq() < 1e-4) away.copy(frame.v);
-      away.normalize();
-      zAxis.copy(frame.normal).multiplyScalar(Math.cos(DESK_TILT)).addScaledVector(away, -Math.sin(DESK_TILT));
-      yAxis.copy(frame.normal).multiplyScalar(Math.sin(DESK_TILT)).addScaledVector(away, Math.cos(DESK_TILT));
-      xAxis.crossVectors(yAxis, zAxis).normalize();
-      footprintH = h * Math.cos(DESK_TILT);
-      lift = SURFACE_GAP + (h / 2) * Math.sin(DESK_TILT);
-      gridUp.copy(away);
-    } else {
-      zAxis.copy(frame.normal);
-      yAxis.set(0, 1, 0).addScaledVector(zAxis, -zAxis.y).normalize();
-      xAxis.crossVectors(yAxis, zAxis).normalize();
-      gridUp.copy(yAxis);
-    }
-    const gridRight = new Vector3().crossVectors(gridUp, frame.normal).normalize();
+    const clampA = (x: number) => {
+      if (centred) return cA;
+      const lo = cA - halfA + w / 2;
+      const hi = cA + halfA - w / 2 - (groupFits ? panelExtra : 0);
+      return hi < lo ? cA : Math.max(lo, Math.min(hi, x));
+    };
+    const clampB = (x: number) => (halfB <= h / 2 ? cB : Math.max(cB - halfB + h / 2, Math.min(cB + halfB - h / 2, x)));
 
-    // Work in surface coordinates (a = along gridRight, b = along gridUp).
     const rel = this.tmpB.copy(point).sub(frame.origin);
-    let a = rel.dot(gridRight);
-    let b = rel.dot(gridUp);
-    // Half extents of the surface along gridRight / gridUp (axes may be rotated).
-    const halfA = Math.abs(gridRight.dot(frame.u)) * frame.width / 2 + Math.abs(gridRight.dot(frame.v)) * frame.height / 2;
-    const halfB = Math.abs(gridUp.dot(frame.u)) * frame.width / 2 + Math.abs(gridUp.dot(frame.v)) * frame.height / 2;
-    const clampA = (x: number) => (halfA <= w / 2 ? 0 : Math.max(-halfA + w / 2, Math.min(halfA - w / 2, x)));
-    const clampB = (x: number) => (halfB <= footprintH / 2 ? 0 : Math.max(-halfB + footprintH / 2, Math.min(halfB - footprintH / 2, x)));
-    a = clampA(a);
-    b = clampB(b);
+    let a = clampA(rel.dot(gridRight));
+    let b = clampB(rel.dot(gridUp));
 
     // Other cards already on this surface, in the same coordinates.
     const others: Array<{ a: number; b: number; w: number; h: number }> = [];
     for (const other of this.queries.cards.entities) {
       if (other.getValue(QuestCard, 'cardId') === cardId) continue;
-      if (other.getValue(QuestCard, 'surfaceId') !== frame.id || other.hasComponent(QuestCardTween)) continue;
+      if (other.hasComponent(QuestCardTween)) continue;
       const o = other.object3D;
       if (o == null) continue;
+      // Same surface id, or (restored cards whose plane got a new id) lying on this frame.
+      if (other.getValue(QuestCard, 'surfaceId') !== frame.id && !this.liesOn(o, frame)) continue;
       const flight = this.flights.get(other);
       const op = flight ? flight.to.clone() : o.getWorldPosition(new Vector3());
       const os = flight ? flight.sTo : o.scale.x;
       const r = op.sub(frame.origin);
       others.push({
-        a: r.dot(gridRight),
+        // A pinned card carries its focus panel on its right: reserve that space too.
+        a: r.dot(gridRight) + (FOCUS_PANEL_UNITS * os + 0.015) / 2,
         b: r.dot(gridUp),
-        w: CARD_UNITS_W * os,
-        h: CARD_UNITS_H * os * (frame.kind === 'desk' ? Math.cos(DESK_TILT) : 1),
+        w: (CARD_UNITS_W + FOCUS_PANEL_UNITS) * os + 0.015,
+        h: CARD_UNITS_H * os,
       });
     }
+    const fw = w + panelExtra;
     const free = (ca: number, cb: number) =>
       others.every(
-        (o) => Math.abs(o.a - ca) >= (o.w + w) / 2 + CARD_GAP - 1e-4 || Math.abs(o.b - cb) >= (o.h + footprintH) / 2 + CARD_GAP - 1e-4,
+        (o) => Math.abs(o.a - (ca + panelExtra / 2)) >= (o.w + fw) / 2 + CARD_GAP - 1e-4 || Math.abs(o.b - cb) >= (o.h + h) / 2 + CARD_GAP - 1e-4,
       );
+    let crowded = false;
     if (!free(a, b)) {
-      const stepA = w + CARD_GAP;
-      const stepB = footprintH + CARD_GAP;
+      const stepA = fw + CARD_GAP;
+      const stepB = h + CARD_GAP;
       let bestScore = Infinity;
       let found: [number, number] | null = null;
       for (let ring = 1; ring <= 4 && found === null; ring += 1) {
@@ -539,16 +662,87 @@ export class SurfaceSystem extends createSystem({
         }
       }
       if (found !== null) [a, b] = found;
+      // A small desk full of big cards: try again with smaller cards before overlapping.
+      else if (scale > 0.065) return this.placeOn(frame, point, cardId, via, scale * 0.75);
+      else crowded = true;
+    }
+
+    // An irregular polygon (an L-shaped desk, a notched wall): all four corners
+    // must be on it. Nudge toward the middle, then shrink a little.
+    const toLocal = (ca: number, cb: number) => ({
+      x: ca * ru + cb * uu,
+      z: ca * rv + cb * uv,
+    });
+    const cornersInside = (ca: number, cb: number, cw: number, ch: number) =>
+      [[-1, -1], [1, -1], [1, 1], [-1, 1]].every(([sa, sb]) => {
+        const l = toLocal(ca + (sa * cw) / 2, cb + (sb * ch) / 2);
+        return insideFrame(frame, l.x, l.z);
+      });
+    if (!cornersInside(a, b, w, h)) {
+      let fixed = false;
+      for (let k = 1; k <= 10 && !fixed; k += 1) {
+        const na = a + (cA - a) * (k / 10);
+        const nb = b + (cB - b) * (k / 10);
+        if (cornersInside(na, nb, w, h)) {
+          a = na;
+          b = nb;
+          fixed = true;
+        }
+      }
+      if (!fixed && scale > 0.07 && maxScale > 0.07) return this.placeOn(frame, point, cardId, via, scale * 0.85);
     }
 
     const position = frame.origin
       .clone()
       .addScaledVector(gridRight, a)
       .addScaledVector(gridUp, b)
-      .addScaledVector(frame.normal, lift);
+      .addScaledVector(frame.normal, SURFACE_GAP);
     this.m.makeBasis(xAxis, yAxis, zAxis);
     const quaternion = new Quaternion().setFromRotationMatrix(this.m);
-    return { surfaceId: frame.id, kind: frame.kind, label: LABEL[frame.kind], position, quaternion, scale, via };
+    return { surfaceId: frame.id, kind: frame.kind, label: LABEL[frame.kind], position, quaternion, scale, via, crowded };
+  }
+
+  /**
+   * Dev/test check: for every pinned card, the angle between its normal and
+   * its surface's normal, how far it sits off the plane, and whether all
+   * four corners are inside the plane's polygon.
+   */
+  pinnedFit(): Array<{ cardId: string; title: string; surfaceId: string; kind: string; angleDeg: number; gapMm: number; cornersInside: number; scale: number; upDotGravity: number | null }> {
+    if (!import.meta.env.DEV) return [];
+    this.refreshFrames(true);
+    const out = [];
+    for (const card of this.queries.cards.entities) {
+      const surfaceId = card.getValue(QuestCard, 'surfaceId') as string;
+      const o = card.object3D;
+      if (surfaceId.length === 0 || o == null) continue;
+      o.updateWorldMatrix(true, false);
+      let frame = this.frames.find((f) => f.id === surfaceId);
+      frame ??= this.frames.find((f) => this.liesOn(o, f));
+      if (frame === undefined) continue;
+      const e = o.matrixWorld.elements;
+      const s = o.scale.x;
+      const x = new Vector3(e[0], e[1], e[2]).normalize();
+      const y = new Vector3(e[4], e[5], e[6]).normalize();
+      const z = new Vector3(e[8], e[9], e[10]).normalize();
+      const c = new Vector3(e[12], e[13], e[14]);
+      let inside = 0;
+      for (const [sa, sb] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        const p = c.clone().addScaledVector(x, (sa * CARD_UNITS_W * s) / 2).addScaledVector(y, (sb * CARD_UNITS_H * s) / 2).sub(frame.origin);
+        if (insideFrame(frame, p.dot(frame.u), p.dot(frame.v), 0.001)) inside += 1;
+      }
+      out.push({
+        cardId: card.getValue(QuestCard, 'cardId') as string,
+        title: card.getValue(QuestCard, 'title') as string,
+        surfaceId: frame.id,
+        kind: frame.kind,
+        angleDeg: +((z.angleTo(frame.normal) * 180) / Math.PI).toFixed(3),
+        gapMm: +(c.clone().sub(frame.origin).dot(frame.normal) * 1000).toFixed(2),
+        cornersInside: inside,
+        scale: +s.toFixed(3),
+        upDotGravity: frame.kind === 'desk' ? null : +y.y.toFixed(4),
+      });
+    }
+    return out;
   }
 
   // ------------------------------------------------- near vs pinch-ray grab
@@ -633,6 +827,28 @@ export class SurfaceSystem extends createSystem({
     this.world.createTransformEntity(this.outlineRoot);
   }
 
+  /** Coach-mark glow: outlines pulse softly while no card is held. */
+  private updateGlow(): void {
+    const now = performance.now();
+    if (now >= this.glowUntil) {
+      if (this.glowing) {
+        this.glowing = false;
+        this.outlineRoot.visible = false;
+      }
+      return;
+    }
+    this.glowing = true;
+    this.outlineRoot.visible = true;
+    const opacity = 0.35 + 0.3 * (0.5 + 0.5 * Math.sin(now / 260));
+    for (const line of this.outlines.values()) {
+      const material = line.material as LineBasicMaterial;
+      material.color.setHex(0x5fe0c8);
+      material.opacity = opacity;
+    }
+  }
+
+  private glowing = false;
+
   private setPreviewVisible(visible: boolean): void {
     if (this.ghost.visible !== visible) this.ghost.visible = visible;
     if (this.outlineRoot.visible !== visible) this.outlineRoot.visible = visible;
@@ -689,7 +905,11 @@ export class SurfaceSystem extends createSystem({
       const hh = frame.height / 2 - 0.01;
       const lift = frame.normal.clone().multiplyScalar(0.006);
       const corner = (su: number, sv: number) =>
-        frame.origin.clone().addScaledVector(frame.u, su * hw).addScaledVector(frame.v, sv * hh).add(lift);
+        frame.origin
+          .clone()
+          .addScaledVector(frame.u, frame.cx + su * hw)
+          .addScaledVector(frame.v, frame.cz + sv * hh)
+          .add(lift);
       line.geometry.setFromPoints([corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]);
     }
     for (const [id, line] of this.outlines) {
@@ -710,18 +930,36 @@ export class SurfaceSystem extends createSystem({
         this.flights.delete(entity);
         continue;
       }
-      const t = Math.min(1, (now - f.startedAt) / FLIGHT_MS);
+      const elapsed = now - f.startedAt;
+      // 1. Fly to just above the surface, already in its final orientation.
+      const t = Math.min(1, elapsed / FLIGHT_MS);
       const k = 1 - (1 - t) ** 3;
-      setWorld(object, this.tmpA.copy(f.from).lerp(f.to, k), this.tmpQ.copy(f.qFrom).slerp(f.qTo, k));
+      const hover = this.tmpB.copy(f.to);
+      if (f.normal !== null) hover.addScaledVector(f.normal, SETTLE_LIFT);
+      setWorld(object, this.tmpA.copy(f.from).lerp(hover, k), this.tmpQ.copy(f.qFrom).slerp(f.qTo, k));
       object.scale.setScalar(f.sFrom + (f.sTo - f.sFrom) * k);
-      if (t >= 1) this.flights.delete(entity);
+      if (t < 1) continue;
+      if (f.normal === null) {
+        this.flights.delete(entity);
+        continue;
+      }
+      // 2. Settle: a short ease down onto the surface, a soft tap and a light pulse.
+      if (!f.tapped) {
+        f.tapped = true;
+        playTap();
+        pulseHaptics(this.xrManager.getSession());
+      }
+      const st = Math.min(1, (elapsed - FLIGHT_MS) / SETTLE_MS);
+      const sk = 1 - (1 - st) ** 2;
+      setWorld(object, this.tmpA.copy(hover).lerp(f.to, sk), f.qTo);
+      if (st >= 1) this.flights.delete(entity);
     }
   }
 }
 
 // ------------------------------------------------------------------ helpers
 
-function polygonExtent(polygon: readonly { x: number; z: number }[]): { width: number; height: number } {
+function polygonExtent(polygon: readonly { x: number; z: number }[]): { width: number; height: number; cx: number; cz: number } {
   let minX = Infinity;
   let maxX = -Infinity;
   let minZ = Infinity;
@@ -732,7 +970,32 @@ function polygonExtent(polygon: readonly { x: number; z: number }[]): { width: n
     minZ = Math.min(minZ, p.z);
     maxZ = Math.max(maxZ, p.z);
   }
-  return Number.isFinite(minX) ? { width: maxX - minX, height: maxZ - minZ } : { width: 0, height: 0 };
+  return Number.isFinite(minX)
+    ? { width: maxX - minX, height: maxZ - minZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2 }
+    : { width: 0, height: 0, cx: 0, cz: 0 };
+}
+
+/** Point-in-polygon (plane-local x/z), even-odd rule. */
+function insidePolygon(poly: readonly { x: number; z: number }[], x: number, z: number): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+    const a = poly[i];
+    const b = poly[j];
+    if (a.z > z !== b.z > z && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/** Is a plane-local point inside the frame's polygon (or its rectangle)? */
+function insideFrame(frame: Frame, x: number, z: number, slack = 0.002): boolean {
+  if (frame.poly !== null) {
+    if (insidePolygon(frame.poly, x, z)) return true;
+    // Allow a hair of slack on the boundary (floating point on the edges).
+    return (
+      insidePolygon(frame.poly, x - Math.sign(x - frame.cx) * slack, z - Math.sign(z - frame.cz) * slack)
+    );
+  }
+  return Math.abs(x - frame.cx) <= frame.width / 2 + slack && Math.abs(z - frame.cz) <= frame.height / 2 + slack;
 }
 
 function rayPlane(origin: Vector3, dir: Vector3, p0: Vector3, n: Vector3): number | null {
@@ -741,6 +1004,20 @@ function rayPlane(origin: Vector3, dir: Vector3, p0: Vector3, n: Vector3): numbe
   const t = (p0.x - origin.x) * n.x + (p0.y - origin.y) * n.y + (p0.z - origin.z) * n.z;
   const d = t / denom;
   return d > 0.05 ? d : null;
+}
+
+/** A light haptic pulse on every controller that has an actuator (hands have none: skipped). */
+function pulseHaptics(session: XRSession | null): void {
+  if (session == null) return;
+  try {
+    for (const source of session.inputSources) {
+      const actuator = (source.gamepad as (Gamepad & { hapticActuators?: Array<{ pulse?: (v: number, ms: number) => Promise<boolean> }> }) | undefined)
+        ?.hapticActuators?.[0];
+      void actuator?.pulse?.(0.25, 25)?.catch?.(() => undefined);
+    }
+  } catch {
+    // Haptics are a nicety; never let them break a pin.
+  }
 }
 
 const parentQ = new Quaternion();

@@ -1,0 +1,69 @@
+<!--
+  Placement coach mark (PR 4). Shown once, after the first cards appear.
+  Element ids used by code: coach-title, coach-body, coach-icon-wrap.
+  Hand and Pin are bundled Lucide icons.
+-->
+<style>
+  .coach-root {
+    pointer-events: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    width: 340px;
+    padding-top: 14px;
+    padding-bottom: 14px;
+    padding-left: 14px;
+    padding-right: 18px;
+  }
+
+  .icon-wrap {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+    border-radius: 26px;
+    justify-content: center;
+    align-items: center;
+    background-color: #5fe0c8;
+  }
+
+  .icon {
+    width: 26px;
+    height: 26px;
+    color: #0e2b27;
+  }
+
+  .text {
+    flex-direction: column;
+    gap: 3px;
+    flex-shrink: 1;
+  }
+
+  .title {
+    color: #1c1d20;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .title:dark {
+    color: #fafaf7;
+  }
+
+  .body {
+    color: #55575d;
+    font-size: 14px;
+  }
+
+  .body:dark {
+    color: #c3c6cc;
+  }
+</style>
+<Panel class="coach-root">
+  <div id="coach-icon-wrap" class="icon-wrap">
+    <Hand id="coach-icon-hand" class="icon"></Hand>
+    <Pin id="coach-icon-pin" class="icon" style="display: none"></Pin>
+  </div>
+  <div class="text">
+    <span id="coach-title" class="title">Put your quests in the room</span>
+    <span id="coach-body" class="body">Pinch a card and drag it onto a wall, desk or door.</span>
+  </div>
+</Panel>

@@ -27,9 +27,10 @@ import {
   type FocusPanelInfo,
 } from './session-events.js';
 import { DEFAULT_FOCUS_MIN, focusChoices, suggestedFocusMinutes } from './session.js';
-import type { BlurLevel } from './focus-store.js';
+import { primeChime, type BlurLevel } from './focus-store.js';
 import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE } from './card-layout.js';
 import {
+  type SnapTarget,
   flyCard,
   getDropTarget,
   setCardWorldPose,
@@ -42,15 +43,81 @@ export type QuestCardOptions = {
   position: Vector3 | readonly [number, number, number];
   /** World orientation; defaults to facing +Z. */
   quaternion?: Quaternion;
+  /** Stable id (restored cards keep theirs); a new one is minted when omitted. */
+  id?: string;
+  /** Focus session card: its focus panel works while it floats. */
+  focusReady?: boolean;
+  /** True when re-created from saved state (not a new card the user asked for). */
+  restored?: boolean;
 };
+
+export type CardEventType = 'created' | 'grabbed' | 'pinned' | 'floated' | 'focused' | 'completed' | 'removed';
+export type CardEventDetail = { restored?: boolean; target?: SnapTarget; focusReady?: boolean };
+type CardListener = (type: CardEventType, entity: Entity, detail: CardEventDetail) => void;
+const cardListeners = new Set<CardListener>();
+const cardsById = new Map<string, Entity>();
+
+/** Subscribe to card lifecycle events (persistence, coach marks). Returns the unsubscribe. */
+export function onCardEvent(listener: CardListener): () => void {
+  cardListeners.add(listener);
+  return () => cardListeners.delete(listener);
+}
+
+function emitCard(type: CardEventType, entity: Entity, detail: CardEventDetail = {}): void {
+  for (const listener of cardListeners) {
+    try {
+      listener(type, entity, detail);
+    } catch (error) {
+      console.warn('[quest] card listener failed', error);
+    }
+  }
+}
+
+/** The live card entity with this stable id, if any. */
+export function findQuestCard(id: string): Entity | undefined {
+  const entity = cardsById.get(id);
+  return entity?.active ? entity : undefined;
+}
+
+/** Stable, unique across reloads: time + random (was quest-1, quest-2... per load). */
+export function newCardId(): string {
+  const random = Math.random().toString(36).slice(2, 7);
+  return `q-${Date.now().toString(36)}-${random}`;
+}
+
+
+/** A focus timer started on this card (coach marks step aside). */
+export function notifyCardFocused(card: Entity): void {
+  emitCard('focused', card);
+}
+
+let focusActionMover: ((card: Entity) => void) | undefined;
+/** Re-place a card's focus panel after the card moved without a hand (anchor restore). */
+export function repositionFocusAction(card: Entity): void {
+  focusActionMover?.(card);
+}
 
 const FOCUS_ACTION_SCALE = 0.12;
 const FLOATING_HINT = 'Pinch to grab, drop on a wall, desk or door';
 let activeWorld: World | undefined;
-let nextCardId = 1;
 const FOCUS_ACTION_ASSET_ID = 'focus-action';
 const BLUR_LABEL: Record<BlurLevel, string> = { off: 'Blur: Off', soft: 'Blur: Soft', strong: 'Blur: Strong' };
 let focusActionEnsurer: ((card: Entity) => void) | undefined;
+
+/**
+ * Cards whose focus panel works while floating: the Focus session quick-start
+ * card and any card with a running focus timer. Other cards get it once pinned.
+ */
+const floatFocusIds = new Set<string>();
+export function allowFloatingFocus(cardId: string): void {
+  if (cardId.length > 0) floatFocusIds.add(cardId);
+}
+export function canFocusCard(card: Entity): boolean {
+  return (
+    (card.getValue(QuestCard, 'zoneId') as string).length > 0 ||
+    floatFocusIds.has(card.getValue(QuestCard, 'cardId') as string)
+  );
+}
 
 /** Show the focus panel next to a card that was pinned without a hand release (reload restore). */
 export function showFocusActionFor(card: Entity): void {
@@ -82,6 +149,9 @@ export async function createQuestCard({
   xp,
   position,
   quaternion,
+  id,
+  restored = false,
+  focusReady = false,
 }: QuestCardOptions): Promise<Entity> {
   if (activeWorld === undefined) {
     throw new Error('Quest cards have not been initialized with a world.');
@@ -118,8 +188,8 @@ export async function createQuestCard({
   panel.add(hitbox);
 
   const entity = activeWorld.createTransformEntity(panel);
-  const cardId = `quest-${nextCardId}`;
-  nextCardId += 1;
+  const cardId = id !== undefined && id.length > 0 && !cardsById.has(id) ? id : newCardId();
+  cardsById.set(cardId, entity);
   entity.addComponent(QuestCard, {
     cardId,
     title,
@@ -137,6 +207,8 @@ export async function createQuestCard({
     playbackMode: 'fade-restart',
   });
   setQuestCardState(entity, FLOATING_HINT);
+  if (focusReady) floatFocusIds.add(cardId);
+  emitCard('created', entity, { restored, focusReady });
   return entity;
 }
 
@@ -150,6 +222,10 @@ export class QuestCardSystem extends createSystem({
   private readonly positionBuffer = new Vector3();
   private readonly orientationBuffer = new Quaternion();
   private readonly heldHints = new Map<Entity, string>();
+  private readonly grabStarts = new Map<
+    Entity,
+    { at: number; position: Vector3; quaternion: Quaternion; scale: number; zoneId: string; surfaceId: string }
+  >();
   private readonly cardWorldPosition = new Vector3();
   private readonly cardWorldQuaternion = new Quaternion();
   private readonly actionPosition = new Vector3();
@@ -165,7 +241,11 @@ export class QuestCardSystem extends createSystem({
     this.queries.heldCards.subscribe('qualify', (entity) => this.onGrab(entity));
     this.queries.heldCards.subscribe('disqualify', (entity) => this.onRelease(entity));
     this.queries.cards.subscribe('disqualify', (entity) => {
-      this.removeActionsForCard(entity.getValue(QuestCard, 'cardId') as string);
+      const cardId = entity.getValue(QuestCard, 'cardId') as string;
+      if (cardsById.get(cardId) === entity) cardsById.delete(cardId);
+      floatFocusIds.delete(cardId);
+      emitCard('removed', entity);
+      this.removeActionsForCard(cardId);
       this.disposeHitbox(entity);
     });
     this.queries.tweeningCards.subscribe('qualify', (entity) => {
@@ -173,9 +253,15 @@ export class QuestCardSystem extends createSystem({
     });
     setCardActionModeHandler((cardId, mode, info) => this.setActionMode(cardId, mode, info));
     focusActionEnsurer = (card) => void this.ensureFocusAction(card);
+    focusActionMover = (card) => {
+      const action = this.findFocusAction(card.getValue(QuestCard, 'cardId') as string);
+      const panel = action?.object3D;
+      if (card.object3D != null && panel instanceof UIKitMLAsset) this.positionFocusAction(card.object3D, panel);
+    };
     this.cleanupFuncs.push(() => {
       setCardActionModeHandler(undefined);
       focusActionEnsurer = undefined;
+      focusActionMover = undefined;
       for (const entity of this.queries.actions.entities) this.disposeAction(entity);
     });
   }
@@ -185,13 +271,24 @@ export class QuestCardSystem extends createSystem({
     for (const action of this.queries.actions.entities) {
       const cardId = action.getValue(QuestFocusAction, 'cardId') as string;
       let pinned = false;
+      let owner: Entity | undefined;
       for (const card of this.queries.cards.entities) {
         if (card.getValue(QuestCard, 'cardId') === cardId) {
           pinned = (card.getValue(QuestCard, 'surfaceId') as string).length > 0 && !card.hasComponent(Grabbed);
+          owner = card;
           break;
         }
       }
       const mode = action.getValue(QuestFocusAction, 'mode') as string;
+      if (floatFocusIds.has(cardId)) {
+        // A floating-focus card keeps its panel wherever it goes (held, flying, pinned).
+        const panel = action.object3D;
+        if (owner?.object3D != null && panel instanceof UIKitMLAsset) {
+          this.positionFocusAction(owner.object3D, panel);
+          panel.scale.setScalar(FOCUS_ACTION_SCALE * (owner.object3D.scale.x / 0.12));
+        }
+        continue;
+      }
       if (!pinned && (mode === 'focus' || mode === 'pick')) this.disposeAction(action);
     }
     for (const [entity, last] of this.heldHints) {
@@ -233,13 +330,27 @@ export class QuestCardSystem extends createSystem({
   }
 
   private onGrab(entity: Entity): void {
+    primeChime(); // inside the pinch: lets the settle "tap" play on release
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
+    const object = entity.object3D;
+    if (object != null) {
+      object.updateWorldMatrix(true, false);
+      this.grabStarts.set(entity, {
+        at: performance.now(),
+        position: object.getWorldPosition(new Vector3()),
+        quaternion: object.getWorldQuaternion(new Quaternion()),
+        scale: object.scale.x,
+        zoneId: entity.getValue(QuestCard, 'zoneId') as string,
+        surfaceId: entity.getValue(QuestCard, 'surfaceId') as string,
+      });
+    }
     // Lifting a card off a surface unpins it; release decides where it goes.
     entity.setValue(QuestCard, 'zoneId', '');
     entity.setValue(QuestCard, 'surfaceId', '');
     entity.setValue(QuestCard, 'userPlaced', true);
     this.heldHints.set(entity, '');
-    this.removeActionsForCard(cardId);
+    if (!floatFocusIds.has(cardId)) this.removeActionsForCard(cardId);
+    emitCard('grabbed', entity);
   }
 
   private onRelease(entity: Entity): void {
@@ -248,6 +359,21 @@ export class QuestCardSystem extends createSystem({
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
     const object = entity.object3D;
     if (object == null) return;
+    const start = this.grabStarts.get(entity);
+    this.grabStarts.delete(entity);
+    if (start !== undefined && start.surfaceId.length > 0) {
+      object.updateWorldMatrix(true, false);
+      const moved = object.getWorldPosition(this.positionBuffer).distanceTo(start.position);
+      if (performance.now() - start.at < 450 && moved < 0.03) {
+        // A quick pinch-tap on a pinned card: leave it exactly where it was.
+        setCardWorldPose(entity, start.position, start.quaternion, start.scale);
+        entity.setValue(QuestCard, 'zoneId', start.zoneId);
+        entity.setValue(QuestCard, 'surfaceId', start.surfaceId);
+        setQuestCardState(entity, pinnedHint(start.zoneId));
+        void this.ensureFocusAction(entity);
+        return;
+      }
+    }
     const target = getDropTarget(cardId);
     if (target === null) {
       // Released in mid-air: stay exactly where it was let go, at floating size.
@@ -256,25 +382,33 @@ export class QuestCardSystem extends createSystem({
       object.getWorldQuaternion(this.orientationBuffer);
       setCardWorldPose(entity, this.positionBuffer, this.orientationBuffer, FLOAT_CARD_SCALE);
       setQuestCardState(entity, 'Floating - pinch it onto a wall, desk or door');
+      if (floatFocusIds.has(cardId)) void this.ensureFocusAction(entity);
+      emitCard('floated', entity);
       return;
     }
+    this.pin(entity, target);
+  }
+
+  private pin(entity: Entity, target: SnapTarget): void {
     entity.setValue(QuestCard, 'zoneId', target.kind);
     entity.setValue(QuestCard, 'surfaceId', target.surfaceId);
+    entity.setValue(QuestCard, 'userPlaced', true);
     flyCard(entity, target);
     setQuestCardState(entity, pinnedHint(target.label));
     // The focus button is placed from the card's final pose, after the flight.
     window.setTimeout(() => {
       if (entity.active && entity.getValue(QuestCard, 'surfaceId') === target.surfaceId) {
         void this.ensureFocusAction(entity);
+        emitCard('pinned', entity, { target });
       }
-    }, 320);
+    }, 440);
   }
 
   private async ensureFocusAction(card: Entity): Promise<void> {
     const cardId = card.getValue(QuestCard, 'cardId') as string;
     if (
       cardId.length === 0 ||
-      (card.getValue(QuestCard, 'zoneId') as string).length === 0 ||
+      !canFocusCard(card) ||
       this.pendingFocusCardIds.has(cardId) ||
       this.findFocusAction(cardId) !== undefined
     ) {
@@ -286,7 +420,7 @@ export class QuestCardSystem extends createSystem({
       panel = await this.world.assets.instantiate<UIKitMLAsset>(FOCUS_ACTION_ASSET_ID);
       if (
         !card.active ||
-        (card.getValue(QuestCard, 'zoneId') as string).length === 0 ||
+        !canFocusCard(card) ||
         this.findFocusAction(cardId) !== undefined
       ) {
         panel.dispose();
@@ -463,6 +597,7 @@ export function tweenQuestCardTo(
   const object = entity.object3D;
   if (object == null || entity.hasComponent(QuestCardTween)) return;
 
+  emitCard('completed', entity);
   const targetPosition = worldPosition.clone();
   if (object.parent !== null) {
     object.parent.updateWorldMatrix(true, false);

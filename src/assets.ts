@@ -65,4 +65,6 @@ export default defineAssets({
   'label-grab': uikitml('label-grab.uikitml', 'Grab Label'),
   'label-select': uikitml('label-select.uikitml', 'Select Label'),
   'label-spin': uikitml('label-spin.uikitml', 'Spin Label'),
+  coach: uikitml('coach.uikitml', 'Coach Mark'),
+  'coach-hand': uikitml('coach-hand.uikitml', 'Coach Hand'),
 });

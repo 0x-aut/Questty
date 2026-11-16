@@ -50,6 +50,8 @@ export function saveBlurLevel(level: BlurLevel): void {
 
 export type SavedFocusTimer = {
   version: 1;
+  /** Stable card id (PR 4); older saves have none. */
+  cardId?: string;
   title: string;
   xp: number;
   zoneId: string;
@@ -88,7 +90,8 @@ export function loadFocusTimer(): SavedFocusTimer | null {
       !isNum(v.durationMs) ||
       !isNum(v.endsAt) ||
       !(v.pausedRemainingMs === null || isNum(v.pausedRemainingMs)) ||
-      !isNum(v.consecutiveSkips)
+      !isNum(v.consecutiveSkips) ||
+      !(v.cardId === undefined || (typeof v.cardId === 'string' && v.cardId.length <= 64))
     ) {
       clearFocusTimer();
       return null;
@@ -165,5 +168,33 @@ export function playChime(): void {
     });
   } catch {
     // A blocked or missing audio device must never break completion.
+  }
+}
+
+/**
+ * A soft "tap" as a card settles onto a surface: a few ms of filtered noise
+ * (no oscillators, no audio file). Silent until the AudioContext was primed by a pinch.
+ */
+export function playTap(): void {
+  const ctx = audioContext;
+  if (ctx === undefined || ctx.state !== 'running') return;
+  try {
+    const length = Math.floor(ctx.sampleRate * 0.045);
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** 3;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1400;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.18;
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    source.start();
+  } catch {
+    // ignore
   }
 }

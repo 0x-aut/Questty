@@ -14,7 +14,8 @@
       "offer": "always",
       "features": {
         "handTracking": true,
-        "planeDetection": true
+        "planeDetection": true,
+        "anchors": true
       }
     },
     "input": {
@@ -43,7 +44,10 @@
         "comfortAssistLevel": 0.5,
         "turningMethod": "snap",
         "enableJumping": false,
-        "browserControls": { "keyboard": true, "gamepad": true }
+        "browserControls": {
+          "keyboard": true,
+          "gamepad": true
+        }
       },
       "grabbing": true,
       "physics": false,

@@ -16,7 +16,13 @@ import {
 } from '@iwsdk/core';
 import { QuestCard } from './quest-component.js';
 import {
+  allowFloatingFocus,
+  canFocusCard,
+  findQuestCard,
+  notifyCardFocused,
   createQuestCard,
+  onCardEvent,
+  type CardEventType,
   idleCardHint,
   setQuestCardState,
   showFocusActionFor,
@@ -185,6 +191,7 @@ export class SessionSystem extends createSystem({}) {
     setCardNudger((entity) => void this.requestNudge(entity));
     setFocusCommander((entity, command) => this.onCommand(entity, command));
     focusRestorer = () => this.restoreSavedFocus();
+    this.cleanupFuncs.push(onCardEvent((type, entity) => this.onActiveCardEvent(type, entity)));
     this.createShell();
     void this.loadTimer();
 
@@ -256,17 +263,21 @@ export class SessionSystem extends createSystem({}) {
       this.shell?.setOpacity(this.shellOpacity);
       if (t >= 1) this.fadeAnimating = false;
     }
-    if (this.state.phase === 'focus') this.refreshTimer(false);
-    else if (this.state.phase === 'break' && focusNow() >= this.state.endsAt) this.tick();
+    if (this.state.phase === 'focus') {
+      this.followActiveCard();
+      this.refreshTimer(false);
+    } else if (this.state.phase === 'break' && focusNow() >= this.state.endsAt) this.tick();
   }
 
   // ---- Focus lifecycle -------------------------------------------------
 
   private beginFocus(entity: Entity, minutes: number): boolean {
-    const zoneId = entity.getValue(QuestCard, 'zoneId') as string;
-    if (zoneId.length === 0 || this.state.phase !== 'idle') return false;
+    // Pinned cards, and the Focus session card even while it floats.
+    if (!canFocusCard(entity) || this.state.phase !== 'idle') return false;
     primeChime(); // inside the pinch, so the completion chime may play later
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
+    // The running card keeps its panel if it is lifted off a surface mid-focus.
+    allowFloatingFocus(cardId);
     this.state = startFocus(this.state, cardId, focusNow(), minutes * 60_000);
     if (this.state.phase !== 'focus') return false;
     this.activeCard = entity;
@@ -276,6 +287,7 @@ export class SessionSystem extends createSystem({}) {
     this.applyFade();
     this.refreshTimer(true);
     this.persist();
+    notifyCardFocused(entity);
     return true;
   }
 
@@ -432,6 +444,36 @@ export class SessionSystem extends createSystem({}) {
     this.headForward.normalize();
   }
 
+  private readonly lastCardPos = new Vector3(NaN, NaN, NaN);
+  private readonly lastCardQuat = new Quaternion();
+
+  /**
+   * The focus card can be dragged (floating -> desk, wall -> air) mid-focus:
+   * the timer and the frost shell's clear window follow it every frame it moves.
+   */
+  private followActiveCard(): void {
+    const card = this.activeCard?.object3D;
+    if (card == null) return;
+    card.updateWorldMatrix(true, false);
+    card.getWorldPosition(this.tmpC);
+    card.getWorldQuaternion(this.tmpQ);
+    if (this.tmpC.distanceToSquared(this.lastCardPos) < 1e-6 && Math.abs(this.tmpQ.dot(this.lastCardQuat)) > 0.99999) return;
+    this.lastCardPos.copy(this.tmpC);
+    this.lastCardQuat.copy(this.tmpQ);
+    this.placeFocusVisuals();
+  }
+
+  /** The running card was pinned or let go mid-focus: keep its label and controls on focus. */
+  private onActiveCardEvent(type: CardEventType, entity: Entity): void {
+    if (this.state.phase !== 'focus' || entity !== this.activeCard) return;
+    if (type !== 'pinned' && type !== 'floated') return;
+    const paused = this.state.pausedRemainingMs !== null;
+    setQuestCardState(entity, paused ? 'Paused - pinch Resume' : 'Focusing');
+    setCardActionMode(entity.getValue(QuestCard, 'cardId') as string, 'done', { paused, blur: this.blurLevel });
+    this.placeFocusVisuals();
+    this.persist();
+  }
+
   /** Place the timer and centre the frost shell on the seated head. */
   private placeFocusVisuals(): void {
     this.headPose();
@@ -575,6 +617,7 @@ export class SessionSystem extends createSystem({}) {
     object.getWorldQuaternion(this.tmpQ);
     saveFocusTimer({
       version: 1,
+      cardId: card.getValue(QuestCard, 'cardId') as string,
       title: card.getValue(QuestCard, 'title') as string,
       xp: card.getValue(QuestCard, 'xp') as number,
       zoneId: card.getValue(QuestCard, 'zoneId') as string,
@@ -593,25 +636,33 @@ export class SessionSystem extends createSystem({}) {
   private async restoreSavedFocus(): Promise<string | null> {
     const saved = loadFocusTimer();
     if (saved === null || this.state.phase !== 'idle') return null;
-    let entity: Entity;
-    try {
-      entity = await createQuestCard({
-        title: saved.title,
-        xp: saved.xp,
-        position: saved.position,
-      });
-    } catch (error) {
-      console.warn('[session] Could not restore the focus card.', error);
-      return null;
+    // PR 4: the card itself is restored by persistence.ts (same stable id);
+    // only a timer saved without a known card re-creates one here.
+    let entity = saved.cardId !== undefined ? findQuestCard(saved.cardId) : undefined;
+    if (entity === undefined) {
+      try {
+        entity = await createQuestCard({
+          id: saved.cardId,
+          title: saved.title,
+          xp: saved.xp,
+          position: saved.position,
+          restored: true,
+        });
+      } catch (error) {
+        console.warn('[session] Could not restore the focus card.', error);
+        return null;
+      }
+      if (this.destroyed || this.state.phase !== 'idle') return null;
+      this.tmpA.fromArray(saved.position);
+      this.tmpQ.fromArray(saved.quaternion);
+      setCardWorldPose(entity, this.tmpA, this.tmpQ, saved.scale);
+      entity.setValue(QuestCard, 'zoneId', saved.zoneId);
+      entity.setValue(QuestCard, 'surfaceId', saved.zoneId ? saved.surfaceId || 'restored' : '');
+      entity.setValue(QuestCard, 'userPlaced', true);
     }
     if (this.destroyed || this.state.phase !== 'idle') return null;
-    this.tmpA.fromArray(saved.position);
-    this.tmpQ.fromArray(saved.quaternion);
-    setCardWorldPose(entity, this.tmpA, this.tmpQ, saved.scale);
-    entity.setValue(QuestCard, 'zoneId', saved.zoneId || 'desk');
-    entity.setValue(QuestCard, 'surfaceId', saved.surfaceId || 'restored');
-    entity.setValue(QuestCard, 'userPlaced', true);
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
+    allowFloatingFocus(cardId);
     this.state = {
       phase: 'focus',
       questId: cardId,
@@ -690,7 +741,10 @@ export class SessionSystem extends createSystem({}) {
 
   private updateProgressStatus(): void {
     this.progressStatus?.setProperties({
-      text: `Level ${this.progress.level} | ${this.progress.xp} XP | ${this.progress.streak} day streak`,
+      text:
+        this.progress.streak > 1
+          ? `Level ${this.progress.level} | ${this.progress.xp} XP | ${this.progress.streak} day streak`
+          : `Level ${this.progress.level} | ${this.progress.xp} XP`,
     });
   }
 

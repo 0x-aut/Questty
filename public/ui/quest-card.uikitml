@@ -61,7 +61,7 @@
   }
 
 </style>
-<Panel class="quest-card">
+<Panel id="quest-card-root" class="quest-card">
   <div class="card-header">
     <span class="eyebrow">FOCUS QUEST</span>
     <div class="xp-badge"><span id="quest-xp" class="xp-value">+25 XP</span></div>

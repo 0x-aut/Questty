@@ -8,13 +8,32 @@ export const CARD_UNITS_H = 2.83;
 
 export type CardPose = { position: Vector3; quaternion: Quaternion };
 
-// Seated-reach arc in front of the user. Each layer holds a front row of five
+/**
+ * The seated user's "home" facing direction (horizontal), set when the home
+ * panel is placed at session start. New cards fan out around it, not around
+ * wherever the head happens to look (often down-left at the panel).
+ */
+const home = new Vector3(0, 0, -1);
+let homeSet = false;
+export function setHomeForward(forward: Vector3): void {
+  home.set(forward.x, 0, forward.z);
+  if (home.lengthSq() < 1e-4) home.set(0, 0, -1);
+  home.normalize();
+  homeSet = true;
+}
+export function homeForward(fallback: Vector3): Vector3 {
+  return homeSet ? home.clone() : fallback.clone();
+}
+
+// Seated-reach arc in front of the user. Each layer holds a front row of four
 // and a lower row of four, offset half a step so the rows interleave. Slot
-// order fills the middle first so three cards sit centre/left/right.
+// order fills the middle first so three cards sit centre/left/right. The far
+// left (about -40 to -70 degrees, low) is kept clear for the home panel
+// (panel.ts), so the arc leans right instead of covering it.
 const STEP_DEG = 29;
 const ROWS: Array<{ drop: number; angles: number[] }> = [
-  { drop: 0.3, angles: [0, -STEP_DEG, STEP_DEG, -2 * STEP_DEG, 2 * STEP_DEG] },
-  { drop: 0.58, angles: [-STEP_DEG / 2, STEP_DEG / 2, -1.5 * STEP_DEG, 1.5 * STEP_DEG] },
+  { drop: 0.3, angles: [0, -STEP_DEG, STEP_DEG, 2 * STEP_DEG] },
+  { drop: 0.58, angles: [-STEP_DEG / 2, STEP_DEG / 2, 1.5 * STEP_DEG, 2.5 * STEP_DEG] },
 ];
 const LAYER_RADII = [0.58, 0.72, 0.86];
 const SLOT_CLEARANCE = 0.14;
