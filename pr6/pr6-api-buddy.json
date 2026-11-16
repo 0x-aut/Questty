@@ -1,0 +1,86 @@
+{
+  "pass": 20,
+  "fail": 0,
+  "results": [
+    {
+      "name": "no key -> 500 server-not-configured",
+      "ok": true
+    },
+    {
+      "name": "no key: no outbound call",
+      "ok": true
+    },
+    {
+      "name": "GET reports configured=false",
+      "ok": true
+    },
+    {
+      "name": "PUT -> 405",
+      "ok": true
+    },
+    {
+      "name": "empty text -> 400",
+      "ok": true
+    },
+    {
+      "name": "long text -> 413",
+      "ok": true
+    },
+    {
+      "name": "bad cards -> 400",
+      "ok": true
+    },
+    {
+      "name": "200 with reply",
+      "ok": true
+    },
+    {
+      "name": "invented id dropped",
+      "ok": true
+    },
+    {
+      "name": "unknown type dropped",
+      "ok": true
+    },
+    {
+      "name": "plan order filtered to known ids",
+      "ok": true
+    },
+    {
+      "name": "one outbound call to OpenAI chat completions",
+      "ok": true
+    },
+    {
+      "name": "key only in Authorization header",
+      "ok": true
+    },
+    {
+      "name": "strict json schema requested",
+      "ok": true
+    },
+    {
+      "name": "cards sent as data",
+      "ok": true
+    },
+    {
+      "name": "default model gpt-4o-mini",
+      "ok": true
+    },
+    {
+      "name": "OPENAI_BUDDY_MODEL respected",
+      "ok": true
+    },
+    {
+      "name": "non-JSON model output -> 502",
+      "ok": true
+    },
+    {
+      "name": "OpenAI error -> 502",
+      "ok": true
+    },
+    {
+      "name": "network failure -> 502",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,270 @@
+{
+  "pass": 66,
+  "fail": 0,
+  "results": [
+    {
+      "name": "classify command: add call mum for today",
+      "ok": true
+    },
+    {
+      "name": "classify command: what's left today?",
+      "ok": true
+    },
+    {
+      "name": "classify command: move the gym card to later",
+      "ok": true
+    },
+    {
+      "name": "classify command: start 25 on the pitch deck",
+      "ok": true
+    },
+    {
+      "name": "classify command: pause",
+      "ok": true
+    },
+    {
+      "name": "classify command: resume",
+      "ok": true
+    },
+    {
+      "name": "classify command: add 5 minutes",
+      "ok": true
+    },
+    {
+      "name": "classify command: end it",
+      "ok": true
+    },
+    {
+      "name": "classify command: mark laundry done",
+      "ok": true
+    },
+    {
+      "name": "classify command: plan my day",
+      "ok": true
+    },
+    {
+      "name": "classify command: rename the dentist one to dentist at 3",
+      "ok": true
+    },
+    {
+      "name": "classify command: delete the laundry card",
+      "ok": true
+    },
+    {
+      "name": "classify command: undo",
+      "ok": true
+    },
+    {
+      "name": "classify command: Hey, can you plan my day please",
+      "ok": true
+    },
+    {
+      "name": "classify dump: Okay, today I need to email Sam about th",
+      "ok": true
+    },
+    {
+      "name": "classify dump: Today I need to email Sam about the laun",
+      "ok": true
+    },
+    {
+      "name": "classify dump: I need to buy milk",
+      "ok": true
+    },
+    {
+      "name": "classify dump: buy milk, call the bank and book flights",
+      "ok": true
+    },
+    {
+      "name": "classify dump: Groceries and the electricity bill",
+      "ok": true
+    },
+    {
+      "name": "add + category",
+      "ok": true
+    },
+    {
+      "name": "add plain",
+      "ok": true
+    },
+    {
+      "name": "remind me before I leave",
+      "ok": true
+    },
+    {
+      "name": "rename",
+      "ok": true
+    },
+    {
+      "name": "move later",
+      "ok": true
+    },
+    {
+      "name": "push to tomorrow",
+      "ok": true
+    },
+    {
+      "name": "move before I leave",
+      "ok": true
+    },
+    {
+      "name": "what's left today",
+      "ok": true
+    },
+    {
+      "name": "what's left",
+      "ok": true
+    },
+    {
+      "name": "what do I have later",
+      "ok": true
+    },
+    {
+      "name": "start 25 on",
+      "ok": true
+    },
+    {
+      "name": "start fifteen minutes on",
+      "ok": true
+    },
+    {
+      "name": "focus on X for N",
+      "ok": true
+    },
+    {
+      "name": "start X (default 25)",
+      "ok": true
+    },
+    {
+      "name": "pause",
+      "ok": true
+    },
+    {
+      "name": "resume",
+      "ok": true
+    },
+    {
+      "name": "add 5 minutes",
+      "ok": true
+    },
+    {
+      "name": "add ten more minutes",
+      "ok": true
+    },
+    {
+      "name": "end it",
+      "ok": true
+    },
+    {
+      "name": "stop the timer",
+      "ok": true
+    },
+    {
+      "name": "mark done",
+      "ok": true
+    },
+    {
+      "name": "I finished",
+      "ok": true
+    },
+    {
+      "name": "X is done",
+      "ok": true
+    },
+    {
+      "name": "delete",
+      "ok": true
+    },
+    {
+      "name": "plan my day",
+      "ok": true
+    },
+    {
+      "name": "undo",
+      "ok": true
+    },
+    {
+      "name": "yes = accept",
+      "ok": true
+    },
+    {
+      "name": "unknown card -> miss",
+      "ok": true
+    },
+    {
+      "name": "nonsense -> miss",
+      "ok": true
+    },
+    {
+      "name": "minutes words",
+      "ok": true
+    },
+    {
+      "name": "fuzzy: dentist one",
+      "ok": true
+    },
+    {
+      "name": "fuzzy: pitch",
+      "ok": true
+    },
+    {
+      "name": "fuzzy: no match",
+      "ok": true
+    },
+    {
+      "name": "plan: times sort (at 3 after unscheduled)",
+      "ok": true
+    },
+    {
+      "name": "plan: morning first",
+      "ok": true
+    },
+    {
+      "name": "valid start",
+      "ok": true
+    },
+    {
+      "name": "reject unknown id",
+      "ok": true
+    },
+    {
+      "name": "reject unknown type",
+      "ok": true
+    },
+    {
+      "name": "reject bad category",
+      "ok": true
+    },
+    {
+      "name": "reject bad minutes",
+      "ok": true
+    },
+    {
+      "name": "reject empty title",
+      "ok": true
+    },
+    {
+      "name": "reject long title",
+      "ok": true
+    },
+    {
+      "name": "reject plan with invented id",
+      "ok": true
+    },
+    {
+      "name": "reject free text",
+      "ok": true
+    },
+    {
+      "name": "mixed list keeps good, lists bad",
+      "ok": true
+    },
+    {
+      "name": "max 8 actions",
+      "ok": true
+    },
+    {
+      "name": "reply clean",
+      "ok": true
+    }
+  ]
+}
