@@ -166,6 +166,33 @@ export function allSurfaceInfo(): SurfaceInfo[] {
   return activeSystem?.infos() ?? [];
 }
 
+export type SpatialSurface = {
+  id: string;
+  kind: SurfaceKind;
+  /** Semantic label ('wall', 'table', 'door', ...) or the source for virtual surfaces. */
+  label: string;
+  /** Centre of the plane's polygon, in world space. */
+  center: Vector3;
+  /** Into the room (walls/doors face the head; desks face up). */
+  normal: Vector3;
+  width: number;
+  height: number;
+};
+
+/** Every snap surface with its centre and inward normal (PR 7: spatial buddy tools). */
+export function spatialSurfaces(): SpatialSurface[] {
+  return activeSystem?.spatial() ?? [];
+}
+
+/**
+ * Where a card would land on one surface near `point`: the same conforming,
+ * no-overlap placement a hand drop uses (flush, inside the polygon, beside
+ * cards already there). Null when the surface is gone.
+ */
+export function snapTargetOn(surfaceId: string, point: Vector3, cardId: string): SnapTarget | null {
+  return activeSystem?.targetOn(surfaceId, point, cardId) ?? null;
+}
+
 /** Gently light up every snap surface outline for `ms` (placement coach mark). */
 export function glowSurfaces(ms: number): void {
   if (activeSystem !== undefined) activeSystem.glowUntil = performance.now() + ms;
@@ -263,6 +290,25 @@ export class SurfaceSystem extends createSystem({
       label = plane?.semanticLabel ?? label;
     }
     return { surfaceId: frame.id, kind: frame.kind, label, origin: frame.origin.clone(), quaternion };
+  }
+
+  spatial(): SpatialSurface[] {
+    this.refreshFrames(true);
+    return this.frames.map((f) => ({
+      id: f.id,
+      kind: f.kind,
+      label: this.frameInfo(f).label,
+      center: f.origin.clone().addScaledVector(f.u, f.cx).addScaledVector(f.v, f.cz),
+      normal: f.normal.clone(),
+      width: f.width,
+      height: f.height,
+    }));
+  }
+
+  targetOn(surfaceId: string, point: Vector3, cardId: string): SnapTarget | null {
+    this.refreshFrames(true);
+    const frame = this.frames.find((f) => f.id === surfaceId);
+    return frame === undefined ? null : this.placeOn(frame, point, cardId, 'ray');
   }
 
   getPreview(cardId: string): SnapTarget | null {

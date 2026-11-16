@@ -14,6 +14,15 @@ export type BuddyCategory = (typeof BUDDY_CATEGORIES)[number];
 export const FOCUS_CONTROLS = ['pause', 'resume', 'extend', 'end'] as const;
 export type FocusControl = (typeof FOCUS_CONTROLS)[number];
 
+/**
+ * Where a spatial action puts cards (PR 7). Resolved on the device against the
+ * detected WebXR planes: walls by direction from the seat, the desk/table, the
+ * door, the seated focus spot ("here"), or beside another card.
+ */
+export const PLACE_TARGETS = ['desk', 'wall_front', 'wall_left', 'wall_right', 'door', 'here', 'next_to'] as const;
+export type PlaceTarget = (typeof PLACE_TARGETS)[number];
+export const MAX_ARRANGE = 8;
+
 export type BuddyAction =
   | { type: 'add_card'; title: string; category?: BuddyCategory }
   | { type: 'rename_card'; card_id: string; title: string }
@@ -23,7 +32,11 @@ export type BuddyAction =
   | { type: 'focus_control'; command: FocusControl; minutes?: number }
   | { type: 'complete_card'; card_id: string }
   | { type: 'delete_card'; card_id: string }
-  | { type: 'plan_day'; order: string[] };
+  | { type: 'plan_day'; order: string[] }
+  | { type: 'place_card'; card_id: string; target: PlaceTarget; ref_card_id?: string }
+  | { type: 'arrange'; target: PlaceTarget; category?: BuddyCategory; card_ids?: string[] }
+  | { type: 'focus_on'; card_id: string; minutes: number }
+  | { type: 'find'; card_id: string };
 
 export type BuddyActionType = BuddyAction['type'];
 export const ACTION_TYPES: readonly BuddyActionType[] = [
@@ -36,6 +49,10 @@ export const ACTION_TYPES: readonly BuddyActionType[] = [
   'complete_card',
   'delete_card',
   'plan_day',
+  'place_card',
+  'arrange',
+  'focus_on',
+  'find',
 ];
 
 /** What the buddy (AI or parser) is told about each card: compact, no poses. */
@@ -63,6 +80,10 @@ export function cleanTitle(value: unknown): string | null {
   const text = value.replace(/[\u0000-\u001f\u007f]/gu, ' ').replace(/\s+/gu, ' ').trim();
   if (text.length === 0 || Array.from(text).length > MAX_TITLE) return null;
   return text;
+}
+
+function placeTarget(value: unknown): PlaceTarget | null {
+  return typeof value === 'string' && (PLACE_TARGETS as readonly string[]).includes(value) ? (value as PlaceTarget) : null;
 }
 
 function category(value: unknown): BuddyCategory | null {
@@ -143,6 +164,49 @@ export function validateAction(raw: unknown, cardIds: ReadonlySet<string>): Budd
         seen.add(id);
       }
       return { type: 'plan_day', order: [...seen] };
+    }
+    case 'place_card': {
+      const id = card();
+      if (id === null) return 'unknown-card';
+      const target = placeTarget(raw.target);
+      if (target === null) return 'bad-target';
+      if (target === 'next_to') {
+        const ref = typeof raw.ref_card_id === 'string' && cardIds.has(raw.ref_card_id) ? raw.ref_card_id : null;
+        if (ref === null || ref === id) return 'unknown-card';
+        return { type: 'place_card', card_id: id, target, ref_card_id: ref };
+      }
+      return { type: 'place_card', card_id: id, target };
+    }
+    case 'arrange': {
+      const target = placeTarget(raw.target);
+      if (target === null || target === 'next_to') return 'bad-target';
+      const hasIds = Array.isArray(raw.card_ids) && raw.card_ids.length > 0;
+      if (hasIds) {
+        const ids = raw.card_ids as unknown[];
+        if (ids.length > MAX_ARRANGE) return 'bad-order';
+        const seen = new Set<string>();
+        for (const cid of ids) {
+          if (typeof cid !== 'string' || !cardIds.has(cid) || seen.has(cid)) return 'unknown-card';
+          seen.add(cid);
+        }
+        return { type: 'arrange', target, card_ids: [...seen] };
+      }
+      const value = raw.category ?? 'all';
+      if (value === 'all') return { type: 'arrange', target };
+      const cat = category(value);
+      if (cat === null) return 'bad-category';
+      return { type: 'arrange', target, category: cat };
+    }
+    case 'focus_on': {
+      const id = card();
+      if (id === null) return 'unknown-card';
+      const minutes = raw.minutes ?? 25;
+      if (typeof minutes !== 'number' || !Number.isInteger(minutes) || minutes < 1 || minutes > 180) return 'bad-minutes';
+      return { type: 'focus_on', card_id: id, minutes };
+    }
+    case 'find': {
+      const id = card();
+      return id === null ? 'unknown-card' : { type: 'find', card_id: id };
     }
     default:
       return 'unknown-type';

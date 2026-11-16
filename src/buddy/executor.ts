@@ -18,7 +18,7 @@ import { getCategory } from '../category-config.js';
 import { getBuddyFocusApi, type FocusSnapshot } from '../session-events.js';
 import { setCardWorldPose } from '../surfaces.js';
 import { suggestedFocusMinutes, DEFAULT_FOCUS_MIN } from '../session.js';
-import { needsConfirm, type BuddyAction, type BuddyCard, type BuddyCategory } from './actions.js';
+import { MAX_ARRANGE, needsConfirm, type BuddyAction, type BuddyCard, type BuddyCategory, type PlaceTarget } from './actions.js';
 import { categoryLabel } from './parser.js';
 
 export type UndoEntry = { label: string; run: () => Promise<string[]> };
@@ -41,6 +41,11 @@ export type ExecResult = {
   log: Array<{ type: string; ok: boolean; note?: string }>;
 };
 
+/** What the room did with a spatial request (PR 7). */
+export type PlaceOutcome =
+  | { ok: true; where: string; undo: () => void }
+  | { ok: false; reply: string; offer?: { label: string; target: PlaceTarget } };
+
 export type ExecutorHost = {
   spawnCard(title: string, category?: string): Promise<Entity>;
   getPlan(): string[] | null;
@@ -48,6 +53,12 @@ export type ExecutorHost = {
   cards(): BuddyCard[];
   /** A floating card the buddy starts focus on glides to the focus spot; returns how to send it back. */
   bringForward(entity: Entity): (() => void) | null;
+  /** PR 7: glide a card to a place in the room (lands flush on surfaces, no overlaps). */
+  place(entity: Entity, target: PlaceTarget, refId?: string): PlaceOutcome;
+  /** PR 7: line several cards up on one place. */
+  arrange(entities: Entity[], target: PlaceTarget): PlaceOutcome;
+  /** PR 7: a short phrase for where a card is ("on the wall on your left"). */
+  where(entity: Entity): string;
 };
 
 type CardSnap = {
@@ -301,6 +312,113 @@ export class BuddyExecutor {
             const back = await restoreCard(snap);
             return [back.getValue(QuestCard, 'cardId') as string];
           });
+          log(true);
+          break;
+        }
+        case 'place_card': {
+          const entity = live(action.card_id);
+          if (entity === undefined) {
+            log(false, 'gone');
+            break;
+          }
+          const out = this.host.place(entity, action.target, action.ref_card_id);
+          if (!out.ok) {
+            replies.push(out.reply);
+            if (out.offer !== undefined) {
+              result.offer = { label: out.offer.label, action: { type: 'place_card', card_id: action.card_id, target: out.offer.target } };
+            }
+            result.touched.push(action.card_id);
+            log(false, 'no-surface');
+            break;
+          }
+          result.touched.push(action.card_id);
+          result.changed = true;
+          replies.push(`Moved "${quote(titleOf(action.card_id))}" to ${out.where}.`);
+          undos.push(async () => {
+            out.undo();
+            return [action.card_id];
+          });
+          log(true);
+          break;
+        }
+        case 'arrange': {
+          const pool = action.card_ids ?? this.host.cards().filter((c) => action.category === undefined || c.category === action.category).map((c) => c.id);
+          const entities = pool.map((id) => live(id)).filter((e): e is Entity => e !== undefined).slice(0, MAX_ARRANGE);
+          if (entities.length === 0) {
+            replies.push(action.category !== undefined ? `No cards ${categoryLabel(action.category)} to line up.` : 'No cards to line up.');
+            log(false, 'empty');
+            break;
+          }
+          const out = this.host.arrange(entities, action.target);
+          const ids = entities.map((e) => e.getValue(QuestCard, 'cardId') as string);
+          result.touched.push(...ids);
+          if (!out.ok) {
+            replies.push(out.reply);
+            log(false, 'no-surface');
+            break;
+          }
+          result.changed = true;
+          replies.push(`Lined up ${entities.length} ${entities.length === 1 ? 'card' : 'cards'} on ${out.where.replace(/^(right )?in front of you$/u, 'your focus spot')}.`);
+          undos.push(async () => {
+            out.undo();
+            return ids;
+          });
+          log(true);
+          break;
+        }
+        case 'focus_on': {
+          const entity = live(action.card_id);
+          if (entity === undefined || focus === undefined) {
+            log(false, 'gone');
+            break;
+          }
+          const before = focus.snapshot();
+          if (before !== null && before.cardId !== action.card_id) {
+            replies.push(`You're already focusing on "${quote(titleOf(before.cardId))}". Say "end it" first.`);
+            log(false, 'busy');
+            break;
+          }
+          // Bring it to the seated focus spot first (unpins it if needed), then start.
+          const moved = this.host.place(entity, 'here');
+          if (before !== null) {
+            result.touched.push(action.card_id);
+            if (moved.ok) {
+              result.changed = true;
+              undos.push(async () => {
+                moved.undo();
+                return [action.card_id];
+              });
+            }
+            replies.push(`Already on "${quote(titleOf(action.card_id))}". It's right in front of you.`);
+            log(true, 'already');
+            break;
+          }
+          if (!focus.start(entity, action.minutes)) {
+            if (moved.ok) moved.undo();
+            replies.push("I couldn't start a focus right now.");
+            log(false, 'refused');
+            break;
+          }
+          result.touched.push(action.card_id);
+          result.changed = true;
+          replies.push(`${action.minutes} minutes on "${quote(titleOf(action.card_id))}", right in front of you.`);
+          undos.push(async () => {
+            focus.restore(null);
+            if (moved.ok) moved.undo();
+            return [action.card_id];
+          });
+          log(true);
+          break;
+        }
+        case 'find': {
+          const entity = findQuestCard(action.card_id);
+          if (entity === undefined) {
+            log(false, 'gone');
+            break;
+          }
+          result.touched.push(action.card_id);
+          result.highlight.push(action.card_id);
+          replies.push(`"${quote(titleOf(action.card_id))}" is ${this.host.where(entity)}.`);
           log(true);
           break;
         }

@@ -32,8 +32,8 @@ import {
   type Entity,
 } from '@iwsdk/core';
 import { QuestCard, QuestCardTween } from '../quest-component.js';
-import { createQuestCard, emitCardEvent, findQuestCard, onCardEvent } from '../quest-card.js';
-import { setCardWorldPose } from '../surfaces.js';
+import { createQuestCard, emitCardEvent, findQuestCard, onCardEvent, pinQuestCard, unpinQuestCard } from '../quest-card.js';
+import { setCardWorldPose, snapTargetOn, spatialSurfaces, surfaceInfo, type SnapTarget, type SurfaceKind } from '../surfaces.js';
 import { pulseCards } from '../categories.js';
 import { isWelcomeCollapsed, setWelcomeCollapsed } from '../panel.js';
 import { getBuddyFocusApi } from '../session-events.js';
@@ -43,7 +43,9 @@ import { floatingCardPositions } from '../card-arrange.js';
 import { cleanReply, validateActions, type BuddyAction, type BuddyCard, type Rejection } from './actions.js';
 import { classify, parseCommand } from './parser.js';
 import { askBuddyApi, resetBuddyApiBackoff, type FocusInfo } from './client.js';
-import { BuddyExecutor, type ExecResult, type Offer, type UndoEntry } from './executor.js';
+import { BuddyExecutor, type ExecResult, type Offer, type PlaceOutcome, type UndoEntry } from './executor.js';
+import { aimPoint, describeSpot, resolvePlace, whereLabel } from './spatial.js';
+import type { PlaceTarget } from './actions.js';
 import { BuddyOrb, type OrbState } from './orb.js';
 import { BUDDY_SLOW, LightLines } from './light-line.js';
 import { setBuddyLink, type MicState } from './bus.js';
@@ -177,6 +179,9 @@ export class BuddySystem extends createSystem({
       setPlan: (order) => this.setPlan(order),
       cards: () => this.cardList(),
       bringForward: (entity) => this.bringForward(entity),
+      place: (entity, target, refId) => this.place(entity, target, refId),
+      arrange: (entities, target) => this.arrange(entities, target),
+      where: (entity) => this.where(entity),
     });
     this.logOrb('idle');
 
@@ -213,6 +218,21 @@ export class BuddySystem extends createSystem({
           resetApi: () => resetBuddyApiBackoff(),
           orb: (state: OrbState) => this.setOrb(state),
           say: (text: string) => this.say(text, { ms: 4000 }),
+          bubbleObject: () => this.bubble?.panel ?? null,
+          trace: () => this.bubbleTrace.splice(0),
+          experiment: (name: string) => {
+            const b = this.bubble;
+            this.lines.group.visible = name !== 'no-lines';
+            this.orb.group.visible = name !== 'no-orb';
+            if (b !== undefined && name === 'bubble-top') {
+              b.panel.traverse((o) => {
+                const m = (o as unknown as { material?: { depthTest: boolean } }).material;
+                if (m !== undefined) m.depthTest = false;
+                o.renderOrder = 1000;
+              });
+            }
+            return name;
+          },
           forgetUsed: () => {
             this.used = false;
             try {
@@ -586,19 +606,191 @@ export class BuddySystem extends createSystem({
     };
   }
 
-  private readonly glides = new Map<Entity, { from: Vector3; fromQ: Quaternion; to: Vector3; toQ: Quaternion; start: number }>();
+  private readonly glides = new Map<
+    Entity,
+    { from: Vector3; fromQ: Quaternion; fromS: number; to: Vector3; toQ: Quaternion; toS: number; start: number }
+  >();
 
-  private glide(entity: Entity, to: Vector3, toQ: Quaternion): void {
+  private glide(entity: Entity, to: Vector3, toQ: Quaternion, toS = FLOAT_CARD_SCALE): void {
     const object = entity.object3D;
     if (object == null) return;
     object.updateWorldMatrix(true, false);
     this.glides.set(entity, {
       from: object.getWorldPosition(new Vector3()),
       fromQ: object.getWorldQuaternion(new Quaternion()),
+      fromS: object.scale.x,
       to: to.clone(),
       toQ: toQ.clone(),
+      toS,
       start: performance.now(),
     });
+  }
+
+  // ------------------------------------------------------------ spatial tools (PR 7)
+
+  private eyeAndForward(): { eye: Vector3; forward: Vector3 } {
+    const head = this.world.player.head;
+    head.updateWorldMatrix(true, false);
+    const eye = head.getWorldPosition(new Vector3());
+    const forward = homeForward(head.getWorldDirection(new Vector3()).negate());
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-4) forward.set(0, 0, -1);
+    return { eye, forward: forward.normalize() };
+  }
+
+  /** The seated focus spot: ~0.52 m ahead, a little below the eyes, facing them. */
+  private focusSpot(offsetX = 0, offsetY = 0, extraDistance = 0): { p: Vector3; q: Quaternion } {
+    const { eye, forward } = this.eyeAndForward();
+    const right = new Vector3(-forward.z, 0, forward.x);
+    const shift = (FOCUS_PANEL_UNITS * FLOAT_CARD_SCALE + 0.015) / 2;
+    const p = eye
+      .clone()
+      .addScaledVector(forward, FOCUS_DISTANCE + extraDistance)
+      .addScaledVector(right, -shift + offsetX);
+    p.y = eye.y - FOCUS_DROP + offsetY;
+    const q = new Quaternion().setFromRotationMatrix(new Matrix4().lookAt(eye, p, new Vector3(0, 1, 0)));
+    return { p, q };
+  }
+
+  private poseOf(entity: Entity) {
+    const object = entity.object3D!;
+    object.updateWorldMatrix(true, false);
+    return {
+      position: object.getWorldPosition(new Vector3()),
+      quaternion: object.getWorldQuaternion(new Quaternion()),
+      scale: object.scale.x,
+      surfaceId: entity.getValue(QuestCard, 'surfaceId') as string,
+      zoneId: entity.getValue(QuestCard, 'zoneId') as string,
+    };
+  }
+
+  /** Put a card back exactly where a snapshot had it: re-pinned (lands flush) or floating. */
+  private restorePose(entity: Entity, snap: ReturnType<BuddySystem['poseOf']>): void {
+    if (!entity.active) return;
+    this.glides.delete(entity);
+    if (snap.surfaceId.length > 0 && snap.zoneId.length > 0 && surfaceInfo(snap.surfaceId) !== null) {
+      const kind = snap.zoneId as SurfaceKind;
+      const target: SnapTarget = {
+        surfaceId: snap.surfaceId,
+        kind,
+        label: kind[0].toUpperCase() + kind.slice(1),
+        position: snap.position,
+        quaternion: snap.quaternion,
+        scale: snap.scale,
+        via: 'ray',
+      };
+      pinQuestCard(entity, target);
+      return;
+    }
+    if ((entity.getValue(QuestCard, 'surfaceId') as string).length > 0) unpinQuestCard(entity);
+    this.glide(entity, snap.position, snap.quaternion, snap.scale);
+  }
+
+  private pinTo(entity: Entity, target: SnapTarget): void {
+    this.glides.delete(entity);
+    pinQuestCard(entity, target);
+  }
+
+  private floatTo(entity: Entity, p: Vector3, q: Quaternion): void {
+    if ((entity.getValue(QuestCard, 'surfaceId') as string).length > 0) unpinQuestCard(entity);
+    this.glide(entity, p, q, FLOAT_CARD_SCALE);
+  }
+
+  private missReply(target: PlaceTarget, nearest: { target: PlaceTarget; where: string } | null, wanted: string): PlaceOutcome {
+    if (nearest === null) return { ok: false, reply: `I can't find ${wanted} in your room yet.` };
+    const short = nearest.where.replace(/^the wall /u, 'wall ').replace(/^your /u, '');
+    return {
+      ok: false,
+      reply: `I don't see ${wanted}. The closest is ${nearest.where}. Put it there?`,
+      offer: { label: `Use ${short}`, target: nearest.target },
+    };
+  }
+
+  private place(entity: Entity, target: PlaceTarget, refId?: string): PlaceOutcome {
+    if (entity.object3D == null) return { ok: false, reply: "I can't move that one right now." };
+    const id = entity.getValue(QuestCard, 'cardId') as string;
+    const snap = this.poseOf(entity);
+    const undo = () => this.restorePose(entity, snap);
+    if (target === 'here') {
+      const spot = this.focusSpot();
+      this.floatTo(entity, spot.p, spot.q);
+      return { ok: true, where: whereLabel('here'), undo };
+    }
+    if (target === 'next_to') {
+      const ref = refId !== undefined ? findQuestCard(refId) : undefined;
+      if (ref === undefined || ref.object3D == null) return { ok: false, reply: "I can't find the other card." };
+      const r = this.poseOf(ref);
+      const title = ref.getValue(QuestCard, 'title') as string;
+      const where = `next to "${title.length > 24 ? `${title.slice(0, 23)}...` : title}"`;
+      const across = new Vector3(1, 0, 0).applyQuaternion(r.quaternion);
+      if (r.surfaceId.length > 0 && surfaceInfo(r.surfaceId) !== null) {
+        const aim = r.position.clone().addScaledVector(across, (CARD_UNITS_W + FOCUS_PANEL_UNITS) * r.scale + 0.03);
+        const t = snapTargetOn(r.surfaceId, aim, id);
+        if (t === null) return { ok: false, reply: "That card's surface is gone." };
+        this.pinTo(entity, t);
+        return { ok: true, where, undo };
+      }
+      // Floating: beside it at the same height, on whichever side is free.
+      const step = CARD_UNITS_W * FLOAT_CARD_SCALE + 0.05;
+      const taken = this.cardList()
+        .filter((c) => c.id !== id && c.id !== refId)
+        .map((c) => findQuestCard(c.id)?.object3D?.getWorldPosition(new Vector3()))
+        .filter((v): v is Vector3 => v !== undefined);
+      const right = r.position.clone().addScaledVector(across, step);
+      const left = r.position.clone().addScaledVector(across, -step);
+      const clear = (p: Vector3) => taken.every((o) => o.distanceTo(p) > step * 0.8);
+      this.floatTo(entity, clear(right) || !clear(left) ? right : left, r.quaternion);
+      return { ok: true, where, undo };
+    }
+    const { eye, forward } = this.eyeAndForward();
+    const res = resolvePlace(target, spatialSurfaces(), eye, forward);
+    if (!res.ok) return this.missReply(target, res.nearest, res.wanted);
+    const t = snapTargetOn(res.surface.id, aimPoint(res.surface, eye), id);
+    if (t === null) return { ok: false, reply: `I lost track of ${res.where}. Try again in a moment.` };
+    this.pinTo(entity, t);
+    return { ok: true, where: res.where, undo };
+  }
+
+  private arrange(entities: Entity[], target: PlaceTarget): PlaceOutcome {
+    const snaps = entities.map((e) => this.poseOf(e));
+    const undo = () => entities.forEach((e, i) => this.restorePose(e, snaps[i]));
+    if (target === 'here') {
+      // Rows of up to four floating cards at the focus spot, facing the eyes.
+      const perRow = Math.min(4, entities.length);
+      const stepX = CARD_UNITS_W * FLOAT_CARD_SCALE + 0.03;
+      const stepY = CARD_UNITS_H * FLOAT_CARD_SCALE + 0.03;
+      entities.forEach((e, i) => {
+        const row = Math.floor(i / perRow);
+        const col = i % perRow;
+        const inRow = Math.min(perRow, entities.length - row * perRow);
+        const spot = this.focusSpot((col - (inRow - 1) / 2) * stepX, -row * stepY + 0.08, 0.22);
+        this.floatTo(e, spot.p, spot.q);
+      });
+      return { ok: true, where: whereLabel('here'), undo };
+    }
+    if (target === 'next_to') return { ok: false, reply: 'Line them up where? Try "on the desk".' };
+    const { eye, forward } = this.eyeAndForward();
+    const res = resolvePlace(target, spatialSurfaces(), eye, forward);
+    if (!res.ok) return this.missReply(target, res.nearest, res.wanted);
+    // Lift them all off their old surfaces first, so they don't block each other.
+    for (const e of entities) {
+      if ((e.getValue(QuestCard, 'surfaceId') as string).length > 0) unpinQuestCard(e);
+    }
+    const ids = entities.map((e) => e.getValue(QuestCard, 'cardId') as string);
+    const first = snapTargetOn(res.surface.id, aimPoint(res.surface, eye), ids[0]);
+    if (first === null) return { ok: false, reply: `I lost track of ${res.where}.` };
+    const spacing = (CARD_UNITS_W + FOCUS_PANEL_UNITS) * first.scale + 0.045;
+    entities.forEach((e, i) => {
+      const t = snapTargetOn(res.surface.id, aimPoint(res.surface, eye, i, entities.length, spacing), ids[i]);
+      if (t !== null) this.pinTo(e, t);
+    });
+    return { ok: true, where: res.where, undo };
+  }
+
+  private where(entity: Entity): string {
+    const pose = this.poseOf(entity);
+    const { eye, forward } = this.eyeAndForward();
+    return describeSpot(pose.position, pose.zoneId.length > 0 ? pose.zoneId : 'float', eye, forward);
   }
 
   private updateGlides(now: number): void {
@@ -611,7 +803,7 @@ export class BuddySystem extends createSystem({
       const e = 1 - (1 - t) ** 3;
       const p = g.from.clone().lerp(g.to, e);
       const q = g.fromQ.clone().slerp(g.toQ, e);
-      setCardWorldPose(entity, p, q, FLOAT_CARD_SCALE);
+      setCardWorldPose(entity, p, q, g.fromS + (g.toS - g.fromS) * e);
       if (t >= 1) {
         this.glides.delete(entity);
         emitCardEvent('floated', entity);
@@ -772,7 +964,13 @@ export class BuddySystem extends createSystem({
       b.panel.getElementById('buddy-bubble')?.setProperties({ opacity: b.opacity } as never);
     }
     this.placeBubble(b, 1 - b.opacity);
+    if (import.meta.env.DEV) {
+      this.bubbleTrace.push([Math.round(now), +b.opacity.toFixed(3), collapsed ? 1 : 0, b.hovered ? 1 : 0]);
+      if (this.bubbleTrace.length > 4000) this.bubbleTrace.splice(0, 1000);
+    }
   }
+
+  private readonly bubbleTrace: number[][] = [];
 
   private lastBubbleAt = 0;
 
@@ -841,6 +1039,7 @@ export class BuddySystem extends createSystem({
         ? {
             visible: b.panel.visible,
             opacity: +b.opacity.toFixed(3),
+            hovered: b.hovered,
             text: b.text,
             tag: b.tag,
             chips: b.chips.map((c) => ({ label: c.label, kind: c.kind })),

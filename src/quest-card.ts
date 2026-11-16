@@ -123,6 +123,26 @@ let activeWorld: World | undefined;
 const FOCUS_ACTION_ASSET_ID = 'focus-action';
 const BLUR_LABEL: Record<BlurLevel, string> = { off: 'Blur: Off', soft: 'Blur: Soft', strong: 'Blur: Strong' };
 let focusActionEnsurer: ((card: Entity) => void) | undefined;
+let cardPinner: ((card: Entity, target: SnapTarget) => void) | undefined;
+
+/**
+ * Pin a card to a snap target exactly like a hand release does (PR 7: the
+ * buddy's spatial tools): zone + surface + userPlaced, the flight that lands
+ * it flush, the pinned hint, its focus panel and the 'pinned' event (saved).
+ */
+export function pinQuestCard(card: Entity, target: SnapTarget): boolean {
+  if (cardPinner === undefined || !card.active) return false;
+  cardPinner(card, target);
+  return true;
+}
+
+/** Turn a pinned card back into a floating one in place (the caller moves it). */
+export function unpinQuestCard(card: Entity): void {
+  if (!card.active) return;
+  card.setValue(QuestCard, 'zoneId', '');
+  card.setValue(QuestCard, 'surfaceId', '');
+  setQuestCardState(card, FLOATING_HINT);
+}
 
 /**
  * Cards whose focus panel works while floating: the Focus session quick-start
@@ -296,6 +316,7 @@ export class QuestCardSystem extends createSystem({
     });
     setCardActionModeHandler((cardId, mode, info) => this.setActionMode(cardId, mode, info));
     focusActionEnsurer = (card) => void this.ensureFocusAction(card);
+    cardPinner = (card, target) => this.pin(card, target);
     focusActionMover = (card) => {
       const action = this.findFocusAction(card.getValue(QuestCard, 'cardId') as string);
       const panel = action?.object3D;
@@ -304,6 +325,7 @@ export class QuestCardSystem extends createSystem({
     this.cleanupFuncs.push(() => {
       setCardActionModeHandler(undefined);
       focusActionEnsurer = undefined;
+      cardPinner = undefined;
       focusActionMover = undefined;
       for (const entity of this.queries.actions.entities) this.disposeAction(entity);
     });
