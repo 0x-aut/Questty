@@ -1,0 +1,22 @@
+<!-- Ghost hand for the placement coach mark (PR 4). Pointer is a Lucide icon. -->
+<style>
+  .ghost {
+    pointer-events: none;
+    width: 64px;
+    height: 64px;
+    border-radius: 32px;
+    justify-content: center;
+    align-items: center;
+    background-color: #5fe0c8;
+    opacity: 0.85;
+  }
+
+  .ghost-icon {
+    width: 36px;
+    height: 36px;
+    color: #0e2b27;
+  }
+</style>
+<div class="ghost">
+  <Pointer class="ghost-icon"></Pointer>
+</div>

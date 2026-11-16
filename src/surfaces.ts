@@ -23,6 +23,7 @@ import {
   type Entity,
 } from '@iwsdk/core';
 import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE } from './card-layout.js';
+import { homeForward } from './card-layout.js';
 import { QuestCard, QuestCardTween, SnapSurface } from './quest-component.js';
 
 /**
@@ -52,6 +53,8 @@ export type SnapTarget = {
   quaternion: Quaternion;
   scale: number;
   via: 'near' | 'ray';
+  /** True when no free spot was left and the card overlaps another one. */
+  crowded?: boolean;
 };
 
 type Frame = {
@@ -92,6 +95,8 @@ const RAY_MAX = 8;
 const CARD_GAP = 0.03;
 const PINNED_NEAR_SCALE = 0.12;
 const FLIGHT_MS = 280;
+/** Width of a card's focus panel (focus-action.uikitml, 200px) in card units. */
+const FOCUS_PANEL_UNITS = 2.0;
 const NEAR_ENTER = 0.12; // hand within this of a card -> direct (near) grab
 const NEAR_EXIT = 0.2;
 const MIN_RAY_HOLD_MS = 350;
@@ -129,6 +134,35 @@ export function getDropTarget(cardId: string): SnapTarget | null {
 /** Animate a released card to its pinned pose. */
 export function flyCard(entity: Entity, target: SnapTarget): void {
   activeSystem?.fly(entity, target);
+}
+
+export type SurfaceInfo = {
+  surfaceId: string;
+  kind: SurfaceKind;
+  /** Semantic label of the room plane ('table', 'wall', ...) or the source for non-room surfaces. */
+  label: string;
+  origin: Vector3;
+  quaternion: Quaternion;
+};
+
+/** World pose of a snap surface's own frame (normal = local +Y), or null. */
+export function surfaceInfo(surfaceId: string): SurfaceInfo | null {
+  return activeSystem?.info(surfaceId) ?? null;
+}
+
+/** All current snap surfaces with their world frames. */
+export function allSurfaceInfo(): SurfaceInfo[] {
+  return activeSystem?.infos() ?? [];
+}
+
+/** Pin target on the nearest surface of `kind` (else any surface) for a card, or null. */
+export function autoPinTarget(card: Entity, kind: SurfaceKind): SnapTarget | null {
+  return activeSystem?.autoTarget(card, kind) ?? null;
+}
+
+/** Gently light up every snap surface outline for `ms` (placement coach mark). */
+export function glowSurfaces(ms: number): void {
+  if (activeSystem !== undefined) activeSystem.glowUntil = performance.now() + ms;
 }
 
 /** Debug/test view of every snap surface (also on window.__questty in dev). */
@@ -199,6 +233,56 @@ export class SurfaceSystem extends createSystem({
     });
   }
 
+  glowUntil = 0;
+
+  info(surfaceId: string): SurfaceInfo | null {
+    this.refreshFrames(true);
+    const frame = this.frames.find((f) => f.id === surfaceId);
+    return frame === undefined ? null : this.frameInfo(frame);
+  }
+
+  infos(): SurfaceInfo[] {
+    this.refreshFrames(true);
+    return this.frames.map((f) => this.frameInfo(f));
+  }
+
+  private frameInfo(frame: Frame): SurfaceInfo {
+    const object = frame.entity.object3D!;
+    object.updateWorldMatrix(true, false);
+    const quaternion = object.getWorldQuaternion(new Quaternion());
+    let label = frame.entity.getValue(SnapSurface, 'source') as string;
+    if (frame.entity.hasComponent(XRPlane)) {
+      const plane = frame.entity.getValue(XRPlane, '_plane') as unknown as DetectedPlane | undefined;
+      label = plane?.semanticLabel ?? label;
+    }
+    return { surfaceId: frame.id, kind: frame.kind, label, origin: frame.origin.clone(), quaternion };
+  }
+
+  autoTarget(card: Entity, kind: SurfaceKind): SnapTarget | null {
+    this.refreshFrames(true);
+    this.world.player.head.getWorldPosition(this.head);
+    const forward = homeForward(this.world.player.head.getWorldDirection(this.tmpB).negate());
+    forward.y = 0;
+    forward.normalize();
+    const ranked = this.frames
+      .map((frame) => {
+        // Prefer the requested kind, in front of the seat; others only as a last resort.
+        const toFrame = this.tmpA.copy(frame.origin).sub(this.head).setY(0).normalize();
+        const behind = toFrame.dot(forward) < 0.2 ? 10 : 0;
+        return { frame, score: this.head.distanceTo(frame.origin) + (frame.kind === kind ? 0 : 5) + behind };
+      })
+      .sort((x, y) => x.score - y.score);
+    const cardId = card.getValue(QuestCard, 'cardId') as string;
+    let first: SnapTarget | null = null;
+    for (const { frame } of ranked) {
+      const point = frame.origin.clone();
+      const target = this.placeOn(frame, point, cardId, 'near');
+      if (!target.crowded) return target;
+      first ??= target;
+    }
+    return first;
+  }
+
   getPreview(cardId: string): SnapTarget | null {
     return this.previews.get(cardId) ?? null;
   }
@@ -239,6 +323,7 @@ export class SurfaceSystem extends createSystem({
     if (held.size === 0) {
       if (this.previews.size > 0) this.previews.clear();
       this.setPreviewVisible(false);
+      this.updateGlow();
       if (time - this.framesAt > 1) this.refreshFrames(true, time);
       return;
     }
@@ -443,8 +528,18 @@ export class SurfaceSystem extends createSystem({
     return this.placeOn(hit.frame, hit.point, cardId, 'ray');
   }
 
+  private liesOn(object: NonNullable<Entity['object3D']>, frame: Frame): boolean {
+    if ((object.parent ?? null) === null) return false;
+    const rel = object.getWorldPosition(this.tmpC).sub(frame.origin);
+    return (
+      Math.abs(rel.dot(frame.normal)) < 0.15 &&
+      Math.abs(rel.dot(frame.u)) <= frame.width / 2 + 0.05 &&
+      Math.abs(rel.dot(frame.v)) <= frame.height / 2 + 0.05
+    );
+  }
+
   /** Flush, upright, non-overlapping pose for a card dropped at `point` on `frame`. */
-  private placeOn(frame: Frame, point: Vector3, cardId: string, via: 'near' | 'ray'): SnapTarget {
+  private placeOn(frame: Frame, point: Vector3, cardId: string, via: 'near' | 'ray', maxScale = 0.28): SnapTarget {
     this.world.player.head.getWorldPosition(this.head);
     const distance = this.head.distanceTo(point);
     // Bigger the farther away it is (readable from the seat), but never wider
@@ -453,7 +548,7 @@ export class SurfaceSystem extends createSystem({
       (Math.max(frame.width, frame.height) - 0.04) / CARD_UNITS_W,
       (Math.min(frame.width, frame.height) - 0.04) / CARD_UNITS_H / (frame.kind === 'desk' ? Math.cos(DESK_TILT) : 1),
     );
-    const scale = Math.max(0.08, Math.min(0.28, fit, Math.max(PINNED_NEAR_SCALE, distance * 0.07)));
+    const scale = Math.max(0.08, Math.min(maxScale, fit, Math.max(PINNED_NEAR_SCALE, distance * 0.07)));
     const w = CARD_UNITS_W * scale;
     const h = CARD_UNITS_H * scale;
 
@@ -500,26 +595,32 @@ export class SurfaceSystem extends createSystem({
     const others: Array<{ a: number; b: number; w: number; h: number }> = [];
     for (const other of this.queries.cards.entities) {
       if (other.getValue(QuestCard, 'cardId') === cardId) continue;
-      if (other.getValue(QuestCard, 'surfaceId') !== frame.id || other.hasComponent(QuestCardTween)) continue;
+      if (other.hasComponent(QuestCardTween)) continue;
       const o = other.object3D;
       if (o == null) continue;
+      // Same surface id, or (restored cards whose plane got a new id) lying on this frame.
+      if (other.getValue(QuestCard, 'surfaceId') !== frame.id && !this.liesOn(o, frame)) continue;
       const flight = this.flights.get(other);
       const op = flight ? flight.to.clone() : o.getWorldPosition(new Vector3());
       const os = flight ? flight.sTo : o.scale.x;
       const r = op.sub(frame.origin);
       others.push({
-        a: r.dot(gridRight),
+        // A pinned card carries its focus panel on its right: reserve that space too.
+        a: r.dot(gridRight) + (FOCUS_PANEL_UNITS * os + 0.015) / 2,
         b: r.dot(gridUp),
-        w: CARD_UNITS_W * os,
+        w: (CARD_UNITS_W + FOCUS_PANEL_UNITS) * os + 0.015,
         h: CARD_UNITS_H * os * (frame.kind === 'desk' ? Math.cos(DESK_TILT) : 1),
       });
     }
+    const panelExtra = FOCUS_PANEL_UNITS * scale + 0.015;
+    const fw = w + panelExtra;
     const free = (ca: number, cb: number) =>
       others.every(
-        (o) => Math.abs(o.a - ca) >= (o.w + w) / 2 + CARD_GAP - 1e-4 || Math.abs(o.b - cb) >= (o.h + footprintH) / 2 + CARD_GAP - 1e-4,
+        (o) => Math.abs(o.a - (ca + panelExtra / 2)) >= (o.w + fw) / 2 + CARD_GAP - 1e-4 || Math.abs(o.b - cb) >= (o.h + footprintH) / 2 + CARD_GAP - 1e-4,
       );
+    let crowded = false;
     if (!free(a, b)) {
-      const stepA = w + CARD_GAP;
+      const stepA = fw + CARD_GAP;
       const stepB = footprintH + CARD_GAP;
       let bestScore = Infinity;
       let found: [number, number] | null = null;
@@ -539,6 +640,9 @@ export class SurfaceSystem extends createSystem({
         }
       }
       if (found !== null) [a, b] = found;
+      // A small desk full of big cards: try again with smaller cards before overlapping.
+      else if (scale > 0.09) return this.placeOn(frame, point, cardId, via, scale * 0.7);
+      else crowded = true;
     }
 
     const position = frame.origin
@@ -548,7 +652,7 @@ export class SurfaceSystem extends createSystem({
       .addScaledVector(frame.normal, lift);
     this.m.makeBasis(xAxis, yAxis, zAxis);
     const quaternion = new Quaternion().setFromRotationMatrix(this.m);
-    return { surfaceId: frame.id, kind: frame.kind, label: LABEL[frame.kind], position, quaternion, scale, via };
+    return { surfaceId: frame.id, kind: frame.kind, label: LABEL[frame.kind], position, quaternion, scale, via, crowded };
   }
 
   // ------------------------------------------------- near vs pinch-ray grab
@@ -632,6 +736,28 @@ export class SurfaceSystem extends createSystem({
     this.outlineRoot.visible = false;
     this.world.createTransformEntity(this.outlineRoot);
   }
+
+  /** Coach-mark glow: outlines pulse softly while no card is held. */
+  private updateGlow(): void {
+    const now = performance.now();
+    if (now >= this.glowUntil) {
+      if (this.glowing) {
+        this.glowing = false;
+        this.outlineRoot.visible = false;
+      }
+      return;
+    }
+    this.glowing = true;
+    this.outlineRoot.visible = true;
+    const opacity = 0.35 + 0.3 * (0.5 + 0.5 * Math.sin(now / 260));
+    for (const line of this.outlines.values()) {
+      const material = line.material as LineBasicMaterial;
+      material.color.setHex(0x5fe0c8);
+      material.opacity = opacity;
+    }
+  }
+
+  private glowing = false;
 
   private setPreviewVisible(visible: boolean): void {
     if (this.ghost.visible !== visible) this.ghost.visible = visible;

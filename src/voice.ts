@@ -55,6 +55,8 @@ export type VoiceCallbacks = {
   /** Final transcript. An empty string means nothing was heard. */
   onTranscript(text: string): void;
   onError(error: VoiceError): void;
+  /** Mic level (RMS, about 0-0.3) while recording, for a live pulse. Optional. */
+  onLevel?(rms: number): void;
 };
 
 export type VoiceSession = {
@@ -358,7 +360,9 @@ function startRecorder(callbacks: VoiceCallbacks): VoiceSession {
         let sum = 0;
         for (let i = 0; i < samples.length; i += 1) sum += samples[i] * samples[i];
         const now = performance.now();
-        if (Math.sqrt(sum / samples.length) > SPEECH_RMS) {
+        const rms = Math.sqrt(sum / samples.length);
+        callbacks.onLevel?.(rms);
+        if (rms > SPEECH_RMS) {
           loudSamples += 1;
           quietSamples = 0;
           lastLoudAt = now;

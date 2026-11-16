@@ -50,6 +50,8 @@ export function saveBlurLevel(level: BlurLevel): void {
 
 export type SavedFocusTimer = {
   version: 1;
+  /** Stable card id (PR 4); older saves have none. */
+  cardId?: string;
   title: string;
   xp: number;
   zoneId: string;
@@ -88,7 +90,8 @@ export function loadFocusTimer(): SavedFocusTimer | null {
       !isNum(v.durationMs) ||
       !isNum(v.endsAt) ||
       !(v.pausedRemainingMs === null || isNum(v.pausedRemainingMs)) ||
-      !isNum(v.consecutiveSkips)
+      !isNum(v.consecutiveSkips) ||
+      !(v.cardId === undefined || (typeof v.cardId === 'string' && v.cardId.length <= 64))
     ) {
       clearFocusTimer();
       return null;

@@ -16,6 +16,7 @@ import {
 } from '@iwsdk/core';
 import { QuestCard } from './quest-component.js';
 import {
+  findQuestCard,
   createQuestCard,
   idleCardHint,
   setQuestCardState,
@@ -575,6 +576,7 @@ export class SessionSystem extends createSystem({}) {
     object.getWorldQuaternion(this.tmpQ);
     saveFocusTimer({
       version: 1,
+      cardId: card.getValue(QuestCard, 'cardId') as string,
       title: card.getValue(QuestCard, 'title') as string,
       xp: card.getValue(QuestCard, 'xp') as number,
       zoneId: card.getValue(QuestCard, 'zoneId') as string,
@@ -593,24 +595,31 @@ export class SessionSystem extends createSystem({}) {
   private async restoreSavedFocus(): Promise<string | null> {
     const saved = loadFocusTimer();
     if (saved === null || this.state.phase !== 'idle') return null;
-    let entity: Entity;
-    try {
-      entity = await createQuestCard({
-        title: saved.title,
-        xp: saved.xp,
-        position: saved.position,
-      });
-    } catch (error) {
-      console.warn('[session] Could not restore the focus card.', error);
-      return null;
+    // PR 4: the card itself is restored by persistence.ts (same stable id);
+    // only a timer saved without a known card re-creates one here.
+    let entity = saved.cardId !== undefined ? findQuestCard(saved.cardId) : undefined;
+    if (entity === undefined) {
+      try {
+        entity = await createQuestCard({
+          id: saved.cardId,
+          title: saved.title,
+          xp: saved.xp,
+          position: saved.position,
+          restored: true,
+        });
+      } catch (error) {
+        console.warn('[session] Could not restore the focus card.', error);
+        return null;
+      }
+      if (this.destroyed || this.state.phase !== 'idle') return null;
+      this.tmpA.fromArray(saved.position);
+      this.tmpQ.fromArray(saved.quaternion);
+      setCardWorldPose(entity, this.tmpA, this.tmpQ, saved.scale);
+      entity.setValue(QuestCard, 'zoneId', saved.zoneId || 'desk');
+      entity.setValue(QuestCard, 'surfaceId', saved.surfaceId || 'restored');
+      entity.setValue(QuestCard, 'userPlaced', true);
     }
     if (this.destroyed || this.state.phase !== 'idle') return null;
-    this.tmpA.fromArray(saved.position);
-    this.tmpQ.fromArray(saved.quaternion);
-    setCardWorldPose(entity, this.tmpA, this.tmpQ, saved.scale);
-    entity.setValue(QuestCard, 'zoneId', saved.zoneId || 'desk');
-    entity.setValue(QuestCard, 'surfaceId', saved.surfaceId || 'restored');
-    entity.setValue(QuestCard, 'userPlaced', true);
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
     this.state = {
       phase: 'focus',
@@ -690,7 +699,10 @@ export class SessionSystem extends createSystem({}) {
 
   private updateProgressStatus(): void {
     this.progressStatus?.setProperties({
-      text: `Level ${this.progress.level} | ${this.progress.xp} XP | ${this.progress.streak} day streak`,
+      text:
+        this.progress.streak > 1
+          ? `Level ${this.progress.level} | ${this.progress.xp} XP | ${this.progress.streak} day streak`
+          : `Level ${this.progress.level} | ${this.progress.xp} XP`,
     });
   }
 

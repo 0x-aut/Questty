@@ -64,10 +64,11 @@ from the Vite dev server (reading `.env`), so voice works locally too.
 
 ### Voice capture
 
-Tap **Speak a quest**, say your tasks, then pause (it stops by itself after a
-short silence) or tap **Done talking**. Recording also stops at 30 seconds.
-The button and the status pill show each step: Starting mic, Listening,
-Transcribing, Making quests, then how many cards were added.
+Pinch the big mic ("What's on your mind?"), say everything on your mind, then
+pause (it stops by itself after a short silence) or pinch the mic again.
+Recording also stops at 30 seconds. The mic shows each step: it turns coral and
+pulses with your voice while listening, then "Got it, writing it down...",
+"Turning it into quests..." and how many cards were added.
 
 - **Primary path, every browser (Quest Browser included):** the mic is recorded
   with `MediaRecorder` and sent to `/api/transcribe`. Quest Browser has no Web
@@ -91,6 +92,36 @@ In the desktop XR emulator, click the app viewport to focus it, then use
 thumbstick** to move and the **right thumbstick** to snap-turn; physical walking
 also works within your tracked play space. A hand-only session has no thumbstick:
 use a focused keyboard in the emulator, or physically walk in your room.
+
+### First run: an empty room and a small home panel
+
+The room starts empty: no cards appear until you speak, pick **Focus session**
+or a **Quick quest**. The home panel is small and sits low to your left, out of
+your line of sight. It has the mic, **Focus session** (one card, pinned to the
+nearest desk in front of you, with the length picker open) and **Quick quest**
+(four ready-made cards that need no AI). After a brain dump it shrinks to a
+small pill; pinch the pill to open it again, or the minus button to shrink it
+yourself. Leave XR with the headset's own menu. (Dev builds show a room-plane
+debug toggle with `?debug=1`.)
+
+The first time cards appear, a short tip floats above them ("Pinch a card and
+drag it onto a wall, desk or door"), a ghost pointer shows the motion and the
+surfaces you can use glow softly. After your first pin it says "Pinned to the
+desk - it stays right here, even after you leave. Pinch Start focus to begin"
+and goes away for good (remembered in `localStorage`).
+
+### Cards stay in your room
+
+Cards are saved in `localStorage` (title, XP, the surface they are pinned to and
+their pose) and come back after a reload or the next XR session, where you left
+them. Each pinned card also gets a **WebXR anchor** with a **persistent handle**
+(Quest Browser: `anchor.requestPersistentHandle()`, restored with
+`session.restorePersistentAnchor(uuid)`), so it returns to the same real-world
+spot even if the headset's origin moved. If the anchor cannot be restored, the
+card is put back relative to the room plane it was pinned to (same kind and
+label), and failing that at its saved floor-relative pose. Completing a card
+removes it and deletes its anchor. A running focus timer resumes on the same
+card (stable card ids).
 
 ### Placing cards (hands first, seated)
 
