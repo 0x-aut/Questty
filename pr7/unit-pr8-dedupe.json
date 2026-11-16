@@ -1,0 +1,338 @@
+{
+  "pass": 83,
+  "total": 83,
+  "results": [
+    {
+      "name": "tokens: Go to the gym",
+      "ok": true
+    },
+    {
+      "name": "tokens: gym",
+      "ok": true
+    },
+    {
+      "name": "tokens: Go to the gym today!",
+      "ok": true
+    },
+    {
+      "name": "tokens: Call Mum's dentist",
+      "ok": true
+    },
+    {
+      "name": "tokens: Buy groceries",
+      "ok": true
+    },
+    {
+      "name": "tokens: Email Sam about the launch",
+      "ok": true
+    },
+    {
+      "name": "tokens: Water the plants before I leave",
+      "ok": true
+    },
+    {
+      "name": "normalize: punctuation + case",
+      "ok": true
+    },
+    {
+      "name": "dup: \"gym\" ~ \"Go to the gym\"",
+      "ok": true
+    },
+    {
+      "name": "dup: \"Go to the gym\" ~ \"gym\"",
+      "ok": true
+    },
+    {
+      "name": "dup: \"go to the gym today\" ~ \"Go to the gym\"",
+      "ok": true
+    },
+    {
+      "name": "dup: \"Finish the pitch deck\" ~ \"finish pitch deck\"",
+      "ok": true
+    },
+    {
+      "name": "dup: \"Finish the pitchdeck\" ~ \"Finish the pitch deck\"",
+      "ok": true
+    },
+    {
+      "name": "dup: \"Email Sam about lunch\" ~ \"Email Sam about the launch\"",
+      "ok": true
+    },
+    {
+      "name": "dup: \"Call the landlord about the sink\" ~ \"Call landlord about sink\"",
+      "ok": true
+    },
+    {
+      "name": "dup: \"Buy groceries\" ~ \"buy grocery\"",
+      "ok": true
+    },
+    {
+      "name": "dup: \"Water the plants\" ~ \"water plants before I leave\"",
+      "ok": true
+    },
+    {
+      "name": "dup: \"Book dentist appointment\" ~ \"Book a dentist appointment\"",
+      "ok": true
+    },
+    {
+      "name": "dup: \"Call mum\" ~ \"call mom\"",
+      "ok": true
+    },
+    {
+      "name": "not dup: \"gym\" vs \"gym bag shopping\"",
+      "ok": true
+    },
+    {
+      "name": "not dup: \"gym\" vs \"Gym after lunch\"",
+      "ok": true
+    },
+    {
+      "name": "not dup: \"Call mum\" vs \"Call dad\"",
+      "ok": true
+    },
+    {
+      "name": "not dup: \"Email Sam\" vs \"Email Sam about the launch\"",
+      "ok": true
+    },
+    {
+      "name": "not dup: \"Buy milk\" vs \"Buy eggs\"",
+      "ok": true
+    },
+    {
+      "name": "not dup: \"Pay rent\" vs \"Pay the electricity bill\"",
+      "ok": true
+    },
+    {
+      "name": "not dup: \"Book dentist\" vs \"Book flights\"",
+      "ok": true
+    },
+    {
+      "name": "not dup: \"Laundry\" vs \"Fold laundry and iron shirts\"",
+      "ok": true
+    },
+    {
+      "name": "not dup: \"Do it\" vs \"Go to the gym\"",
+      "ok": true
+    },
+    {
+      "name": "find: gym -> q-gym",
+      "ok": true
+    },
+    {
+      "name": "find: pitch deck",
+      "ok": true
+    },
+    {
+      "name": "find: none for \"buy milk\"",
+      "ok": true
+    },
+    {
+      "name": "find: empty board",
+      "ok": true
+    },
+    {
+      "name": "overlap divides by the longer list",
+      "ok": true
+    },
+    {
+      "name": "levenshtein ratio identical",
+      "ok": true
+    },
+    {
+      "name": "threshold documented at 0.8",
+      "ok": true
+    },
+    {
+      "name": "answer: \"yes\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"Yes.\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"yeah\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"yep add it\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"add\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"add it\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"add another\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"add another one\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"another one\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"Add anyway\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"add it anyway\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"sure\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"ok\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"yes please\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"one more\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"keep both\" -> add",
+      "ok": true
+    },
+    {
+      "name": "answer: \"no\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"No.\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"nope\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"skip\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"Skip it\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"never mind\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"nevermind\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"don't\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"no thanks\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"leave it\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"cancel\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"nah\" -> skip",
+      "ok": true
+    },
+    {
+      "name": "answer: \"show\" -> show",
+      "ok": true
+    },
+    {
+      "name": "answer: \"show it\" -> show",
+      "ok": true
+    },
+    {
+      "name": "answer: \"show me\" -> show",
+      "ok": true
+    },
+    {
+      "name": "answer: \"where\" -> show",
+      "ok": true
+    },
+    {
+      "name": "answer: \"where is it\" -> show",
+      "ok": true
+    },
+    {
+      "name": "answer: \"show me where\" -> show",
+      "ok": true
+    },
+    {
+      "name": "answer: \"find it\" -> show",
+      "ok": true
+    },
+    {
+      "name": "answer: \"which one\" -> show",
+      "ok": true
+    },
+    {
+      "name": "answer: \"add milk\" -> null",
+      "ok": true
+    },
+    {
+      "name": "answer: \"move the gym card to the left wall\" -> null",
+      "ok": true
+    },
+    {
+      "name": "answer: \"what's left today\" -> null",
+      "ok": true
+    },
+    {
+      "name": "answer: \"yes I need to call mum and buy milk and also fix the bike\" -> null",
+      "ok": true
+    },
+    {
+      "name": "answer: \"undo\" -> null",
+      "ok": true
+    },
+    {
+      "name": "answer: \"no idea what to do today honestly\" -> null",
+      "ok": true
+    },
+    {
+      "name": "answer: \"hey questty, yes please\"",
+      "ok": true
+    },
+    {
+      "name": "delegation key: same words",
+      "ok": true
+    },
+    {
+      "name": "delegation key: different place",
+      "ok": true
+    },
+    {
+      "name": "shortWhere left wall",
+      "ok": true
+    },
+    {
+      "name": "shortWhere front wall",
+      "ok": true
+    },
+    {
+      "name": "shortWhere floating",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,1039 @@
+{
+  "marks": [
+    {
+      "name": "D0-board",
+      "t": 35.4
+    },
+    {
+      "name": "D1-prompt",
+      "t": 75.5
+    },
+    {
+      "name": "D2-add-anyway",
+      "t": 91.9
+    },
+    {
+      "name": "D3-skip",
+      "t": 127.4
+    },
+    {
+      "name": "D4-show",
+      "t": 152.1
+    },
+    {
+      "name": "D5-spoken",
+      "t": 191.3
+    },
+    {
+      "name": "D6-expiry",
+      "t": 332.3
+    },
+    {
+      "name": "D7-dump",
+      "t": 367.6
+    },
+    {
+      "name": "D8-ai",
+      "t": 429.7
+    },
+    {
+      "name": "D9-talk",
+      "t": 440.9
+    },
+    {
+      "name": "D10-offline",
+      "t": 557.8
+    },
+    {
+      "name": "end",
+      "t": 626.3
+    }
+  ],
+  "checks": {
+    "D0 board: 4 cards from the brain dump": {
+      "ok": true,
+      "detail": [
+        "Email Sam about launch",
+        "Finish the pitch deck",
+        "Go to the gym",
+        "Call landlord about sink"
+      ]
+    },
+    "D1 \"add gym\" -> no card added, the buddy asks": {
+      "ok": true,
+      "detail": {
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?",
+        "held": [
+          {
+            "title": "Gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "chips": [
+          {
+            "label": "Add anyway",
+            "kind": "primary"
+          },
+          {
+            "label": "Skip",
+            "kind": "plain"
+          },
+          {
+            "label": "Show it",
+            "kind": "plain"
+          }
+        ]
+      }
+    },
+    "D1 the question names the card, its category and where it is": {
+      "ok": true,
+      "detail": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+    },
+    "D1 chips: Add anyway / Skip / Show it": {
+      "ok": true,
+      "detail": [
+        {
+          "label": "Add anyway",
+          "kind": "primary"
+        },
+        {
+          "label": "Skip",
+          "kind": "plain"
+        },
+        {
+          "label": "Show it",
+          "kind": "plain"
+        }
+      ]
+    },
+    "D2 pinch \"Add anyway\" -> 2 gym cards, question closed, Undo chip": {
+      "ok": true,
+      "detail": {
+        "gyms": 2,
+        "bubble": "Added \"Gym\".",
+        "chips": [
+          {
+            "label": "Undo",
+            "kind": "plain"
+          }
+        ]
+      }
+    },
+    "D2 Undo removes the \"Add anyway\" card": {
+      "ok": true,
+      "detail": [
+        "Email Sam about launch",
+        "Finish the pitch deck",
+        "Go to the gym",
+        "Call landlord about sink"
+      ]
+    },
+    "D3 \"add go to the gym\" asks too": {
+      "ok": true,
+      "detail": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+    },
+    "D3 pinch \"Skip\" -> still 1 gym card, buddy says so": {
+      "ok": true,
+      "detail": "Okay, skipped it."
+    },
+    "D4 pinch \"Show it\" -> light line to the existing gym card, question still open (Add anyway / Skip)": {
+      "ok": true,
+      "detail": {
+        "text": "\"Go to the gym\" is floating on your right. Add another one?",
+        "chips": [
+          {
+            "label": "Add anyway",
+            "kind": "primary"
+          },
+          {
+            "label": "Skip",
+            "kind": "plain"
+          }
+        ]
+      }
+    },
+    "D4 typed \"yes\" answers it -> 2 gym cards": {
+      "ok": true,
+      "detail": {
+        "r": {
+          "text": "yes",
+          "answer": "add",
+          "reply": "Added \"Gym\"."
+        },
+        "gyms": 2
+      }
+    },
+    "D4 undo -> 1 gym card": {
+      "ok": true
+    },
+    "D5 spoken \"add gym\" (push-to-talk) -> question": {
+      "ok": true,
+      "detail": {
+        "text": "add gym",
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      }
+    },
+    "D5 spoken \"no thanks\" is routed to the buddy as the answer (not a brain dump card) -> skip": {
+      "ok": true,
+      "detail": {
+        "r": {
+          "text": "no thanks",
+          "answer": "skip"
+        },
+        "titles": [
+          "Email Sam about launch",
+          "Finish the pitch deck",
+          "Go to the gym",
+          "Call landlord about sink"
+        ]
+      }
+    },
+    "D5 spoken \"yes add another one\" -> 2 gym cards": {
+      "ok": true,
+      "detail": {
+        "text": "yes add another one",
+        "answer": "add"
+      }
+    },
+    "D6 the question expires after ~20 s, silently (no new line)": {
+      "ok": true,
+      "detail": {
+        "secs": 20.04,
+        "last": {
+          "event": "expired",
+          "titles": [
+            "Gym"
+          ],
+          "at": 1794867159850
+        },
+        "bubble": {
+          "text": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?",
+          "visible": true
+        }
+      }
+    },
+    "D6 a late \"yes\" adds nothing": {
+      "ok": true,
+      "detail": {
+        "r": {
+          "text": "add gym",
+          "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+        }
+      }
+    },
+    "D6 another command drops the question (treated as skip, nothing said about it)": {
+      "ok": true,
+      "detail": {
+        "last": {
+          "event": "superseded",
+          "titles": [
+            "Gym"
+          ],
+          "at": 1794867169869
+        },
+        "bubble": "4 left today: Email Sam about launch, Finish the pitch deck, Go to the gym +1 more."
+      }
+    },
+    "D7 mixed dump: the 2 new items are added right away": {
+      "ok": true,
+      "detail": [
+        "Email Sam about launch",
+        "Finish the pitch deck",
+        "Go to the gym",
+        "Call landlord about sink",
+        "Buy milk",
+        "Water the plants"
+      ]
+    },
+    "D7 one question for the 2 duplicates": {
+      "ok": true,
+      "detail": {
+        "visible": true,
+        "opacity": 1,
+        "hovered": false,
+        "text": "Added 2 new. 2 of these are already on your board: \"Go to the gym\", \"Finish the pitch deck\". Add them anyway?",
+        "tag": "QUESTTY",
+        "chips": [
+          {
+            "label": "Add anyway",
+            "kind": "primary"
+          },
+          {
+            "label": "Skip",
+            "kind": "plain"
+          },
+          {
+            "label": "Show them",
+            "kind": "plain"
+          }
+        ],
+        "box": {
+          "position": [
+            -0.6407678127288818,
+            1.150902271270752,
+            -0.23869718611240387
+          ],
+          "sizePx": [
+            300,
+            252.39999389648438
+          ],
+          "scale": 0.10000000149011612,
+          "corners": [
+            [
+              -0.6407678127288818,
+              1.150902271270752,
+              -0.23869718611240387
+            ],
+            [
+              -0.5894784640041016,
+              1.0413299877308462,
+              -0.20278399791752302
+            ],
+            [
+              -0.5381891152793215,
+              0.9317577041909402,
+              -0.16687080972264218
+            ],
+            [
+              -0.5547313475781583,
+              1.1509022705715557,
+              -0.36156999559722747
+            ],
+            [
+              -0.5034419988533781,
+              1.04132998703165,
+              -0.3256568074023466
+            ],
+            [
+              -0.4521526501285979,
+              0.9317577034917439,
+              -0.2897436192074658
+            ],
+            [
+              -0.46869488242743496,
+              1.1509022698723592,
+              -0.48444280508205106
+            ],
+            [
+              -0.41740553370265476,
+              1.0413299863324532,
+              -0.4485296168871702
+            ],
+            [
+              -0.3661161849778745,
+              0.9317577027925474,
+              -0.41261642869228937
+            ]
+          ]
+        }
+      }
+    },
+    "D7 Add anyway -> both duplicates added (one Undo for both)": {
+      "ok": true,
+      "detail": [
+        "Email Sam about launch",
+        "Finish the pitch deck",
+        "Go to the gym",
+        "Call landlord about sink",
+        "Buy milk",
+        "Water the plants",
+        "Go to the gym",
+        "Finish pitch deck"
+      ]
+    },
+    "D7 Undo -> back to one of each": {
+      "ok": true
+    },
+    "D8 AI path: the fresh add runs, the duplicate is held, the reply is the app's own (not the AI's \"Added Gym\")": {
+      "ok": true,
+      "detail": {
+        "reply": "Added \"Call mum\". You already have \"Go to the gym\" (Today, floating on your right). Add another one?",
+        "held": [
+          {
+            "title": "Gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ]
+      }
+    },
+    "D8 \"skip\" -> no second gym": {
+      "ok": true
+    },
+    "D9 talk session live (fake peer)": {
+      "ok": true
+    },
+    "D9 talk \"Add gym.\" -> no card, question spoken through the commentary": {
+      "ok": true,
+      "detail": {
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?",
+        "comm": "App result (say it briefly, in your own words): You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      }
+    },
+    "D9 talk \"Yes.\" -> the follow-up answers it: 2 gym cards": {
+      "ok": true,
+      "detail": {
+        "id": "item_2",
+        "text": "Yes.",
+        "reply": "Added \"Gym\"."
+      }
+    },
+    "D9 talk undo -> 1 gym card": {
+      "ok": true,
+      "detail": {
+        "id": "item_3",
+        "text": "Undo that.",
+        "reply": "Undone."
+      }
+    },
+    "D9 talk \"No.\" -> skipped, still 1 gym card": {
+      "ok": true,
+      "detail": {
+        "id": "item_5",
+        "text": "No.",
+        "reply": "Okay, skipped it."
+      }
+    },
+    "D9 the same add delegated twice within 5 s runs once (1 card, no duplicate question), logged": {
+      "ok": true,
+      "detail": {
+        "plumbers": 1,
+        "runs": 1,
+        "dropped": [
+          {
+            "text": "Add call the plumber.",
+            "at": 1794867341995,
+            "dropped": true,
+            "sinceLastMs": 2
+          }
+        ],
+        "console": [
+          "[buddy] duplicate question superseded: treated as Skip",
+          "[buddy] duplicate Live delegation dropped: Add call the plumber."
+        ]
+      }
+    },
+    "D9 both delegations were still answered (commentary for each id)": {
+      "ok": true,
+      "detail": 7
+    },
+    "D9 a move heard twice runs once, card flush on the desk": {
+      "ok": true,
+      "detail": {
+        "runs": 1,
+        "fit": {
+          "cardId": "q-mwjto8kw-gofdf",
+          "title": "Call the plumber",
+          "surfaceId": "room-1",
+          "kind": "desk",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.131,
+          "upDotGravity": null
+        }
+      }
+    },
+    "D10 offline (fetch fails): \"add buy milk\" asks, tagged OFFLINE": {
+      "ok": true,
+      "detail": {
+        "mode": "offline",
+        "tag": "QUESTTY  (OFFLINE)",
+        "text": "You already have \"Buy milk\" (Today, floating in front of you). Add another one?"
+      }
+    },
+    "D10 offline \"nope\" -> skip": {
+      "ok": true
+    },
+    "D10 offline dump (local split): fresh items added, the duplicates asked about once": {
+      "ok": true,
+      "detail": {
+        "added": [
+          "Fix the bike"
+        ],
+        "text": "Added 1 new. 2 of these are already on your board: \"Call mum\", \"Water the plants\". Add them anyway?"
+      }
+    },
+    "D10 offline \"add them anyway\" -> both added": {
+      "ok": true,
+      "detail": [
+        "Email Sam about launch",
+        "Finish the pitch deck",
+        "Go to the gym",
+        "Call landlord about sink",
+        "Buy milk",
+        "Water the plants",
+        "Call mum",
+        "Call the plumber",
+        "Fix the bike",
+        "Call mum",
+        "Water the plants"
+      ]
+    }
+  },
+  "durationS": 626.3,
+  "final": {
+    "dupLog": [
+      {
+        "event": "asked",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794866886204
+      },
+      {
+        "event": "add",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794866908147
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Go to the gym"
+        ],
+        "at": 1794866934070
+      },
+      {
+        "event": "skip",
+        "titles": [
+          "Go to the gym"
+        ],
+        "at": 1794866946777
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794866960552
+      },
+      {
+        "event": "show",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794866974132
+      },
+      {
+        "event": "add",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794866989804
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867027227
+      },
+      {
+        "event": "skip",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867060255
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867097432
+      },
+      {
+        "event": "add",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867129868
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867139810
+      },
+      {
+        "event": "expired",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867159850
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867166752
+      },
+      {
+        "event": "superseded",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867169869
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Go to the gym",
+          "Finish pitch deck"
+        ],
+        "at": 1794867205942
+      },
+      {
+        "event": "add",
+        "titles": [
+          "Go to the gym",
+          "Finish pitch deck"
+        ],
+        "at": 1794867228171
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867238243
+      },
+      {
+        "event": "skip",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867243196
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867267710
+      },
+      {
+        "event": "add",
+        "titles": [
+          "Gym"
+        ],
+        "at": 1794867285377
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Go to the gym"
+        ],
+        "at": 1794867315290
+      },
+      {
+        "event": "skip",
+        "titles": [
+          "Go to the gym"
+        ],
+        "at": 1794867321822
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Buy milk"
+        ],
+        "at": 1794867365925
+      },
+      {
+        "event": "skip",
+        "titles": [
+          "Buy milk"
+        ],
+        "at": 1794867378270
+      },
+      {
+        "event": "asked",
+        "titles": [
+          "Call mum",
+          "Water the plants"
+        ],
+        "at": 1794867413445
+      },
+      {
+        "event": "add",
+        "titles": [
+          "Call mum",
+          "Water the plants"
+        ],
+        "at": 1794867419456
+      }
+    ],
+    "delegations": [
+      {
+        "text": "Add gym.",
+        "at": 1794867266791,
+        "dropped": false,
+        "sinceLastMs": null
+      },
+      {
+        "text": "Yes.",
+        "at": 1794867285376,
+        "dropped": false,
+        "sinceLastMs": 18585
+      },
+      {
+        "text": "Undo that.",
+        "at": 1794867302725,
+        "dropped": false,
+        "sinceLastMs": 17350
+      },
+      {
+        "text": "Add go to the gym.",
+        "at": 1794867315289,
+        "dropped": false,
+        "sinceLastMs": 12563
+      },
+      {
+        "text": "No.",
+        "at": 1794867321822,
+        "dropped": false,
+        "sinceLastMs": 6533
+      },
+      {
+        "text": "Add call the plumber.",
+        "at": 1794867340040,
+        "dropped": false,
+        "sinceLastMs": 18218
+      },
+      {
+        "text": "Add call the plumber.",
+        "at": 1794867341995,
+        "dropped": true,
+        "sinceLastMs": 2
+      },
+      {
+        "text": "Move the plumber card to the desk.",
+        "at": 1794867355155,
+        "dropped": false,
+        "sinceLastMs": 15116
+      },
+      {
+        "text": "move the plumber card to the desk",
+        "at": 1794867355173,
+        "dropped": true,
+        "sinceLastMs": 9
+      }
+    ],
+    "runs": [
+      {
+        "text": "add gym",
+        "mode": "offline",
+        "held": [
+          {
+            "title": "Gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      },
+      {
+        "text": "Add anyway",
+        "mode": "local",
+        "answer": "add",
+        "reply": "Added \"Gym\"."
+      },
+      {
+        "text": "add go to the gym",
+        "mode": "offline",
+        "held": [
+          {
+            "title": "Go to the gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      },
+      {
+        "text": "Skip",
+        "mode": "local",
+        "answer": "skip",
+        "reply": "Okay, skipped it."
+      },
+      {
+        "text": "add gym",
+        "mode": "offline",
+        "held": [
+          {
+            "title": "Gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      },
+      {
+        "text": "Show it",
+        "mode": "local",
+        "answer": "show",
+        "reply": "\"Go to the gym\" is floating on your right. Add another one?"
+      },
+      {
+        "text": "yes",
+        "mode": "local",
+        "answer": "add",
+        "reply": "Added \"Gym\"."
+      },
+      {
+        "text": "add gym",
+        "mode": "offline",
+        "held": [
+          {
+            "title": "Gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      },
+      {
+        "text": "no thanks",
+        "mode": "local",
+        "answer": "skip",
+        "reply": "Okay, skipped it."
+      },
+      {
+        "text": "add gym",
+        "mode": "offline",
+        "held": [
+          {
+            "title": "Gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      },
+      {
+        "text": "yes add another one",
+        "mode": "local",
+        "answer": "add",
+        "reply": "Added \"Gym\"."
+      },
+      {
+        "text": "add gym",
+        "mode": "offline",
+        "held": [
+          {
+            "title": "Gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      },
+      {
+        "text": "add gym",
+        "mode": "offline",
+        "held": [
+          {
+            "title": "Gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      },
+      {
+        "text": "what's left today",
+        "mode": "offline",
+        "reply": "4 left today: Email Sam about launch, Finish the pitch deck, Go to the gym +1 more."
+      },
+      {
+        "text": "(brain dump)",
+        "mode": "local",
+        "held": [
+          {
+            "title": "Go to the gym",
+            "match": "q-mwjte641-sa260"
+          },
+          {
+            "title": "Finish pitch deck",
+            "match": "q-mwjte62y-gsm9m"
+          }
+        ],
+        "reply": "Added 2 new. 2 of these are already on your board: \"Go to the gym\", \"Finish the pitch deck\". Add them anyway?"
+      },
+      {
+        "text": "Add anyway",
+        "mode": "local",
+        "answer": "add",
+        "reply": "Added \"Go to the gym\" for today. Added \"Finish pitch deck\" for today."
+      },
+      {
+        "text": "add gym and call mum",
+        "mode": "ai",
+        "held": [
+          {
+            "title": "Gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "reply": "Added \"Call mum\". You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      },
+      {
+        "text": "skip",
+        "mode": "local",
+        "answer": "skip",
+        "reply": "Okay, skipped it."
+      },
+      {
+        "text": "Add gym.",
+        "mode": "offline",
+        "held": [
+          {
+            "title": "Gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      },
+      {
+        "text": "Yes.",
+        "mode": "local",
+        "answer": "add",
+        "reply": "Added \"Gym\"."
+      },
+      {
+        "text": "Add go to the gym.",
+        "mode": "offline",
+        "held": [
+          {
+            "title": "Go to the gym",
+            "match": "q-mwjte641-sa260"
+          }
+        ],
+        "reply": "You already have \"Go to the gym\" (Today, floating on your right). Add another one?"
+      },
+      {
+        "text": "No.",
+        "mode": "local",
+        "answer": "skip",
+        "reply": "Okay, skipped it."
+      },
+      {
+        "text": "Add call the plumber.",
+        "mode": "offline",
+        "reply": "Added \"Call the plumber\"."
+      },
+      {
+        "text": "Move the plumber card to the desk.",
+        "mode": "offline",
+        "reply": "Moved \"Call the plumber\" to your desk."
+      },
+      {
+        "text": "add buy milk",
+        "mode": "offline",
+        "held": [
+          {
+            "title": "Buy milk",
+            "match": "q-mwjtlbmg-ilr5k"
+          }
+        ],
+        "reply": "You already have \"Buy milk\" (Today, floating in front of you). Add another one?"
+      },
+      {
+        "text": "nope",
+        "mode": "local",
+        "answer": "skip",
+        "reply": "Okay, skipped it."
+      },
+      {
+        "text": "(brain dump)",
+        "mode": "local",
+        "held": [
+          {
+            "title": "Call mum",
+            "match": "q-mwjtm0k2-cwxy8"
+          },
+          {
+            "title": "Water the plants",
+            "match": "q-mwjtlbn6-1ddpr"
+          }
+        ],
+        "reply": "Added 1 new. 2 of these are already on your board: \"Call mum\", \"Water the plants\". Add them anyway?"
+      },
+      {
+        "text": "add them anyway",
+        "mode": "local",
+        "answer": "add",
+        "reply": "Added \"Call mum\". Added \"Water the plants\"."
+      }
+    ]
+  },
+  "cards": [
+    {
+      "id": "q-mwjte61u-xzemy",
+      "title": "Email Sam about launch",
+      "category": "today",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjte62y-gsm9m",
+      "title": "Finish the pitch deck",
+      "category": "today",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjte641-sa260",
+      "title": "Go to the gym",
+      "category": "today",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjte652-me0do",
+      "title": "Call landlord about sink",
+      "category": "today",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjtlbmg-ilr5k",
+      "title": "Buy milk",
+      "category": "today",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjtlbn6-1ddpr",
+      "title": "Water the plants",
+      "category": "before-leave",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjtm0k2-cwxy8",
+      "title": "Call mum",
+      "category": "unsorted",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjto8kw-gofdf",
+      "title": "Call the plumber",
+      "category": "unsorted",
+      "state": "pinned"
+    },
+    {
+      "id": "q-mwjtprr6-9z4wi",
+      "title": "Fix the bike",
+      "category": "unsorted",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjtpwem-8de9d",
+      "title": "Call mum",
+      "category": "unsorted",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjtpwfj-h2ewi",
+      "title": "Water the plants",
+      "category": "unsorted",
+      "state": "floating"
+    }
+  ],
+  "summary": {
+    "pass": 35,
+    "fail": 0
+  }
+}
