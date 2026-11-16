@@ -5,6 +5,8 @@ export const FLOAT_CARD_SCALE = 0.09;
 /** Card size in UIKit units at scale 1 (matches the card hitbox). */
 export const CARD_UNITS_W = 2.6;
 export const CARD_UNITS_H = 2.83;
+/** Depth of the card's grab hitbox (card units; was 0.5 before PR 5). */
+export const CARD_HIT_DEPTH = 0.14;
 
 export type CardPose = { position: Vector3; quaternion: Quaternion };
 

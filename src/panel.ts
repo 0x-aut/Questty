@@ -16,6 +16,15 @@ const PANEL_DROP = 0.4;
 const PANEL_SCALE = 0.1;
 
 let collapseHandler: ((collapsed: boolean) => void) | undefined;
+let pillOpenBlockedUntil = 0;
+
+/**
+ * A count chip inside the pill was pinched: that pinch highlights cards and
+ * must not also open the panel (the pill's own click sees the same pinch).
+ */
+export function suppressPillOpen(ms = 400): void {
+  pillOpenBlockedUntil = performance.now() + ms;
+}
 
 /** Collapse the home panel to its small pill (true) or open it again (false). */
 export function setWelcomeCollapsed(collapsed: boolean): void {
@@ -48,7 +57,10 @@ export class PanelSystem extends createSystem({}) {
     };
     collapseHandler = apply;
     const onCollapse = () => apply(true);
-    const onPill = () => apply(false);
+    const onPill = () => {
+      if (performance.now() < pillOpenBlockedUntil) return;
+      apply(false);
+    };
     collapse?.addEventListener('click', onCollapse);
     pill?.addEventListener('click', onPill);
     this.cleanupFuncs.push(

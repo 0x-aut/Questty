@@ -2,7 +2,8 @@ import { createSystem, Matrix4, Quaternion, UIKit, UIKitMLAsset, Vector3 } from 
 import { allowFloatingFocus, createQuestCard, setQuestCardState, showFocusActionFor } from './quest-card.js';
 import { setWelcomeCollapsed } from './panel.js';
 import { setCardActionMode } from './session-events.js';
-import { splitQuests, type QuestSuggestion } from './splitQuests.js';
+import { inferWhenFromTranscript, splitQuests, type QuestSuggestion } from './splitQuests.js';
+import { isCategoryId, UNSORTED } from './category-config.js';
 import { startVoiceCapture, type VoiceError, type VoiceSession } from './voice.js';
 import { FLOAT_CARD_SCALE, homeForward, nextFreeSlot, type CardPose } from './card-layout.js';
 import { floatingCardPositions } from './card-arrange.js';
@@ -303,7 +304,15 @@ export class QuestInputSystem extends createSystem({
       ) {
         throw new Error('Quest API returned invalid quests');
       }
-      quests = payload.quests;
+      // Optional `when` (PR 5): keep a known category from the AI; otherwise
+      // read the timing words in the transcript ourselves. Older servers that
+      // send no `when` still work.
+      quests = payload.quests.map((quest) => {
+        const fromAi = isCategoryId(quest.when) && quest.when !== UNSORTED ? quest.when : null;
+        const when = fromAi ?? inferWhenFromTranscript(quest.title, text);
+        const { when: _ignored, ...rest } = quest;
+        return when !== null ? { ...rest, when } : rest;
+      });
     } catch (error) {
       // No AI (no key, offline, bad reply): split the sentence locally instead.
       console.warn('[quest] Falling back to local split.', error);
@@ -360,6 +369,7 @@ export class QuestInputSystem extends createSystem({
       xp: quest.xp,
       position: pose.position,
       quaternion: pose.quaternion,
+      category: quest.when,
     });
   }
 

@@ -1,0 +1,36 @@
+<!--
+  "Before you go" toast (PR 5), shown near the home panel when the user
+  stands up and has Before-I-leave cards. Element ids: cat-toast, cat-toast-text.
+-->
+<style>
+  .toast {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 14px;
+    padding-right: 18px;
+    border-radius: 20px;
+    background-color: #f3eee3;
+    border-width: 1px;
+    border-color: #cfc7b5;
+  }
+
+  .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    background-color: #7f9a62;
+  }
+
+  .text {
+    color: #2b2a27;
+    font-size: 17px;
+    font-weight: 700;
+  }
+</style>
+<div id="cat-toast" class="toast">
+  <div class="dot"></div>
+  <span id="cat-toast-text" class="text">Before you go: 0 things</span>
+</div>

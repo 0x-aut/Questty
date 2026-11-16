@@ -1,0 +1,80 @@
+<!--
+  Time category picker (PR 5): a compact segmented list that opens next to a
+  card when its chip is pinched. Pinch an option to set the card's category.
+  Element ids used by code: cat-picker, cat-picker-title,
+  cat-opt-<slot> (slots: today, later, before-leave, unsorted, custom),
+  cat-opt-<slot>-dot, cat-opt-<slot>-label.
+-->
+<style>
+  .picker {
+    flex-direction: column;
+    gap: 6px;
+    width: 204px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    border-radius: 18px;
+    background-color: #f3eee3;
+    border-width: 1px;
+    border-color: #cfc7b5;
+  }
+
+  .title {
+    color: #5c564b;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    margin-left: 6px;
+  }
+
+  .opt {
+    flex-direction: row;
+    align-items: center;
+    gap: 9px;
+    height: 42px;
+    padding-left: 12px;
+    padding-right: 10px;
+    border-radius: 12px;
+    background-color: #e7e0d0;
+    border-width: 1px;
+    border-color: #e7e0d0;
+    cursor: pointer;
+  }
+
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    background-color: #9a9488;
+  }
+
+  .label {
+    color: #2b2a27;
+    font-size: 16px;
+    font-weight: 700;
+  }
+</style>
+<div id="cat-picker" class="picker">
+  <span id="cat-picker-title" class="title">WHEN?</span>
+  <div id="cat-opt-today" class="opt">
+    <div id="cat-opt-today-dot" class="dot" style="background-color: #c7784f"></div>
+    <span id="cat-opt-today-label" class="label">Today</span>
+  </div>
+  <div id="cat-opt-later" class="opt">
+    <div id="cat-opt-later-dot" class="dot" style="background-color: #6f8fb3"></div>
+    <span id="cat-opt-later-label" class="label">Later</span>
+  </div>
+  <div id="cat-opt-before-leave" class="opt">
+    <div id="cat-opt-before-leave-dot" class="dot" style="background-color: #7f9a62"></div>
+    <span id="cat-opt-before-leave-label" class="label">Before I leave</span>
+  </div>
+  <div id="cat-opt-unsorted" class="opt">
+    <div id="cat-opt-unsorted-dot" class="dot"></div>
+    <span id="cat-opt-unsorted-label" class="label">Unsorted</span>
+  </div>
+  <div id="cat-opt-custom" class="opt" style="display: none">
+    <div id="cat-opt-custom-dot" class="dot"></div>
+    <span id="cat-opt-custom-label" class="label">Custom</span>
+  </div>
+</div>

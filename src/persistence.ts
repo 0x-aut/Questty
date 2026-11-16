@@ -60,6 +60,7 @@ export async function restoreSavedCards(): Promise<number> {
         xp: card.xp,
         position: card.pose.position,
         restored: true,
+        category: card.category,
       });
       setCardWorldPose(
         entity,
@@ -114,6 +115,14 @@ export class CardPersistenceSystem extends createSystem({
       } else if (type === 'floated') {
         this.save(entity, null);
         this.dropAnchor(id);
+      } else if (type === 'categorized') {
+        const record = records.get(id);
+        if (record !== undefined) {
+          record.category = entity.getValue(QuestCard, 'category') as string;
+          saveCards(records.values());
+        } else {
+          this.save(entity, null);
+        }
       } else if (type === 'completed' || type === 'removed') {
         this.entities.delete(id);
         this.pendingAnchors.delete(id);
@@ -217,6 +226,7 @@ export class CardPersistenceSystem extends createSystem({
       zoneId: zone === 'wall' || zone === 'desk' || zone === 'door' ? zone : '',
       pose: { position: v3(position), quaternion: q4(quaternion), scale },
       anchor: previous?.anchor,
+      category: entity.getValue(QuestCard, 'category') as string,
     };
     if (surfaceId !== null) {
       // Re-read after the flight lands so the pose and the plane offset are final.
