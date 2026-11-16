@@ -1,96 +1,138 @@
 import {
-  AudioUtils,
   BufferGeometry,
   CircleGeometry,
+  Color,
   createSystem,
   DoubleSide,
   Group,
   Mesh,
   MeshBasicMaterial,
   Quaternion,
-  TorusGeometry,
+  RingGeometry,
   UIKit,
   UIKitMLAsset,
   Vector3,
   type Entity,
 } from '@iwsdk/core';
 import { QuestCard } from './quest-component.js';
-import { idleCardHint, setQuestCardState, tweenQuestCardTo } from './quest-card.js';
+import {
+  createQuestCard,
+  idleCardHint,
+  setQuestCardState,
+  showFocusActionFor,
+  tweenQuestCardTo,
+} from './quest-card.js';
 import {
   setCardActionMode,
   setCardCompleter,
   setCardNudger,
+  setFocusCommander,
   setFocusStarter,
+  type FocusCommand,
 } from './session-events.js';
 import {
-  advanceSession,
+  advanceBreak,
   completeFocus,
-  FOCUS_MS,
+  endFocusEarly,
+  extendFocus,
+  focusExpired,
+  focusRemainingMs,
+  formatClock,
   IDLE_SESSION,
+  pauseFocus,
+  resumeFocus,
   skipBreak,
   startFocus,
   type SessionState,
 } from './session.js';
 import { awardXp, getProgress, type ProgressState } from './progress.js';
 import { syncRoomGrowth } from './room-growth.js';
+import {
+  BLUR_LEVELS,
+  clearFocusTimer,
+  focusNow,
+  loadBlurLevel,
+  loadFocusTimer,
+  playChime,
+  primeChime,
+  saveBlurLevel,
+  saveFocusTimer,
+  type BlurLevel,
+} from './focus-store.js';
+import { createFocusShell, type FocusShell } from './focus-shell.js';
+import { CARD_UNITS_H, CARD_UNITS_W } from './card-layout.js';
+import { setCardWorldPose } from './surfaces.js';
 
-const FOCUS_FADE_MS = 3_000;
-const BREAK_FADE_MS = 2_000;
+const FADE_MS = 1_000;
+const PAUSED_FADE_FACTOR = 0.4;
+const BLUR_OPACITY: Record<BlurLevel, number> = { off: 0, soft: 0.6, strong: 0.9 };
 const TROPHY_SHELF_ORIGIN = new Vector3(0.65, 0, -1.2);
 const TROPHY_SHELF_CARD_POSITION = new Vector3(0.65, 1.12, -1.2);
-const TIMER_RADIUS = 0.25;
+const TIMER_RADIUS = 0.15;
 const TIMER_SEGMENTS = 96;
-const TIMER_DISTANCE = 1.2;
-const TIMER_FRONT = new Vector3(0, 0, 1);
+/** Seated comfort: a little under arm's length from the eyes. */
+const TIMER_DISTANCE = 0.85;
+/** Timer elevation limits (radians): always a little below the eye line. */
+const TIMER_MIN_ELEVATION = -0.44;
+const TIMER_MAX_ELEVATION = -0.1;
+const TIMER_MARGIN = 0.04;
+const TIMER_TEXT_SCALE = 0.1;
+const NOMINAL_HEAD = new Vector3(0, 1.3, 0);
+const RING_RUNNING = new Color(0xf0d787);
+const RING_PAUSED = new Color(0x9aa6ad);
 
 type TimerDisk = {
   group: Group;
-  pie: CircleGeometry;
+  ring: RingGeometry;
+  ringMaterial: MeshBasicMaterial;
   geometries: BufferGeometry[];
   materials: MeshBasicMaterial[];
 };
 
 function createTimerDisk(): TimerDisk {
   const group = new Group();
-  const baseGeometry = new CircleGeometry(TIMER_RADIUS, TIMER_SEGMENTS);
-  const pie = new CircleGeometry(TIMER_RADIUS - 0.006, TIMER_SEGMENTS);
-  const ringGeometry = new TorusGeometry(TIMER_RADIUS, 0.006, 8, TIMER_SEGMENTS);
-  pie.setDrawRange(0, TIMER_SEGMENTS * 3);
-
+  group.name = 'Focus Timer';
+  const baseGeometry = new CircleGeometry(TIMER_RADIUS, 64);
+  const trackGeometry = new RingGeometry(TIMER_RADIUS - 0.011, TIMER_RADIUS, TIMER_SEGMENTS, 1);
+  const ring = new RingGeometry(TIMER_RADIUS - 0.011, TIMER_RADIUS, TIMER_SEGMENTS, 1);
   const baseMaterial = new MeshBasicMaterial({
-    color: 0x10212b,
+    color: 0x0f1d26,
     transparent: true,
-    opacity: 0.42,
+    opacity: 0.86,
     depthWrite: false,
     side: DoubleSide,
   });
-  const pieMaterial = new MeshBasicMaterial({
-    color: 0xe8d798,
+  const trackMaterial = new MeshBasicMaterial({
+    color: 0xffffff,
     transparent: true,
-    opacity: 0.96,
+    opacity: 0.16,
     depthWrite: false,
     side: DoubleSide,
   });
   const ringMaterial = new MeshBasicMaterial({
-    color: 0xfff5cf,
+    color: RING_RUNNING.clone(),
     transparent: true,
-    opacity: 0.9,
+    opacity: 0.98,
     depthWrite: false,
     side: DoubleSide,
   });
   const base = new Mesh(baseGeometry, baseMaterial);
-  const fill = new Mesh(pie, pieMaterial);
-  const ring = new Mesh(ringGeometry, ringMaterial);
-  fill.position.z = 0.002;
-  ring.position.z = 0.004;
-  group.add(base, fill, ring);
+  const track = new Mesh(trackGeometry, trackMaterial);
+  const fill = new Mesh(ring, ringMaterial);
+  // Start the progress arc at 12 o'clock; it shrinks as time runs out.
+  track.position.z = 0.002;
+  fill.position.z = 0.003;
+  fill.rotation.z = Math.PI / 2;
+  for (const mesh of [base, track, fill]) mesh.renderOrder = 950;
+  group.add(base, track, fill);
   group.visible = false;
   group.userData.iwsdkPreviewBounds = 'exclude';
   return {
     group,
-    pie,
-    geometries: [baseGeometry, pie, ringGeometry],
-    materials: [baseMaterial, pieMaterial, ringMaterial],
+    ring,
+    ringMaterial,
+    geometries: [baseGeometry, trackGeometry, ring],
+    materials: [baseMaterial, trackMaterial, ringMaterial],
   };
 }
 
@@ -101,29 +143,34 @@ export class SessionSystem extends createSystem({}) {
   private sessionStatusText?: UIKit.Text;
   private skipButton?: UIKit.Text;
   private progressStatus?: UIKit.Text;
-  private transitionTimer: number | undefined;
-  private countdownTimer: number | undefined;
-  private domeMaterial: MeshBasicMaterial | undefined;
-  private domeEntity: Entity | undefined;
+  private tickTimer: number | undefined;
   private timerDisk: TimerDisk | undefined;
   private timerEntity: Entity | undefined;
-  private readonly timerHeadPosition = new Vector3();
-  private readonly timerPosition = new Vector3();
-  private readonly timerDirection = new Vector3();
-  private readonly timerNormal = new Vector3();
-  private readonly timerRotation = new Quaternion();
-  private lastPieSegment = -1;
+  private timerPanel: UIKitMLAsset | undefined;
+  private shell: FocusShell | undefined;
+  private shellEntity: Entity | undefined;
+  private blurLevel: BlurLevel = loadBlurLevel();
+  private readonly headPosition = new Vector3();
+  private readonly headForward = new Vector3();
+  private readonly tmpA = new Vector3();
+  private readonly tmpB = new Vector3();
+  private readonly tmpC = new Vector3();
+  private readonly tmpQ = new Quaternion();
+  private readonly timerFront = new Vector3(0, 0, 1);
+  private lastRingSegments = -1;
+  private lastClockSecond = -1;
+  private lastClockPaused = false;
   private trophyShelfEntity: Entity | undefined;
   private trophyShelfLoading = false;
   private pendingNudgeFor: Entity | undefined;
   private nudgeController: AbortController | undefined;
   private progress: ProgressState = getProgress();
-  private domeDestroyed = false;
+  private destroyed = false;
   private fadeFrom = 0;
   private fadeTarget = 0;
   private fadeStartedAt = 0;
-  private fadeDuration = 0;
   private fadeAnimating = false;
+  private shellOpacity = 0;
 
   init(): void {
     const panel = this.world.getSceneObject<UIKitMLAsset>('welcome-panel');
@@ -133,31 +180,62 @@ export class SessionSystem extends createSystem({}) {
     this.progressStatus = panel?.getElementById<UIKit.Text>('progress-status') ?? undefined;
     this.updateProgressStatus();
     void syncRoomGrowth(this.world, this.progress.level);
-    setFocusStarter((entity) => this.beginFocus(entity));
-    setCardCompleter((entity) => this.completeActiveCard(entity));
+    setFocusStarter((entity, minutes) => this.beginFocus(entity, minutes));
+    setCardCompleter((entity) => this.finishFocus(entity, 'manual'));
     setCardNudger((entity) => void this.requestNudge(entity));
-    void this.loadDome();
-    this.loadTimerDisk();
+    setFocusCommander((entity, command) => this.onCommand(entity, command));
+    focusRestorer = () => this.restoreSavedFocus();
+    this.createShell();
+    void this.loadTimer();
 
     const onSkip = () => this.skipCurrentBreak();
     this.skipButton?.addEventListener('click', onSkip);
+    // Deadlines are checked every frame and, as a fallback when no frames are
+    // drawn (tab hidden), once a second. Both read the wall clock.
+    this.tickTimer = window.setInterval(() => this.tick(), 1_000);
+    const xrManager = this.world.renderer.xr;
+    const onSessionStart = () => {
+      window.setTimeout(() => {
+        if (this.state.phase === 'focus') this.placeFocusVisuals();
+      }, 900);
+    };
+    xrManager.addEventListener('sessionstart', onSessionStart);
+
+    if (import.meta.env.DEV) {
+      const w = window as unknown as { __questty?: Record<string, unknown> };
+      w.__questty = {
+        ...w.__questty,
+        focusState: () => ({
+          ...this.state,
+          remainingMs: focusRemainingMs(this.state, focusNow()),
+          blur: this.blurLevel,
+          shellOpacity: this.shellOpacity,
+          shellTarget: this.fadeTarget,
+          shellAt: this.shell?.mesh.position.toArray(),
+          shellWindows: this.shell ? [this.shell.material.uniforms.uWin0.value.toArray(), this.shell.material.uniforms.uWin1.value.toArray()] : null,
+          timerVisible: this.timerDisk?.group.visible ?? false,
+          timerPosition: this.timerDisk?.group.position.toArray(),
+          clock: this.timerPanel?.getElementById('timer-clock')?.properties?.peek?.()?.text,
+        }),
+      };
+    }
 
     this.cleanupFuncs.push(() => {
       setFocusStarter(undefined);
       setCardCompleter(undefined);
       setCardNudger(undefined);
-      this.domeDestroyed = true;
-      if (this.transitionTimer !== undefined) window.clearTimeout(this.transitionTimer);
-      if (this.countdownTimer !== undefined) window.clearTimeout(this.countdownTimer);
+      setFocusCommander(undefined);
+      focusRestorer = undefined;
+      this.destroyed = true;
+      xrManager.removeEventListener('sessionstart', onSessionStart);
+      if (this.tickTimer !== undefined) window.clearInterval(this.tickTimer);
+      this.tickTimer = undefined;
       this.nudgeController?.abort();
       this.nudgeController = undefined;
       this.skipButton?.removeEventListener('click', onSkip);
-      this.transitionTimer = undefined;
-      this.countdownTimer = undefined;
-      this.domeEntity?.dispose();
-      this.domeEntity = undefined;
-      this.domeMaterial?.dispose();
-      this.domeMaterial = undefined;
+      this.shellEntity?.dispose();
+      this.shell?.dispose();
+      this.shell = undefined;
       this.timerEntity?.dispose();
       this.timerEntity = undefined;
       if (this.timerDisk !== undefined) {
@@ -171,85 +249,159 @@ export class SessionSystem extends createSystem({}) {
   }
 
   update(): void {
-    if (this.fadeAnimating && this.domeMaterial !== undefined) {
-      const progress = Math.min(
-        1,
-        Math.max(0, (performance.now() - this.fadeStartedAt) / this.fadeDuration),
-      );
-      this.domeMaterial.opacity = this.fadeFrom + (this.fadeTarget - this.fadeFrom) * progress;
-      if (progress >= 1) this.fadeAnimating = false;
+    if (this.fadeAnimating) {
+      const t = Math.min(1, Math.max(0, (performance.now() - this.fadeStartedAt) / FADE_MS));
+      const eased = t * t * (3 - 2 * t);
+      this.shellOpacity = this.fadeFrom + (this.fadeTarget - this.fadeFrom) * eased;
+      this.shell?.setOpacity(this.shellOpacity);
+      if (t >= 1) this.fadeAnimating = false;
     }
-    if (this.state.phase === 'focus' && this.timerDisk !== undefined) {
-      const remaining = Math.max(
-        0,
-        Math.min(1, (this.state.endsAt - Date.now()) / FOCUS_MS),
-      );
-      const segments = Math.floor(remaining * TIMER_SEGMENTS);
-      if (segments !== this.lastPieSegment) {
-        this.timerDisk.pie.setDrawRange(0, segments * 3);
-        this.lastPieSegment = segments;
-      }
-    }
+    if (this.state.phase === 'focus') this.refreshTimer(false);
+    else if (this.state.phase === 'break' && focusNow() >= this.state.endsAt) this.tick();
   }
 
-  private beginFocus(entity: Entity): void {
+  // ---- Focus lifecycle -------------------------------------------------
+
+  private beginFocus(entity: Entity, minutes: number): boolean {
     const zoneId = entity.getValue(QuestCard, 'zoneId') as string;
-    if (zoneId.length === 0 || this.state.phase !== 'idle') return;
-
+    if (zoneId.length === 0 || this.state.phase !== 'idle') return false;
+    primeChime(); // inside the pinch, so the completion chime may play later
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
-    const title = entity.getValue(QuestCard, 'title') as string;
-    this.state = startFocus(this.state, cardId, Date.now());
-    if (this.state.phase !== 'focus') return;
+    this.state = startFocus(this.state, cardId, focusNow(), minutes * 60_000);
+    if (this.state.phase !== 'focus') return false;
     this.activeCard = entity;
-    setQuestCardState(entity, 'Focus started');
-    setCardActionMode(cardId, 'done');
-    this.placeTimerDisk();
-    this.fadeTo(1, FOCUS_FADE_MS);
-    this.updateFocusCountdown(title);
-    this.scheduleTransition();
+    setQuestCardState(entity, `Focusing - ${minutes} min`);
+    setCardActionMode(cardId, 'done', { paused: false, blur: this.blurLevel });
+    this.placeFocusVisuals();
+    this.applyFade();
+    this.refreshTimer(true);
+    this.persist();
+    return true;
   }
 
-  private scheduleTransition(): void {
-    if (this.transitionTimer !== undefined) window.clearTimeout(this.transitionTimer);
-    if (this.state.phase === 'idle') {
-      this.transitionTimer = undefined;
+  private onCommand(entity: Entity, command: FocusCommand): void {
+    if (this.state.phase !== 'focus' || this.activeCard !== entity) return;
+    const now = focusNow();
+    const cardId = entity.getValue(QuestCard, 'cardId') as string;
+    if (command === 'pause-toggle') {
+      const paused = this.state.pausedRemainingMs !== null;
+      this.state = paused ? resumeFocus(this.state, now) : pauseFocus(this.state, now);
+      setQuestCardState(entity, paused ? 'Focusing' : 'Paused - pinch Resume');
+    } else if (command === 'extend') {
+      this.state = extendFocus(this.state, now);
+    } else if (command === 'end') {
+      this.endEarly(entity);
       return;
+    } else if (command === 'blur') {
+      const next = BLUR_LEVELS[(BLUR_LEVELS.indexOf(this.blurLevel) + 1) % BLUR_LEVELS.length];
+      this.blurLevel = next;
+      saveBlurLevel(next);
     }
-    this.transitionTimer = window.setTimeout(
-      () => this.advance(),
-      Math.max(0, this.state.endsAt - Date.now()),
-    );
+    if (this.state.phase !== 'focus') return;
+    setCardActionMode(cardId, 'done', {
+      paused: this.state.pausedRemainingMs !== null,
+      blur: this.blurLevel,
+    });
+    this.applyFade();
+    this.refreshTimer(true);
+    this.persist();
   }
 
-  private advance(): void {
-    this.transitionTimer = undefined;
-    const previous = this.state;
-    const next = advanceSession(previous, Date.now());
-    if (next === previous) {
-      this.scheduleTransition();
-      return;
-    }
-    this.state = next;
-    if (next.phase === 'break') {
-      this.enterBreak();
-    } else {
-      if (this.countdownTimer !== undefined) window.clearTimeout(this.countdownTimer);
-      this.countdownTimer = undefined;
-      if (this.activeCard !== undefined) {
-        const zoneId = this.activeCard.getValue(QuestCard, 'zoneId') as string;
-        const cardId = this.activeCard.getValue(QuestCard, 'cardId') as string;
-        setQuestCardState(
-          this.activeCard,
-          idleCardHint(this.activeCard),
-        );
-        if (zoneId.length > 0) setCardActionMode(cardId, 'focus');
+  private endEarly(entity: Entity): void {
+    this.state = endFocusEarly(this.state);
+    clearFocusTimer();
+    const cardId = entity.getValue(QuestCard, 'cardId') as string;
+    setQuestCardState(entity, idleCardHint(entity));
+    setCardActionMode(cardId, 'focus');
+    this.activeCard = undefined;
+    this.setSessionStatus(undefined);
+    this.hideTimer();
+    this.applyFade();
+  }
+
+  /** Complete (button) or the timer ran out: chime, mark done, award XP. */
+  private finishFocus(entity: Entity, reason: 'manual' | 'timer' | 'away'): void {
+    if (this.state.phase !== 'focus' || this.activeCard !== entity) return;
+    void this.loadTrophyShelf();
+    const xp = entity.getValue(QuestCard, 'xp') as number;
+    const progress = awardXp(xp);
+    this.progress = progress;
+    this.updateProgressStatus();
+    void syncRoomGrowth(this.world, progress.level);
+    playChime();
+    clearFocusTimer();
+    const cardId = entity.getValue(QuestCard, 'cardId') as string;
+    const prefix = reason === 'away' ? 'Finished while you were away' : 'Completed';
+    setQuestCardState(entity, `${prefix} - +${xp} XP`);
+    setCardActionMode(cardId, 'hidden');
+    tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
+    this.activeCard = undefined;
+    this.state = completeFocus(this.state, focusNow());
+    this.hideTimer();
+    this.applyFade();
+    this.updateBreakStatus();
+  }
+
+  /** Wall-clock deadline checks (frame loop + 1 s fallback). */
+  private tick(): void {
+    const now = focusNow();
+    if (this.state.phase === 'focus') {
+      if (focusExpired(this.state, now) && this.activeCard !== undefined) {
+        this.finishFocus(this.activeCard, 'timer');
+        return;
       }
-      this.activeCard = undefined;
-      this.setSessionStatus(undefined);
-      this.hideTimerDisk();
-      this.fadeTo(0, BREAK_FADE_MS);
+      this.refreshTimer(false);
+    } else if (this.state.phase === 'break') {
+      const next = advanceBreak(this.state, now);
+      if (next !== this.state) {
+        this.state = next;
+        this.setSessionStatus(undefined);
+      } else {
+        this.updateBreakStatus();
+      }
     }
-    this.scheduleTransition();
+  }
+
+  private skipCurrentBreak(): void {
+    const next = skipBreak(this.state);
+    if (next === this.state) return;
+    this.state = next;
+    this.setSessionStatus(undefined);
+  }
+
+  // ---- Timer display ---------------------------------------------------
+
+  /** Ring every frame (only when a segment changes), text once per second. */
+  private refreshTimer(force: boolean): void {
+    if (this.state.phase !== 'focus' || this.timerDisk === undefined) return;
+    const now = focusNow();
+    if (!force && focusExpired(this.state, now)) {
+      this.tick();
+      return;
+    }
+    const remaining = focusRemainingMs(this.state, now);
+    const fraction = Math.max(0, Math.min(1, remaining / this.state.durationMs));
+    const segments = Math.ceil(fraction * TIMER_SEGMENTS);
+    if (segments !== this.lastRingSegments || force) {
+      this.timerDisk.ring.setDrawRange(0, segments * 6);
+      this.lastRingSegments = segments;
+    }
+    const second = Math.ceil(remaining / 1_000);
+    const paused = this.state.pausedRemainingMs !== null;
+    if (second === this.lastClockSecond && paused === this.lastClockPaused && !force) return;
+    this.lastClockSecond = second;
+    const pausedChanged = paused !== this.lastClockPaused || force;
+    this.lastClockPaused = paused;
+    const clock = formatClock(remaining);
+    this.timerPanel?.getElementById<UIKit.Text>('timer-clock')?.setProperties({ text: clock });
+    if (pausedChanged) {
+      this.timerPanel
+        ?.getElementById<UIKit.Text>('timer-label')
+        ?.setProperties({ text: paused ? 'PAUSED' : 'FOCUS' });
+      this.timerDisk.ringMaterial.color.copy(paused ? RING_PAUSED : RING_RUNNING);
+    }
+    const title = this.activeCard?.getValue(QuestCard, 'title') as string | undefined;
+    this.setSessionStatus(`Focus: ${title ?? 'quest'} | ${clock}${paused ? ' (paused)' : ''}`);
   }
 
   private setSessionStatus(text: string | undefined, canSkip = false): void {
@@ -260,96 +412,232 @@ export class SessionSystem extends createSystem({}) {
     });
   }
 
-  private enterBreak(): void {
-    if (this.countdownTimer !== undefined) window.clearTimeout(this.countdownTimer);
-    this.countdownTimer = undefined;
-    if (this.activeCard !== undefined) {
-      const cardId = this.activeCard.getValue(QuestCard, 'cardId') as string;
-      setQuestCardState(this.activeCard, 'Break time');
-      setCardActionMode(cardId, 'disabled');
-    }
-    this.hideTimerDisk();
-    this.fadeTo(0, BREAK_FADE_MS);
-    this.updateBreakCountdown();
-  }
-
-  private updateFocusCountdown(title: string): void {
-    if (this.state.phase !== 'focus') return;
-    const seconds = Math.max(0, Math.ceil((this.state.endsAt - Date.now()) / 1_000));
-    const minutesText = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-    this.setSessionStatus(`Focus: ${title} | ${minutesText}`);
-    if (seconds > 0) {
-      this.countdownTimer = window.setTimeout(() => {
-        this.countdownTimer = undefined;
-        this.updateFocusCountdown(title);
-      }, 1_000);
-    }
-  }
-
-  private updateBreakCountdown(): void {
+  private updateBreakStatus(): void {
     if (this.state.phase !== 'break') return;
-    const seconds = Math.max(0, Math.ceil((this.state.endsAt - Date.now()) / 1_000));
-    const skipAllowed = this.state.consecutiveSkips === 0;
-    const minutesText = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    const remaining = Math.max(0, this.state.endsAt - focusNow());
     this.setSessionStatus(
-      `Look at the farthest point for 20 seconds (${minutesText})`,
-      skipAllowed,
+      `Look at the farthest point for 20 seconds (${formatClock(remaining)})`,
+      this.state.consecutiveSkips === 0,
     );
-    if (seconds > 0) {
-      this.countdownTimer = window.setTimeout(() => {
-        this.countdownTimer = undefined;
-        this.updateBreakCountdown();
-      }, 1_000);
-    }
   }
 
-  private skipCurrentBreak(): void {
-    const next = skipBreak(this.state);
-    if (next === this.state) return;
-    if (this.transitionTimer !== undefined) window.clearTimeout(this.transitionTimer);
-    if (this.countdownTimer !== undefined) window.clearTimeout(this.countdownTimer);
-    this.transitionTimer = undefined;
-    this.countdownTimer = undefined;
-    this.state = next;
-    if (this.activeCard !== undefined) {
-      const zoneId = this.activeCard.getValue(QuestCard, 'zoneId') as string;
-      const cardId = this.activeCard.getValue(QuestCard, 'cardId') as string;
-      setQuestCardState(
-        this.activeCard,
-        idleCardHint(this.activeCard),
+  private headPose(): void {
+    const head = this.world.player.head;
+    head.updateWorldMatrix(true, false);
+    head.getWorldPosition(this.headPosition);
+    if (this.headPosition.y < 0.5) this.headPosition.copy(NOMINAL_HEAD);
+    head.getWorldDirection(this.headForward).negate();
+    this.headForward.y = 0;
+    if (this.headForward.lengthSq() < 1e-4) this.headForward.set(0, 0, -1);
+    this.headForward.normalize();
+  }
+
+  /** Place the timer and centre the frost shell on the seated head. */
+  private placeFocusVisuals(): void {
+    this.headPose();
+    const card = this.activeCard?.object3D;
+    const timer = this.timerDisk;
+    // Aim at the card, then lift the timer just above it in view, clamped a
+    // little below the eye line; if that would still cover the card (a card
+    // at eye level), slide the timer to the card's left (its panel is right).
+    let yaw = Math.atan2(this.headForward.x, -this.headForward.z);
+    let elevation = -0.2;
+    if (card != null) {
+      card.updateWorldMatrix(true, false);
+      card.getWorldPosition(this.tmpA).sub(this.headPosition);
+      const distance = this.tmpA.length();
+      if (distance > 0.05) {
+        const cardYaw = Math.atan2(this.tmpA.x, -this.tmpA.z);
+        const cardElevation = Math.asin(Math.max(-1, Math.min(1, this.tmpA.y / distance)));
+        const cardHalf = Math.atan(((CARD_UNITS_H / 2) * card.scale.x) / distance);
+        const needed = cardHalf + Math.atan(TIMER_RADIUS / TIMER_DISTANCE) + TIMER_MARGIN;
+        yaw = cardYaw;
+        elevation = Math.max(
+          TIMER_MIN_ELEVATION,
+          Math.min(TIMER_MAX_ELEVATION, cardElevation + needed),
+        );
+        if (Math.abs(elevation - cardElevation) < needed) yaw = cardYaw - needed * 1.15;
+      }
+    }
+    const title = this.activeCard?.getValue(QuestCard, 'title') as string | undefined;
+    this.timerPanel
+      ?.getElementById<UIKit.Text>('timer-title')
+      ?.setProperties({ text: title === undefined ? '' : title.length > 30 ? `${title.slice(0, 29)}...` : title });
+    if (timer !== undefined) {
+      const flat = Math.cos(elevation) * TIMER_DISTANCE;
+      timer.group.position.set(
+        this.headPosition.x + Math.sin(yaw) * flat,
+        this.headPosition.y + Math.sin(elevation) * TIMER_DISTANCE,
+        this.headPosition.z - Math.cos(yaw) * flat,
       );
-      if (zoneId.length > 0) setCardActionMode(cardId, 'focus');
+      // Face the eyes.
+      this.tmpB.copy(this.headPosition).sub(timer.group.position).normalize();
+      this.tmpQ.setFromUnitVectors(this.timerFront, this.tmpB);
+      timer.group.quaternion.copy(this.tmpQ);
+      timer.group.visible = true;
+      this.lastRingSegments = -1;
+      this.lastClockSecond = -1;
     }
-    this.activeCard = undefined;
-    this.setSessionStatus(undefined);
-    this.hideTimerDisk();
-    this.fadeTo(0, BREAK_FADE_MS);
+    const shell = this.shell;
+    if (shell !== undefined) {
+      shell.mesh.position.copy(this.headPosition);
+      if (timer !== undefined) {
+        this.tmpB.copy(timer.group.position).sub(this.headPosition);
+        const d = this.tmpB.length();
+        shell.setWindow(1, this.tmpB.normalize(), Math.atan((TIMER_RADIUS + 0.03) / d));
+      }
+      if (card != null && this.activeCard !== undefined) {
+        // One window over the card and its focus panel (just to its right).
+        const s = card.scale.x;
+        card.getWorldQuaternion(this.tmpQ);
+        this.tmpC.set(1, 0, 0).applyQuaternion(this.tmpQ);
+        const cardHalfW = (CARD_UNITS_W / 2) * s;
+        const panelRight = cardHalfW + 2 * s + 0.015;
+        card.getWorldPosition(this.tmpA).addScaledVector(this.tmpC, (panelRight - cardHalfW) / 2);
+        const halfW = (cardHalfW + panelRight) / 2;
+        const halfH = Math.max((CARD_UNITS_H / 2) * s, 1.4 * s);
+        this.tmpA.sub(this.headPosition);
+        const d = Math.max(0.3, this.tmpA.length());
+        shell.setWindow(0, this.tmpA.normalize(), Math.atan(Math.hypot(halfW, halfH) / d) + 0.05);
+      } else {
+        shell.setWindow(0, null, 0);
+      }
+    }
   }
 
-  private completeActiveCard(entity: Entity): void {
-    if (this.state.phase !== 'focus' || this.activeCard !== entity) return;
-    void this.loadTrophyShelf();
-    const xp = entity.getValue(QuestCard, 'xp') as number;
-    const progress = awardXp(xp);
-    this.progress = progress;
-    this.updateProgressStatus();
-    void syncRoomGrowth(this.world, progress.level);
-    try {
-      AudioUtils.play(entity);
-    } catch {
-      // A missing or blocked sound must not prevent quest completion.
-    }
-    const cardId = entity.getValue(QuestCard, 'cardId') as string;
-    setQuestCardState(entity, `Completed - +${xp} XP`);
-    setCardActionMode(cardId, 'hidden');
-    tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
-    if (this.transitionTimer !== undefined) window.clearTimeout(this.transitionTimer);
-    this.transitionTimer = undefined;
-    this.activeCard = undefined;
-    this.state = completeFocus(this.state, Date.now());
-    this.enterBreak();
-    this.scheduleTransition();
+  private hideTimer(): void {
+    if (this.timerDisk !== undefined) this.timerDisk.group.visible = false;
+    this.lastRingSegments = -1;
+    this.lastClockSecond = -1;
   }
+
+  // ---- Frost shell -----------------------------------------------------
+
+  /** Fade toward the level the state wants: full in focus, partial when paused, off otherwise. */
+  private applyFade(): void {
+    let target = 0;
+    if (this.state.phase === 'focus') {
+      target = BLUR_OPACITY[this.blurLevel];
+      if (this.state.pausedRemainingMs !== null) target *= PAUSED_FADE_FACTOR;
+    }
+    if (target === this.fadeTarget && (this.fadeAnimating || this.shellOpacity === target)) return;
+    this.fadeFrom = this.shellOpacity;
+    this.fadeTarget = target;
+    this.fadeStartedAt = performance.now();
+    this.fadeAnimating = this.fadeFrom !== target;
+  }
+
+  private createShell(): void {
+    this.shell = createFocusShell();
+    this.shellEntity = this.world.createTransformEntity(this.shell.mesh, {
+      parent: this.world.sceneEntity,
+      persistent: true,
+    });
+  }
+
+  private async loadTimer(): Promise<void> {
+    this.timerDisk = createTimerDisk();
+    this.timerEntity = this.world.createTransformEntity(this.timerDisk.group, {
+      parent: this.world.sceneEntity,
+      persistent: true,
+    });
+    try {
+      const panel = await this.world.assets.instantiate<UIKitMLAsset>('focus-timer');
+      if (this.destroyed || this.timerEntity === undefined) {
+        panel.dispose();
+        return;
+      }
+      panel.name = 'Focus Timer Text';
+      panel.scale.setScalar(TIMER_TEXT_SCALE);
+      panel.position.set(0, 0, 0.006);
+      // Draw the digits after the frost shell (renderOrder 900) so they stay crisp.
+      panel.getElementById<UIKit.Text>('timer-root')?.setProperties({ renderOrder: 960 } as never);
+      this.world.createTransformEntity(panel, { parent: this.timerEntity });
+      this.timerPanel = panel;
+      this.lastClockSecond = -1;
+      if (this.state.phase === 'focus') {
+        this.placeFocusVisuals();
+        this.refreshTimer(true);
+      }
+    } catch (error) {
+      console.warn('[session] Focus timer text could not be loaded.', error);
+    }
+  }
+
+  // ---- Persistence -----------------------------------------------------
+
+  private persist(): void {
+    const card = this.activeCard;
+    const object = card?.object3D;
+    if (this.state.phase !== 'focus' || card === undefined || object == null) return;
+    object.updateWorldMatrix(true, false);
+    object.getWorldPosition(this.tmpA);
+    object.getWorldQuaternion(this.tmpQ);
+    saveFocusTimer({
+      version: 1,
+      title: card.getValue(QuestCard, 'title') as string,
+      xp: card.getValue(QuestCard, 'xp') as number,
+      zoneId: card.getValue(QuestCard, 'zoneId') as string,
+      surfaceId: card.getValue(QuestCard, 'surfaceId') as string,
+      position: [this.tmpA.x, this.tmpA.y, this.tmpA.z],
+      quaternion: [this.tmpQ.x, this.tmpQ.y, this.tmpQ.z, this.tmpQ.w],
+      scale: object.scale.x,
+      durationMs: this.state.durationMs,
+      endsAt: this.state.endsAt,
+      pausedRemainingMs: this.state.pausedRemainingMs,
+      consecutiveSkips: this.state.consecutiveSkips,
+    });
+  }
+
+  /** After a reload: re-create the pinned card and resume its timer. */
+  private async restoreSavedFocus(): Promise<string | null> {
+    const saved = loadFocusTimer();
+    if (saved === null || this.state.phase !== 'idle') return null;
+    let entity: Entity;
+    try {
+      entity = await createQuestCard({
+        title: saved.title,
+        xp: saved.xp,
+        position: saved.position,
+      });
+    } catch (error) {
+      console.warn('[session] Could not restore the focus card.', error);
+      return null;
+    }
+    if (this.destroyed || this.state.phase !== 'idle') return null;
+    this.tmpA.fromArray(saved.position);
+    this.tmpQ.fromArray(saved.quaternion);
+    setCardWorldPose(entity, this.tmpA, this.tmpQ, saved.scale);
+    entity.setValue(QuestCard, 'zoneId', saved.zoneId || 'desk');
+    entity.setValue(QuestCard, 'surfaceId', saved.surfaceId || 'restored');
+    entity.setValue(QuestCard, 'userPlaced', true);
+    const cardId = entity.getValue(QuestCard, 'cardId') as string;
+    this.state = {
+      phase: 'focus',
+      questId: cardId,
+      durationMs: saved.durationMs,
+      endsAt: saved.endsAt,
+      pausedRemainingMs: saved.pausedRemainingMs,
+      consecutiveSkips: saved.consecutiveSkips,
+    };
+    this.activeCard = entity;
+    console.info('[session] Resumed a focus timer after reload.');
+    if (focusExpired(this.state, focusNow())) {
+      this.finishFocus(entity, 'away');
+      return saved.title;
+    }
+    const paused = this.state.pausedRemainingMs !== null;
+    setQuestCardState(entity, paused ? 'Paused - pinch Resume' : 'Focusing (resumed)');
+    setCardActionMode(cardId, 'done', { paused, blur: this.blurLevel });
+    showFocusActionFor(entity);
+    this.placeFocusVisuals();
+    this.applyFade();
+    this.refreshTimer(true);
+    this.persist();
+    return saved.title;
+  }
+
+  // ---- Unchanged helpers -----------------------------------------------
 
   private async requestNudge(entity: Entity): Promise<void> {
     if (
@@ -406,77 +694,12 @@ export class SessionSystem extends createSystem({}) {
     });
   }
 
-  private fadeTo(opacity: number, durationMs: number): void {
-    const now = performance.now();
-    this.fadeFrom = this.currentDomeOpacity(now);
-    this.fadeTarget = opacity;
-    this.fadeStartedAt = now;
-    this.fadeDuration = Math.max(1, durationMs);
-    this.fadeAnimating = durationMs > 0 && this.fadeFrom !== opacity;
-    if (!this.fadeAnimating && this.domeMaterial !== undefined) {
-      this.domeMaterial.opacity = opacity;
-    }
-  }
-
-  private currentDomeOpacity(now: number): number {
-    if (!this.fadeAnimating) return this.domeMaterial?.opacity ?? this.fadeTarget;
-    const progress = Math.min(1, Math.max(0, (now - this.fadeStartedAt) / this.fadeDuration));
-    return this.fadeFrom + (this.fadeTarget - this.fadeFrom) * progress;
-  }
-
-  private async loadDome(): Promise<void> {
-    try {
-      const dome = await this.world.assets.instantiate<Mesh>('focus-dome');
-      if (this.domeDestroyed) return;
-      this.domeMaterial = (dome.material as MeshBasicMaterial).clone();
-      dome.material = this.domeMaterial;
-      this.domeMaterial.opacity = this.currentDomeOpacity(performance.now());
-      this.domeEntity = this.world.createTransformEntity(dome, {
-        parent: this.world.sceneEntity,
-        persistent: true,
-      });
-    } catch (error) {
-      console.warn('[session] Focus dome could not be loaded.', error);
-    }
-  }
-
-  private loadTimerDisk(): void {
-    this.timerDisk = createTimerDisk();
-    this.timerEntity = this.world.createTransformEntity(this.timerDisk.group, {
-      parent: this.world.sceneEntity,
-      persistent: true,
-    });
-  }
-
-  private placeTimerDisk(): void {
-    if (this.timerDisk === undefined) return;
-    const head = this.world.player.head;
-    head.updateWorldMatrix(true, false);
-    head.getWorldPosition(this.timerHeadPosition);
-    head.getWorldDirection(this.timerDirection).normalize();
-    this.timerPosition
-      .copy(this.timerHeadPosition)
-      .addScaledVector(this.timerDirection, TIMER_DISTANCE);
-    this.timerNormal.copy(this.timerDirection).negate();
-    this.timerRotation.setFromUnitVectors(TIMER_FRONT, this.timerNormal);
-    this.timerDisk.group.position.copy(this.timerPosition);
-    this.timerDisk.group.quaternion.copy(this.timerRotation);
-    this.timerDisk.group.visible = true;
-    this.timerDisk.pie.setDrawRange(0, TIMER_SEGMENTS * 3);
-    this.lastPieSegment = TIMER_SEGMENTS;
-  }
-
-  private hideTimerDisk(): void {
-    if (this.timerDisk !== undefined) this.timerDisk.group.visible = false;
-    this.lastPieSegment = -1;
-  }
-
   private async loadTrophyShelf(): Promise<void> {
     if (this.trophyShelfEntity !== undefined || this.trophyShelfLoading) return;
     this.trophyShelfLoading = true;
     try {
       const shelf = await this.world.assets.instantiate<Group>('plinth');
-      if (this.domeDestroyed) {
+      if (this.destroyed) {
         shelf.removeFromParent();
         return;
       }
@@ -489,4 +712,14 @@ export class SessionSystem extends createSystem({}) {
       this.trophyShelfLoading = false;
     }
   }
+}
+
+let focusRestorer: (() => Promise<string | null>) | undefined;
+
+/**
+ * Resume a focus timer saved before a reload (call once cards can be created).
+ * Resolves to the restored card's title, or null when there was none.
+ */
+export function restoreSavedFocus(): Promise<string | null> {
+  return focusRestorer?.() ?? Promise.resolve(null);
 }

@@ -46,7 +46,7 @@ projects have no sky or floor, so passthrough stays visible, and a
 
 
 
-Questty is a mixed reality focus space for Meta Quest. Pinch and speak everything on your mind, and AI turns it into quest cards with XP. Pin them to zones in your real room, then start a focus session: passthrough fades into a calm scene, a visual timer counts down, and a quiet AI buddy works alongside you. Breaks are enforced, finishing a quest earns XP, and your room grows as you level up. No typing, no controllers.
+Questty is a mixed reality focus space for Meta Quest. Pinch and speak everything on your mind, and AI turns it into quest cards with XP. Pin them to zones in your real room, then start a focus session: your room softens behind frosted glass, a visual timer counts down, and a quiet AI buddy works alongside you. Breaks are enforced, finishing a quest earns XP, and your room grows as you level up. No typing, no controllers.
 
 ### OpenAI setup
 
@@ -110,6 +110,38 @@ Everything works with hand tracking alone:
 - Let go in mid-air, or while pointing at the floor, and the card floats right
   where you released it. A quick pinch-tap never moves a card.
 - A pinned card gets a **Start focus** button. Pinch it with the ray or poke it.
+
+## Focus timer (hands)
+
+- Pinch **Start focus** on a pinned card, then pinch a length: **5m / 15m / 25m /
+  45m**. 25 min is the default; a card whose title carries a length ("Deep work
+  25m") suggests that length instead.
+- A round timer with big mm:ss and a progress ring appears a little below eye
+  line, just above the card in view (or beside it if the card is at eye level).
+- The focus panel next to the card then has **Complete**, **Pause/Resume**,
+  **+5 min**, **End early**, **Blur: Off/Soft/Strong** and **Need a nudge**.
+- When the time runs out (or you pinch Complete) a soft chime plays (WebAudio, no
+  audio file), the quest is marked done and its XP is awarded. End early stops
+  the timer with no XP.
+- The timer runs on the wall clock (`Date.now()`), so a backgrounded tab or a
+  slow frame never loses time. A running or paused timer is saved in
+  `localStorage` and resumes on its card after a reload.
+
+### Softened surroundings during focus
+
+WebXR gives web pages **no access to the passthrough camera image**, so a real
+blur of your room is impossible in the browser. Instead Questty puts a frosted,
+dimmed shell (about 1.25 m around you) over the room, with clear windows around
+the active card and the timer. It fades in over about 1 s, drops to a lighter
+frost while paused and fades out when focus ends. Your hands, the timer and the
+active card stay sharp; other floating cards are softened too. Pick the strength
+with **Blur** on the focus panel; the choice is remembered. The shell is one
+transparent draw with no render targets, which keeps it inside the Quest frame
+budget (a true blur of the virtual scene would need an extra stereo pass every
+frame).
+
+Dev only: `?focusTimeScale=60` speeds the focus clock up (not in production
+builds).
 
 Surfaces come from WebXR plane detection: on a Quest in passthrough, your real
 room's `wall`, `table` and `door` planes. Without plane detection, a small

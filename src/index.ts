@@ -16,7 +16,7 @@ import {
 import { QuestInputSystem } from './quest-input.js';
 import { RobotSystem } from './robot.js';
 import { RoomSystem } from './room.js';
-import { SessionSystem } from './session-runtime.js';
+import { restoreSavedFocus, SessionSystem } from './session-runtime.js';
 import { spawnSlots } from './card-layout.js';
 import { SurfaceSystem } from './surfaces.js';
 import { QuestCard } from './quest-component.js';
@@ -36,6 +36,8 @@ world.registerSystem(QuestInputSystem);
 world.registerSystem(SessionSystem);
 
 configureQuestCards(world);
+// A focus timer that was running before a reload resumes on its card.
+const restoredTitle = await restoreSavedFocus().catch(() => null);
 // Starter cards use the same seated-reach arc as dictated cards. Before XR the
 // head pose is unknown, so lay them out for a nominal head and re-arrange them
 // around the real head once the session starts (cards the user has not moved).
@@ -43,7 +45,7 @@ const starterCards = [
   { title: 'Plan the next milestone', xp: 20 },
   { title: 'Ship one small feature', xp: 35 },
   { title: 'Take a short reset', xp: 10 },
-];
+].filter(({ title }) => title !== restoredTitle);
 const nominalSlots = spawnSlots(new Vector3(0, 1.6, 0), new Vector3(0, 0, -1));
 const starterEntities = await Promise.all(
   starterCards.map(({ title, xp }, index) =>

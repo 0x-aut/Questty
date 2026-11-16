@@ -1,7 +1,7 @@
 <style>
   .focus-action-panel {
     flex-direction: column;
-    width: 150px;
+    width: 200px;
     gap: 6px;
     padding: 4px;
   }
@@ -23,7 +23,46 @@
     color: #202226;
   }
 
-  .nudge-action-button {
+  .row {
+    flex-direction: row;
+    gap: 4px;
+    justify-content: space-between;
+  }
+
+  .stack {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .pick-title {
+    color: #fbfaf5;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .chip {
+    justify-content: center;
+    width: 44px;
+    min-width: 44px;
+    padding-left: 0px;
+    padding-right: 0px;
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-bottom: 0px;
+  }
+
+  .half {
+    justify-content: center;
+    width: 93px;
+    min-width: 93px;
+    padding-left: 0px;
+    padding-right: 0px;
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-bottom: 0px;
+  }
+
+  .wide {
     justify-content: center;
     margin-left: 0px;
     margin-right: 0px;
@@ -34,7 +73,27 @@
   <Button id="focus-action-button" class="focus-action-button">
     <ButtonLabel id="focus-action-label" class="focus-action-label">Start focus</ButtonLabel>
   </Button>
-  <Button id="nudge-action-button" class="nudge-action-button" style="display: none">
+  <div id="focus-pick" class="stack" style="display: none">
+    <span id="focus-pick-title" class="pick-title">How long? Pinch to start</span>
+    <div class="row">
+      <Button id="focus-len-0" class="chip" variant="secondary"><ButtonLabel id="focus-len-0-label">5</ButtonLabel></Button>
+      <Button id="focus-len-1" class="chip" variant="secondary"><ButtonLabel id="focus-len-1-label">15</ButtonLabel></Button>
+      <Button id="focus-len-2" class="chip" variant="primary"><ButtonLabel id="focus-len-2-label">25</ButtonLabel></Button>
+      <Button id="focus-len-3" class="chip" variant="secondary"><ButtonLabel id="focus-len-3-label">45</ButtonLabel></Button>
+    </div>
+    <Button id="focus-pick-cancel" class="wide" variant="tertiary"><ButtonLabel>Cancel</ButtonLabel></Button>
+  </div>
+  <div id="focus-controls" class="stack" style="display: none">
+    <div class="row">
+      <Button id="focus-pause" class="half" variant="secondary"><ButtonLabel id="focus-pause-label">Pause</ButtonLabel></Button>
+      <Button id="focus-extend" class="half" variant="secondary"><ButtonLabel>+5 min</ButtonLabel></Button>
+    </div>
+    <div class="row">
+      <Button id="focus-end" class="half" variant="secondary"><ButtonLabel>End early</ButtonLabel></Button>
+      <Button id="focus-blur" class="half" variant="secondary"><ButtonLabel id="focus-blur-label">Blur: Soft</ButtonLabel></Button>
+    </div>
+  </div>
+  <Button id="nudge-action-button" class="wide" style="display: none">
     <ButtonLabel>Need a nudge</ButtonLabel>
   </Button>
 </Panel>
