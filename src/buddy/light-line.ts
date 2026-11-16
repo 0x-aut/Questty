@@ -16,9 +16,15 @@ import {
   Vector3,
 } from '@iwsdk/core';
 
-const DRAW_MS = 420;
-const HOLD_MS = 650;
-const FADE_MS = 550;
+/** Dev-only: ?buddySlow=N stretches the buddy's timings for screenshots on slow software GL. */
+export const BUDDY_SLOW = (() => {
+  if (!import.meta.env.DEV) return 1;
+  const n = Number(new URLSearchParams(window.location.search).get('buddySlow'));
+  return Number.isFinite(n) && n >= 1 && n <= 20 ? n : 1;
+})();
+const DRAW_MS = 420 * BUDDY_SLOW;
+const HOLD_MS = 650 * BUDDY_SLOW;
+const FADE_MS = 550 * BUDDY_SLOW;
 const SEGMENTS = 64;
 const RADIAL = 6;
 

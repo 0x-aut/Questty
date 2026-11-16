@@ -23,6 +23,7 @@ import {
   PokeInteractable,
   Quaternion,
   RayInteractable,
+  SRGBColorSpace,
   UIKit,
   UIKitMLAsset,
   Vector3,
@@ -41,7 +42,7 @@ import { classify, parseCommand } from './parser.js';
 import { askBuddyApi, resetBuddyApiBackoff, type FocusInfo } from './client.js';
 import { BuddyExecutor, type ExecResult, type Offer, type UndoEntry } from './executor.js';
 import { BuddyOrb, type OrbState } from './orb.js';
-import { LightLines } from './light-line.js';
+import { BUDDY_SLOW, LightLines } from './light-line.js';
 import { setBuddyLink, type MicState } from './bus.js';
 
 const USED_KEY = 'questty.buddy.v1';
@@ -119,6 +120,7 @@ function badgeTexture(n: number): CanvasTexture {
     ctx.fillText(String(n), 64, 68);
   }
   const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
   badgeTextures.set(n, texture);
   return texture;
 }
@@ -199,6 +201,8 @@ export class BuddySystem extends createSystem({
           undo: () => this.undo(),
           chip: (index: number) => this.onChip(index),
           resetApi: () => resetBuddyApiBackoff(),
+          orb: (state: OrbState) => this.setOrb(state),
+          say: (text: string) => this.say(text, { ms: 4000 }),
           forgetUsed: () => {
             this.used = false;
             try {
@@ -233,7 +237,7 @@ export class BuddySystem extends createSystem({
   private setOrb(state: OrbState, holdMs = 0, after: OrbState = 'idle'): void {
     if (this.orb.state !== state) this.logOrb(state);
     this.orb.setState(state);
-    this.orbHoldUntil = holdMs > 0 ? performance.now() + holdMs : 0;
+    this.orbHoldUntil = holdMs > 0 ? performance.now() + holdMs * BUDDY_SLOW : 0;
     this.orbAfter = after;
   }
 
@@ -408,7 +412,7 @@ export class BuddySystem extends createSystem({
   }
 
   private tagFor(mode: RunRecord['mode']): string {
-    return mode === 'offline' ? 'QUESTTY  ·  OFFLINE' : 'QUESTTY';
+    return mode === 'offline' ? 'QUESTTY  (OFFLINE)' : 'QUESTTY';
   }
 
   /** Show what happened: light lines, pulses, the reply and its chips. */
@@ -423,7 +427,7 @@ export class BuddySystem extends createSystem({
     if (touched.length > 0) {
       this.setOrb('acting');
       this.drawLines(touched);
-      const settle = 420 + Math.min(touched.length, 6) * 110 + 250;
+      const settle = (420 + Math.min(touched.length, 6) * 110 + 250) * BUDDY_SLOW;
       window.setTimeout(() => {
         if (!this.busy && this.orb.state === 'acting') this.setOrb('done', 1300);
       }, settle);
@@ -431,7 +435,7 @@ export class BuddySystem extends createSystem({
       this.setOrb('done', 1300);
     }
     if (result.highlight.length > 0) {
-      window.setTimeout(() => pulseCards(result.highlight, 3600), 450);
+      window.setTimeout(() => pulseCards(result.highlight, 3600 * BUDDY_SLOW), 450 * BUDDY_SLOW);
     }
     const chips: Chip[] = [];
     if (result.confirm !== undefined) {
@@ -463,7 +467,7 @@ export class BuddySystem extends createSystem({
       to.addScaledVector(new Vector3(0, 0, 1).applyQuaternion(this.tmpQ), 0.004);
       to.addScaledVector(new Vector3(-1, 0, 0).applyQuaternion(this.tmpQ), (CARD_UNITS_W / 2) * s * 0.55);
       to.addScaledVector(new Vector3(0, 1, 0).applyQuaternion(this.tmpQ), (CARD_UNITS_H / 2) * s * 0.2);
-      this.lines.draw(id, from, to, LINE_COLOR, index * 110, () => pulseCards([id], 1100, ACK_COLOR));
+      this.lines.draw(id, from, to, LINE_COLOR, index * 110 * BUDDY_SLOW, () => pulseCards([id], 1100 * BUDDY_SLOW, ACK_COLOR));
     });
   }
 
@@ -479,7 +483,7 @@ export class BuddySystem extends createSystem({
     // Lines first, so the user sees which card goes, then delete.
     this.setOrb('acting');
     this.drawLines(v.actions.flatMap((a) => ('card_id' in a ? [a.card_id] : [])));
-    await new Promise((r) => window.setTimeout(r, 520));
+    await new Promise((r) => window.setTimeout(r, 520 * BUDDY_SLOW));
     const result = await this.executor.run(v.actions, { confirmed: true });
     result.touched = [];
     await this.present(result, result.reply, 'QUESTTY');
@@ -525,7 +529,7 @@ export class BuddySystem extends createSystem({
       window.setTimeout(() => this.drawLines(touched), 120);
       window.setTimeout(() => {
         if (!this.busy && this.orb.state === 'acting') this.setOrb('done', 1200);
-      }, 900);
+      }, 900 * BUDDY_SLOW);
     } else {
       this.setOrb('done', 1200);
     }
@@ -550,14 +554,19 @@ export class BuddySystem extends createSystem({
       const card = findQuestCard(id)?.object3D;
       if (card == null) return;
       const badge = new Mesh(
-        new PlaneGeometry(0.46, 0.46),
+        new PlaneGeometry(0.52, 0.52),
         new MeshBasicMaterial({ map: badgeTexture(index + 1), transparent: true, depthWrite: false }),
       );
       badge.name = `Plan Badge ${index + 1}`;
       badge.renderOrder = 3;
       badge.raycast = () => undefined;
-      // Hangs off the card's top-left corner, like a numbered tab.
-      badge.position.set(-CARD_UNITS_W / 2 + 0.02, CARD_UNITS_H / 2 - 0.02, 0.02);
+      // Sits on the face's top-left corner, like a numbered tab. The face is as
+      // tall as its title, so read its real height (UIKit px -> card units).
+      const root = (card as UIKitMLAsset).getElementById?.('quest-card-root');
+      const size = (root as unknown as { size?: { peek?: () => [number, number] | undefined } } | null)?.size?.peek?.();
+      const faceH = size !== undefined ? size[1] * 0.01 : CARD_UNITS_H;
+      const faceW = size !== undefined ? size[0] * 0.01 : CARD_UNITS_W;
+      badge.position.set(-faceW / 2 + 0.06, faceH / 2 - 0.06, 0.03);
       card.add(badge);
       this.badges.set(id, badge);
     });
@@ -585,7 +594,7 @@ export class BuddySystem extends createSystem({
     b.tag = tag;
     b.chips = chips.slice(0, 3);
     b.shownAt = performance.now();
-    b.until = sticky ? Infinity : b.shownAt + ms;
+    b.until = sticky ? Infinity : b.shownAt + ms * BUDDY_SLOW;
     b.sticky = sticky;
     b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text });
     b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: tag });

@@ -24,6 +24,7 @@ import {
   PlaneGeometry,
   RingGeometry,
   ShaderMaterial,
+  SRGBColorSpace,
   SphereGeometry,
   Vector3,
   type Object3D,
@@ -33,13 +34,14 @@ export type OrbState = 'idle' | 'listening' | 'thinking' | 'acting' | 'done' | '
 export const ORB_STATES: readonly OrbState[] = ['idle', 'listening', 'thinking', 'acting', 'done', 'error'];
 
 type Palette = { core: string; rim: string; halo: string };
+// A luminous pearl: a pale core, a warm rim of light, a soft halo. Muted tints, no neon.
 const PALETTE: Record<OrbState, Palette> = {
-  idle: { core: '#e9c873', rim: '#fff3d2', halo: '#f2cf7a' },
-  listening: { core: '#ef9a84', rim: '#ffe2d7', halo: '#f7a48e' },
-  thinking: { core: '#ddd2bd', rim: '#fffaf0', halo: '#e9dfca' },
-  acting: { core: '#f2d27c', rim: '#fff8e2', halo: '#f6d886' },
-  done: { core: '#a7c49a', rim: '#eef7e8', halo: '#b5d3a6' },
-  error: { core: '#d9978c', rim: '#fbe3de', halo: '#e2a59a' },
+  idle: { core: '#f4e6c4', rim: '#f3c769', halo: '#f0c25c' },
+  listening: { core: '#fbd6c9', rim: '#f39278', halo: '#f2896c' },
+  thinking: { core: '#ece6dc', rim: '#b9cbe0', halo: '#a9c0dc' },
+  acting: { core: '#fbefcf', rim: '#f6c75a', halo: '#f5c04a' },
+  done: { core: '#e3efd9', rim: '#9cc98a', halo: '#8fc27c' },
+  error: { core: '#f3d6cf', rim: '#de8a7a', halo: '#d97f6f' },
 };
 
 const PALETTE_C: Record<OrbState, { core: Color; rim: Color; halo: Color }> = Object.fromEntries(
@@ -78,14 +80,15 @@ void main() {
   float fres = pow(1.0 - facing, 2.2);
   // Soft vertical gradient: lighter on top, a little deeper underneath.
   float g = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
-  vec3 base = mix(uCore * 0.72, uCore * 1.12, g);
+  vec3 base = mix(mix(uCore, uRim, 0.35) * 0.78, uCore * 1.05, g);
   // A slow inner swirl so the surface never looks flat.
   float swirl = sin(vLocal.x * 9.0 + uTime * 0.9) * sin(vLocal.y * 7.0 - uTime * 0.7);
   base += uRim * swirl * 0.045;
   // Diffuse inner light (top-left), like light inside frosted glass.
   float spot = pow(max(dot(n, normalize(vec3(-0.35, 0.6, 0.72))), 0.0), 6.0);
-  vec3 color = base + uRim * spot * 0.32 + uRim * fres * (0.55 + 0.45 * uGlow);
-  float alpha = mix(0.97, 0.55, pow(fres, 1.6));
+  vec3 color = base + vec3(1.0) * spot * 0.28 + uRim * fres * (0.9 + 0.8 * uGlow);
+  color = min(color, vec3(1.0));
+  float alpha = mix(0.98, 0.7, pow(fres, 1.6));
   gl_FragColor = vec4(color, alpha);
 }
 `;
@@ -99,14 +102,15 @@ function getHaloTexture(): CanvasTexture {
   const ctx = canvas.getContext('2d');
   if (ctx !== null) {
     const g = ctx.createRadialGradient(64, 64, 6, 64, 64, 64);
-    g.addColorStop(0, 'rgba(255,255,255,0.95)');
-    g.addColorStop(0.35, 'rgba(255,255,255,0.42)');
-    g.addColorStop(0.7, 'rgba(255,255,255,0.10)');
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.3, 'rgba(255,255,255,0.6)');
+    g.addColorStop(0.62, 'rgba(255,255,255,0.16)');
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 128, 128);
   }
   haloTexture = new CanvasTexture(canvas);
+  haloTexture.colorSpace = SRGBColorSpace;
   return haloTexture;
 }
 
@@ -230,41 +234,41 @@ export class BuddyOrb {
         const b = 0.5 - 0.5 * Math.cos((t * 2 * Math.PI) / 4.2);
         scale = 0.97 + 0.05 * b;
         glow = 0.2 + 0.3 * b;
-        haloOpacity = 0.26 + 0.16 * b;
+        haloOpacity = 0.42 + 0.22 * b;
         break;
       }
       case 'listening':
         scale = 1.02 + 0.2 * this.level;
         glow = 0.5 + 0.5 * this.level;
-        haloOpacity = 0.42 + 0.38 * this.level;
+        haloOpacity = 0.6 + 0.4 * this.level;
         break;
       case 'thinking':
         scale = 1 + 0.025 * Math.sin(t * 5);
         glow = 0.55;
-        haloOpacity = 0.4 + 0.08 * Math.sin(t * 3);
+        haloOpacity = 0.55 + 0.12 * Math.sin(t * 3);
         break;
       case 'acting':
         scale = 1.05;
         glow = 0.85;
-        haloOpacity = 0.62;
+        haloOpacity = 0.85;
         break;
       case 'done':
         scale = 1 + 0.06 * Math.exp(-since * 3) * Math.cos(since * 9);
         glow = 0.7 * Math.exp(-since * 0.8) + 0.25;
-        haloOpacity = 0.5;
+        haloOpacity = 0.7;
         break;
       case 'error':
         shake = since < 0.5 ? Math.sin(since * 50) * 0.08 * (1 - since / 0.5) : 0;
         scale = 0.98;
         glow = 0.4;
-        haloOpacity = 0.3;
+        haloOpacity = 0.5;
         break;
     }
     this.scaleNow += (scale - this.scaleNow) * 0.2;
     u.uGlow.value = glow;
     this.sphere.scale.setScalar(radius * this.scaleNow);
     this.sphere.position.set(shake * radius, 0, 0);
-    this.halo.scale.setScalar(radius * 3.4 * (0.9 + 0.1 * this.scaleNow));
+    this.halo.scale.setScalar(radius * 3.2 * (0.9 + 0.1 * this.scaleNow));
     this.haloMaterial.color.copy(this.haloColor);
     this.haloMaterial.opacity = haloOpacity;
 
@@ -283,9 +287,9 @@ export class BuddyOrb {
     // Halo and rings face the eyes (billboards).
     camera.getWorldPosition(this.camPos);
     this.group.updateWorldMatrix(true, false);
-    const local = this.group.worldToLocal(this.camPos.clone());
-    this.halo.lookAt(local);
-    for (const ring of this.rings) ring.mesh.lookAt(local);
+    // Object3D.lookAt takes a WORLD point.
+    this.halo.lookAt(this.camPos);
+    for (const ring of this.rings) ring.mesh.lookAt(this.camPos);
   }
 
   dispose(): void {
