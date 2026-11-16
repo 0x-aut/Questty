@@ -1,10 +1,11 @@
 import {
-  BoxGeometry,
   CanvasTexture,
+  ExtrudeGeometry,
   Grabbed,
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
+  Shape,
   UIKit,
   UIKitMLAsset,
   type Entity,
@@ -20,7 +21,33 @@ import { QuestCard } from './quest-component.js';
  */
 
 const PAPER_M = 0.0016; // paper thickness in metres
-const PAPER_COLOR = 0xd8d0c0;
+const PAPER_COLOR = 0x1b1b1e; // the card's own dark edge, seen as thickness
+/** The card face as drawn (UIKit panel): full width, ~91% of the hitbox height, rounded corners. */
+const FACE_W = CARD_UNITS_W * 0.99;
+const FACE_H = CARD_UNITS_H * 0.9;
+const FACE_R = 0.22;
+
+let paperGeo: ExtrudeGeometry | undefined;
+/** A rounded slab the size of the card face, 1 unit deep (scaled to the paper thickness). */
+function paperGeometry(): ExtrudeGeometry {
+  if (paperGeo !== undefined) return paperGeo;
+  const w = FACE_W / 2;
+  const h = FACE_H / 2;
+  const r = FACE_R;
+  const shape = new Shape();
+  shape.moveTo(-w + r, -h);
+  shape.lineTo(w - r, -h);
+  shape.quadraticCurveTo(w, -h, w, -h + r);
+  shape.lineTo(w, h - r);
+  shape.quadraticCurveTo(w, h, w - r, h);
+  shape.lineTo(-w + r, h);
+  shape.quadraticCurveTo(-w, h, -w, h - r);
+  shape.lineTo(-w, -h + r);
+  shape.quadraticCurveTo(-w, -h, -w + r, -h);
+  paperGeo = new ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false, curveSegments: 4 });
+  paperGeo.translate(0, 0, -0.5); // centred on z like the old box
+  return paperGeo;
+}
 
 let shadowTexture: CanvasTexture | undefined;
 function getShadowTexture(): CanvasTexture {
@@ -31,13 +58,13 @@ function getShadowTexture(): CanvasTexture {
   const ctx = canvas.getContext('2d');
   if (ctx !== null) {
     // A rounded rect blurred into a soft contact shadow.
-    ctx.filter = 'blur(9px)';
+    ctx.filter = 'blur(7px)';
     ctx.fillStyle = 'rgba(0,0,0,1)';
     const r = 14;
-    const x = 22;
-    const y = 22;
-    const w = 84;
-    const h = 84;
+    const x = 18;
+    const y = 18;
+    const w = 92;
+    const h = 92;
     ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -70,10 +97,7 @@ function ensureDecor(panel: NonNullable<Entity['object3D']>): Decor {
   shadow.name = 'CardContactShadow';
   shadow.renderOrder = -1;
   shadow.raycast = () => undefined;
-  const paper = new Mesh(
-    new BoxGeometry(CARD_UNITS_W * 0.985, CARD_UNITS_H * 0.985, 1),
-    new MeshBasicMaterial({ color: PAPER_COLOR }),
-  );
+  const paper = new Mesh(paperGeometry(), new MeshBasicMaterial({ color: PAPER_COLOR }));
   paper.name = 'CardPaperEdge';
   paper.raycast = () => undefined;
   panel.add(shadow, paper);
@@ -94,9 +118,9 @@ function apply(panel: NonNullable<Entity['object3D']>, decor: Decor, pinned: boo
   decor.paper.visible = pinned;
   if (pinned) {
     // On the surface itself (the card floats 2.5 mm off it), a touch larger than the card.
-    decor.shadow.position.set(0, -0.04, -0.0021 / s);
-    decor.shadow.scale.set(1.62, 1.6, 1);
-    material.opacity = 0.42;
+    decor.shadow.position.set(0, -0.05, -0.0021 / s);
+    decor.shadow.scale.set(1.5, 1.4, 1);
+    material.opacity = 0.55;
   } else {
     // A gentle drop shadow a few cm behind and below a floating card.
     decor.shadow.position.set(0.06, -0.22, -0.06 / s);

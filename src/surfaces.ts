@@ -588,7 +588,8 @@ export class SurfaceSystem extends createSystem({
     const cB = frame.cx * uu + frame.cz * uv;
 
     // Bigger the farther away it is (readable from the seat), never bigger than the surface.
-    const fit = Math.min((2 * halfA) / CARD_UNITS_W, (2 * halfB) / CARD_UNITS_H);
+    // On a desk one card may take at most ~2/3 of it, so a second card still fits beside it.
+    const fit = Math.min((2 * halfA) / CARD_UNITS_W, (2 * halfB) / CARD_UNITS_H) * (frame.kind === 'desk' ? 0.65 : 1);
     let scale = Math.max(0.06, Math.min(maxScale, fit, Math.max(PINNED_NEAR_SCALE, distance * 0.07)));
     // A door is narrow: centre the card on it, small enough that its focus panel fits beside it.
     const centred = frame.kind === 'door';
@@ -662,7 +663,7 @@ export class SurfaceSystem extends createSystem({
       }
       if (found !== null) [a, b] = found;
       // A small desk full of big cards: try again with smaller cards before overlapping.
-      else if (scale > 0.09) return this.placeOn(frame, point, cardId, via, scale * 0.7);
+      else if (scale > 0.065) return this.placeOn(frame, point, cardId, via, scale * 0.75);
       else crowded = true;
     }
 
