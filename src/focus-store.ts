@@ -170,3 +170,31 @@ export function playChime(): void {
     // A blocked or missing audio device must never break completion.
   }
 }
+
+/**
+ * A soft "tap" as a card settles onto a surface: a few ms of filtered noise
+ * (no oscillators, no audio file). Silent until the AudioContext was primed by a pinch.
+ */
+export function playTap(): void {
+  const ctx = audioContext;
+  if (ctx === undefined || ctx.state !== 'running') return;
+  try {
+    const length = Math.floor(ctx.sampleRate * 0.045);
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** 3;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1400;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.18;
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    source.start();
+  } catch {
+    // ignore
+  }
+}

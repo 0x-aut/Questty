@@ -1,11 +1,10 @@
-import { createSystem, UIKit, UIKitMLAsset, Vector3 } from '@iwsdk/core';
-import { createQuestCard, pinCardTo } from './quest-card.js';
+import { createSystem, Matrix4, Quaternion, UIKit, UIKitMLAsset, Vector3 } from '@iwsdk/core';
+import { allowFloatingFocus, createQuestCard, setQuestCardState, showFocusActionFor } from './quest-card.js';
 import { setWelcomeCollapsed } from './panel.js';
 import { setCardActionMode } from './session-events.js';
-import { autoPinTarget } from './surfaces.js';
 import { splitQuests, type QuestSuggestion } from './splitQuests.js';
 import { startVoiceCapture, type VoiceError, type VoiceSession } from './voice.js';
-import { homeForward, nextFreeSlot, type CardPose } from './card-layout.js';
+import { FLOAT_CARD_SCALE, homeForward, nextFreeSlot, type CardPose } from './card-layout.js';
 import { floatingCardPositions } from './card-arrange.js';
 import { QuestCard } from './quest-component.js';
 
@@ -62,6 +61,11 @@ const ORB_COLORS: Record<VoiceUiState, string> = {
 };
 
 const FOCUS_QUEST: QuestSuggestion = { title: 'Focus session', xp: 25, zone: 'desk' };
+/** Focus session card: distance ahead and drop below the eyes (seated reach). */
+const FOCUS_CARD_DISTANCE = 0.52;
+const FOCUS_CARD_DROP = 0.14;
+/** Width of a card's focus panel in card units (focus-action.uikitml). */
+const FOCUS_PANEL_WIDTH_UNITS = 2.0;
 const ORB_SIZE = 84;
 const ORB_GROW = 20;
 
@@ -172,26 +176,53 @@ export class QuestInputSystem extends createSystem({
     });
   }
 
-  /** Focus session quick start: one card, pinned to the nearest desk, length picker open. */
+  /**
+   * Focus session quick start: one card that floats within easy seated reach
+   * (about half a metre ahead, a little below the eyes, facing the user, its
+   * focus panel on its right, clear of the home panel), with the length
+   * picker open. It works right there; the user can also drag it onto any
+   * wall, desk or door, before or during focus.
+   */
   private async startFocusSession(): Promise<void> {
-    const pose = this.getNextFloatingPose();
+    const pose = this.focusCardPose();
     const card = await createQuestCard({
       title: FOCUS_QUEST.title,
       xp: FOCUS_QUEST.xp,
       position: pose.position,
       quaternion: pose.quaternion,
+      focusReady: true,
     });
-    const target = autoPinTarget(card, 'desk');
-    if (target === null) {
-      this.setStatus('Pinch the card onto a desk to start focus.', 'busy');
-      return;
-    }
-    pinCardTo(card, target);
     const cardId = card.getValue(QuestCard, 'cardId') as string;
-    // Applied as soon as the card's focus control exists (after the short flight).
+    allowFloatingFocus(cardId);
+    setQuestCardState(card, 'Pick a length here, or drag me onto a wall or desk');
+    // Applied as soon as the card's focus control exists.
     setCardActionMode(cardId, 'pick');
-    this.setStatus(`Focus card on the ${target.label.toLowerCase()}: pick a length`, 'done');
+    showFocusActionFor(card);
+    this.setStatus('Focus card is ready in front of you: pick a length', 'done');
     this.statusTimer = window.setTimeout(() => this.setStatus(undefined), 6_000);
+  }
+
+  /** Floating pose for the Focus session card, ~0.52 m ahead and 0.14 m below the eyes. */
+  private focusCardPose(): CardPose {
+    const head = this.world.player.head;
+    head.updateWorldMatrix(true, false);
+    head.getWorldPosition(this.headPosition);
+    head.getWorldDirection(this.forward);
+    this.forward.negate();
+    const forward = homeForward(this.forward);
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-4) forward.set(0, 0, -1);
+    forward.normalize();
+    const right = new Vector3(-forward.z, 0, forward.x);
+    // Shift left by half the focus panel so card + panel sit centred ahead.
+    const panelShift = (FOCUS_PANEL_WIDTH_UNITS * FLOAT_CARD_SCALE + 0.015) / 2;
+    const position = this.headPosition
+      .clone()
+      .addScaledVector(forward, FOCUS_CARD_DISTANCE)
+      .addScaledVector(right, -panelShift);
+    position.y = this.headPosition.y - FOCUS_CARD_DROP;
+    const look = new Matrix4().lookAt(this.headPosition, position, new Vector3(0, 1, 0));
+    return { position, quaternion: new Quaternion().setFromRotationMatrix(look) };
   }
 
   /** Mic button: tap to start, tap again to finish (it also stops on a pause). */

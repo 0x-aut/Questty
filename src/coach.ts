@@ -32,6 +32,8 @@ export class CoachSystem extends createSystem({
   private sweepFrom = new Vector3();
   private sweepTo = new Vector3();
   private sweepCard: Entity | undefined;
+  /** Set when the first card is the floating Focus session card. */
+  private focusCard: Entity | undefined;
   private startedAt = 0;
   private confirmUntil = 0;
   private readonly head = new Vector3();
@@ -45,7 +47,15 @@ export class CoachSystem extends createSystem({
       if (type === 'created' && !detail.restored && !this.seen && this.phase === 'off') {
         // Let the whole batch spawn first.
         this.phase = 'teach';
+        this.focusCard = detail.focusReady === true ? entity : undefined;
         window.setTimeout(() => void this.startTeach(), 700);
+      } else if (type === 'focused') {
+        // Focus started right where the card floats: the tip steps aside (it
+        // comes back for the first pin of a later card).
+        if (this.phase === 'teach') {
+          this.hide();
+          this.focusCard = undefined;
+        }
       } else if (type === 'pinned') {
         if (!this.seen) {
           this.seen = true;
@@ -141,11 +151,21 @@ export class CoachSystem extends createSystem({
   private async startTeach(): Promise<void> {
     if (this.seen || !(await this.ensureObjects()) || this.phase !== 'teach') return;
     const tip = this.tip!;
-    this.setText('Put your quests in the room', 'Pinch a card and drag it onto a wall, desk or door.', 'hand');
-    // Just above the floating arc, a little below eye level, straight ahead.
     this.readHead();
-    tip.position.copy(this.head).addScaledVector(this.forward, 0.62);
-    tip.position.y = this.head.y - 0.06;
+    const focusCard = this.focusCard?.active ? this.focusCard.object3D : undefined;
+    if (focusCard != null) {
+      this.setText("Focus card's ready here", 'Pinch Start, or drag it onto a wall or desk.', 'hand');
+      // Just above the floating focus card, nudged toward the user.
+      focusCard.updateWorldMatrix(true, false);
+      focusCard.getWorldPosition(this.tmp);
+      tip.position.copy(this.tmp).lerp(this.head, 0.1);
+      tip.position.y = this.tmp.y + (2.83 / 2) * focusCard.scale.x + 0.075;
+    } else {
+      this.setText('Put your quests in the room', 'Pinch a card and drag it onto a wall, desk or door.', 'hand');
+      // Just above the floating arc, a little below eye level, straight ahead.
+      tip.position.copy(this.head).addScaledVector(this.forward, 0.62);
+      tip.position.y = this.head.y - 0.06;
+    }
     this.faceHead(tip);
     tip.visible = true;
     glowSurfaces(GLOW_MS);
