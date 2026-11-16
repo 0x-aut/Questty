@@ -1,0 +1,340 @@
+{
+  "marks": [
+    {
+      "name": "enter-xr",
+      "t": 14.9
+    },
+    {
+      "name": "new-card",
+      "t": 29.4
+    },
+    {
+      "name": "voice-ai",
+      "t": 58.8
+    },
+    {
+      "name": "categorise-floating",
+      "t": 104.9
+    },
+    {
+      "name": "pin-desk",
+      "t": 150.7
+    },
+    {
+      "name": "categorise-pinned",
+      "t": 178
+    },
+    {
+      "name": "pill-counts",
+      "t": 230
+    },
+    {
+      "name": "highlight-before-leave",
+      "t": 249.4
+    },
+    {
+      "name": "stand-up",
+      "t": 276.4
+    },
+    {
+      "name": "stand-again",
+      "t": 316.3
+    },
+    {
+      "name": "api",
+      "t": 324.9
+    },
+    {
+      "name": "focus-quick",
+      "t": 329.7
+    },
+    {
+      "name": "voice-fallback",
+      "t": 386.7
+    },
+    {
+      "name": "reload",
+      "t": 431.2
+    },
+    {
+      "name": "end",
+      "t": 482.7
+    }
+  ],
+  "checks": {
+    "A new card is Unsorted": {
+      "ok": true,
+      "detail": {
+        "cardId": "q-mwjuyf57-ovo3p",
+        "title": "Email reply",
+        "category": "unsorted",
+        "stuckTo": "",
+        "chip": true,
+        "chipVisible": true,
+        "chipTiltDeg": 0,
+        "chipLabel": "When?",
+        "accentVisible": false,
+        "pulsing": false,
+        "glowOpacity": 0
+      }
+    },
+    "B voice (AI) pre-sets categories": {
+      "ok": true,
+      "detail": {
+        "got": {
+          "Email Sam about launch": "today",
+          "Book the dentist": "later",
+          "Grab parcel for post office": "before-leave",
+          "Water the plants": "before-leave"
+        },
+        "want": {
+          "Email Sam about launch": "today",
+          "Book the dentist": "later",
+          "Grab parcel for post office": "before-leave",
+          "Water the plants": "before-leave"
+        }
+      }
+    },
+    "B onCategoryChanged fired for voice cards": {
+      "ok": true,
+      "detail": {
+        "voiceEvents": 4
+      }
+    },
+    "C floating card set to Later by pinch, card did not move": {
+      "ok": true,
+      "detail": {
+        "category": "later",
+        "moveMm": 0,
+        "rotDeg": 0,
+        "zoneBefore": "",
+        "zoneAfter": "",
+        "surfaceBefore": "",
+        "surfaceAfter": "",
+        "pickerOpen": false,
+        "chipLabel": "Later"
+      }
+    },
+    "D pinned card set to Before I leave by pinch, still pinned, did not move": {
+      "ok": true,
+      "detail": {
+        "pinnedBefore": {
+          "title": "Book the dentist",
+          "zoneId": "desk",
+          "surfaceId": "room-1",
+          "comps": [
+            "DistanceGrabbable",
+            "Handle"
+          ]
+        },
+        "category": "before-leave",
+        "moveMm": 0,
+        "rotDeg": 0,
+        "zoneBefore": "desk",
+        "zoneAfter": "desk",
+        "surfaceBefore": "room-1",
+        "surfaceAfter": "room-1",
+        "pickerOpen": false,
+        "chipLabel": "Before I leave"
+      }
+    },
+    "E pill counts are right": {
+      "ok": true,
+      "detail": {
+        "pillTexts": {
+          "today": "Today 1",
+          "later": "Later 1",
+          "beforeLeave": "Before I leave 3",
+          "shown": "flex"
+        },
+        "counts": {
+          "today": 1,
+          "later": 1,
+          "before-leave": 3,
+          "unsorted": 0
+        }
+      }
+    },
+    "E pinching a count pulses exactly those cards (panel stays a pill)": {
+      "ok": true,
+      "detail": {
+        "pulsing": [
+          "Book the dentist",
+          "Grab parcel for post office",
+          "Water the plants"
+        ],
+        "blTitles": [
+          "Book the dentist",
+          "Grab parcel for post office",
+          "Water the plants"
+        ],
+        "pillStill": "flex"
+      }
+    },
+    "E highlight is brief": {
+      "ok": true
+    },
+    "F stand-up shows the toast and pulses Before-I-leave cards": {
+      "ok": true,
+      "detail": {
+        "base": {
+          "baseline": 1.6088844600491516,
+          "standing": false,
+          "log": []
+        },
+        "lean": {
+          "baseline": 1.6755304032822453,
+          "standing": false,
+          "log": []
+        },
+        "toast": {
+          "visible": true,
+          "text": "Before you go: 3 things"
+        },
+        "pulsingStand": [
+          "Book the dentist",
+          "Grab parcel for post office",
+          "Water the plants"
+        ],
+        "log": [
+          {
+            "at": 280891.4000000004,
+            "result": "shown",
+            "count": 3
+          }
+        ]
+      }
+    },
+    "F second stand-up within 10 min is throttled": {
+      "ok": true,
+      "detail": {
+        "baseline": 1.6637178861507118,
+        "standing": true,
+        "log": [
+          {
+            "at": 280891.4000000004,
+            "result": "shown",
+            "count": 3
+          },
+          {
+            "at": 311136.0999999996,
+            "result": "throttled",
+            "count": 3
+          }
+        ]
+      }
+    },
+    "G setCardCategory / getCardsByCategory / highlightCategory / onCategoryChanged": {
+      "ok": true,
+      "detail": {
+        "set": true,
+        "get": "later",
+        "laterTitles": [
+          "Email Sam about launch",
+          "Email reply"
+        ],
+        "badCategory": false,
+        "badCard": false,
+        "highlighted": 2,
+        "lastEvent": {
+          "cardId": "q-mwjuz9l3-75cmd",
+          "title": "Email Sam about launch",
+          "category": "later",
+          "previous": "today",
+          "source": "api"
+        },
+        "chipLabel": "Later"
+      }
+    },
+    "K Focus session card floats, is Unsorted, timer runs": {
+      "ok": true,
+      "detail": {
+        "fcEcs": {
+          "title": "Focus session",
+          "zoneId": "",
+          "surfaceId": "",
+          "comps": [
+            "DistanceGrabbable",
+            "Handle"
+          ]
+        },
+        "phase": "focus",
+        "clock": "04:57"
+      }
+    },
+    "J voice (no AI, local split) pre-sets categories (duplicates added via the PR 8 \"add them anyway\")": {
+      "ok": true,
+      "detail": {
+        "got": {
+          "Email Sam about the launch": "today",
+          "Book the dentist": "later",
+          "Grab the parcel for the post": "before-leave",
+          "Water the plants": "before-leave"
+        },
+        "want": {
+          "Email Sam about the launch": "today",
+          "Book the dentist": "later",
+          "Grab the parcel for the post": "before-leave",
+          "Water the plants": "before-leave"
+        },
+        "status": "Added 1 quest (offline split).",
+        "dupQuestion": "Added 1 new. 3 of these are already on your board: \"Email Sam about launch\", \"Book the dentist\", \"Water the plants\". Add them anyway?"
+      }
+    },
+    "H categories survive a reload (pinned card still pinned)": {
+      "ok": true,
+      "detail": {
+        "count": 10,
+        "mismatches": [],
+        "dentistAfter": {
+          "title": "Book the dentist",
+          "zoneId": "desk",
+          "surfaceId": "room-1",
+          "comps": [
+            "DistanceGrabbable",
+            "Handle"
+          ]
+        },
+        "restoredVia": {
+          "q-mwjuyf57-ovo3p": "pose",
+          "q-mwjuz9l3-75cmd": "pose",
+          "q-mwjuz9m3-e662m": "anchor",
+          "q-mwjuz9mv-iihjf": "pose",
+          "q-mwjuz9ns-pjqi6": "pose",
+          "q-mwjv4v32-6do4p": "pose",
+          "q-mwjv6bsd-otgk6": "pose",
+          "q-mwjv6cw7-9gmyf": "pose",
+          "q-mwjv6cwm-jaxaq": "pose",
+          "q-mwjv6cx3-rtcrk": "pose",
+          "q-legacy-pr4": "pose",
+          "q-legacy-bad": "pose"
+        }
+      }
+    },
+    "I legacy PR 4 card (and an unknown category) load as Unsorted": {
+      "ok": true,
+      "detail": {
+        "pr4": "unsorted",
+        "bogus": "unsorted",
+        "chip": "When?"
+      }
+    }
+  },
+  "summary": {
+    "A new card is Unsorted": true,
+    "B voice (AI) pre-sets categories": true,
+    "B onCategoryChanged fired for voice cards": true,
+    "C floating card set to Later by pinch, card did not move": true,
+    "D pinned card set to Before I leave by pinch, still pinned, did not move": true,
+    "E pill counts are right": true,
+    "E pinching a count pulses exactly those cards (panel stays a pill)": true,
+    "E highlight is brief": true,
+    "F stand-up shows the toast and pulses Before-I-leave cards": true,
+    "F second stand-up within 10 min is throttled": true,
+    "G setCardCategory / getCardsByCategory / highlightCategory / onCategoryChanged": true,
+    "K Focus session card floats, is Unsorted, timer runs": true,
+    "J voice (no AI, local split) pre-sets categories (duplicates added via the PR 8 \"add them anyway\")": true,
+    "H categories survive a reload (pinned card still pinned)": true,
+    "I legacy PR 4 card (and an unknown category) load as Unsorted": true
+  }
+}
