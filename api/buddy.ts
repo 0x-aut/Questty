@@ -10,7 +10,7 @@
  * bundled into the client. The model must answer in a strict JSON schema; the
  * server drops anything off-schema and the client validates again.
  */
-import { callResponses, readApiKey, readTextModel } from './_openai.ts';
+import { callResponses, readApiKey, readTextModel } from './_openai.js';
 
 type VercelRequestLike = { method?: string; body?: unknown };
 type VercelResponseLike = {

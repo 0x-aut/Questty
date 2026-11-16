@@ -1,4 +1,4 @@
-import { callResponses, readApiKey, readTextModel } from './_openai.ts';
+import { callResponses, readApiKey, readTextModel } from './_openai.js';
 
 type VercelRequestLike = {
   method?: string;

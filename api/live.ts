@@ -14,7 +14,7 @@
  *
  * GET returns { configured } so the client can fall back to push-to-talk.
  */
-import { readApiKey, serverEnv } from './_openai.ts';
+import { readApiKey, serverEnv } from './_openai.js';
 
 type VercelRequestLike = { method?: string; body?: unknown; headers?: Record<string, string | string[] | undefined> };
 type VercelResponseLike = {
