@@ -1,6 +1,8 @@
 import { createSystem, Matrix4, Quaternion, UIKit, UIKitMLAsset, Vector3 } from '@iwsdk/core';
 import { allowFloatingFocus, createQuestCard, setQuestCardState, showFocusActionFor } from './quest-card.js';
-import { setWelcomeCollapsed } from './panel.js';
+import { setWelcomeCollapsed, suppressPillOpen } from './panel.js';
+import { classify } from './buddy/parser.js';
+import { buddyReady, reportMic, reportMicLevel, sendBuddyCommand, type MicState } from './buddy/bus.js';
 import { setCardActionMode } from './session-events.js';
 import { inferWhenFromTranscript, splitQuests, type QuestSuggestion } from './splitQuests.js';
 import { isCategoryId, UNSORTED } from './category-config.js';
@@ -43,7 +45,7 @@ const VOICE_LABELS: Record<VoiceUiState, string> = {
 };
 
 const VOICE_HINTS: Record<VoiceUiState, string> = {
-  idle: 'Pinch the mic and talk it through',
+  idle: 'Pinch the orb and talk it through',
   starting: 'One moment',
   listening: 'Pause when you are done, or pinch the mic',
   transcribing: 'Hang tight',
@@ -51,15 +53,16 @@ const VOICE_HINTS: Record<VoiceUiState, string> = {
   error: 'Or add a quick quest below',
 };
 
-/** Orb colors: yellow at rest, warm coral while listening, sand while busy. */
-const ORB_COLORS: Record<VoiceUiState, string> = {
-  idle: '#f5d90a',
-  starting: '#f5e27a',
-  listening: '#ff8f7a',
-  transcribing: '#e8dfc9',
-  thinking: '#e8dfc9',
-  error: '#f2b6ae',
+/** What the buddy orb shows for each mic state (one mic, one orb: PR 6). */
+const ORB_STATE: Record<VoiceUiState, MicState> = {
+  idle: 'idle',
+  starting: 'listening',
+  listening: 'listening',
+  transcribing: 'transcribing',
+  thinking: 'transcribing',
+  error: 'error',
 };
+
 
 const FOCUS_QUEST: QuestSuggestion = { title: 'Focus session', xp: 25, zone: 'desk' };
 /** Focus session card: distance ahead and drop below the eyes (seated reach). */
@@ -160,6 +163,17 @@ export class QuestInputSystem extends createSystem({
       this.cleanupFuncs.push(() => button.removeEventListener('click', spawn));
     }
 
+    // PR 6: the pill's orb is the buddy's mic. Pinch it to talk (tap to start,
+    // tap again to stop); the rest of the pill still opens the panel.
+    const pillOrb = panel.getElementById('pill-orb');
+    const onPillOrb = (event?: { stopPropagation?: () => void }) => {
+      suppressPillOpen();
+      event?.stopPropagation?.();
+      this.onVoiceButton();
+    };
+    pillOrb?.addEventListener('click', onPillOrb as never);
+    this.cleanupFuncs.push(() => pillOrb?.removeEventListener('click', onPillOrb as never));
+
     this.voiceButton = panel.getElementById<UIKit.Text>('voice-button') ?? undefined;
     if (this.voiceButton !== undefined) {
       const onVoiceClick = () => this.onVoiceButton();
@@ -247,6 +261,7 @@ export class QuestInputSystem extends createSystem({
       onLevel: (rms) => {
         if (this.voiceSession !== session) return;
         this.orbLevel = this.orbLevel * 0.5 + Math.min(1, rms / 0.12) * 0.5;
+        reportMicLevel(this.orbLevel);
         this.applyOrb();
       },
       onState: (state, engine) => {
@@ -266,6 +281,13 @@ export class QuestInputSystem extends createSystem({
         this.voiceSession = undefined;
         if (text.trim().length === 0) {
           this.setVoiceState('error', 'Did not catch that. Tap the mic and try again.', 'error');
+          return;
+        }
+        // One mic, two jobs (PR 6): a command goes to the buddy, a brain dump
+        // (a list, "I need to...") becomes cards as before.
+        if (buddyReady() && classify(text) === 'command') {
+          this.setVoiceState('idle', undefined);
+          sendBuddyCommand(text, 'voice');
           return;
         }
         void this.createFromSpeech(text);
@@ -335,11 +357,9 @@ export class QuestInputSystem extends createSystem({
     }
     if (this.disposed) return;
     const count = quests.length;
-    this.setVoiceState(
-      'idle',
-      `Added ${count} quest${count === 1 ? '' : 's'}${usedAi ? '' : ' (offline split)'}.`,
-      'done',
-    );
+    const added = `Added ${count} quest${count === 1 ? '' : 's'}${usedAi ? '' : ' (offline split)'}.`;
+    this.setVoiceState('idle', added, 'done');
+    reportMic('cards', added);
     this.statusTimer = window.setTimeout(() => {
       if (this.voiceState === 'idle') this.setStatus(undefined);
     }, 6_000);
@@ -391,7 +411,8 @@ export class QuestInputSystem extends createSystem({
     this.voiceState = state;
     this.voiceLabel?.setProperties({ text: VOICE_LABELS[state] });
     this.voiceHint?.setProperties({ text: VOICE_HINTS[state] });
-    this.voiceOrb?.setProperties({ backgroundColor: ORB_COLORS[state] });
+    // The glowing buddy orb (buddy/orb.ts) shows the state now, in the panel and the pill.
+    reportMic(ORB_STATE[state], state === 'error' ? status : undefined);
     if (state !== 'listening') {
       this.orbLevel = 0;
       this.applyOrb();

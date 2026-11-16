@@ -1,0 +1,94 @@
+<!--
+  AI buddy caption bubble (PR 6): a short reply under the orb, with up to
+  three large chips (Undo, Confirm, Start the first one?, suggestions).
+  Same paper + frosted language as the category picker and toast.
+  Element ids used by code: buddy-bubble, buddy-tag, buddy-tag-dot,
+  buddy-tag-text, buddy-text, buddy-chips, buddy-chip-<0|1|2>,
+  buddy-chip-<0|1|2>-label.
+-->
+<style>
+  .bubble {
+    flex-direction: column;
+    gap: 10px;
+    width: 312px;
+    padding-top: 12px;
+    padding-bottom: 14px;
+    padding-left: 16px;
+    padding-right: 16px;
+    border-radius: 22px;
+    background-color: #f3eee3;
+    border-width: 1px;
+    border-color: #d6cdb9;
+  }
+
+  .tag {
+    flex-direction: row;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .tag-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 5px;
+    background-color: #e0b85c;
+  }
+
+  .tag-text {
+    color: #7a7062;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+  }
+
+  .text {
+    color: #26241f;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .chips {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .chip {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    height: 46px;
+    padding-left: 16px;
+    padding-right: 16px;
+    border-radius: 23px;
+    background-color: #e6dece;
+    border-width: 1px;
+    border-color: #d3c9b4;
+    cursor: pointer;
+  }
+
+  .chip-label {
+    color: #2b2a27;
+    font-size: 16px;
+    font-weight: 700;
+  }
+</style>
+<div id="buddy-bubble" class="bubble">
+  <div class="tag">
+    <div id="buddy-tag-dot" class="tag-dot"></div>
+    <span id="buddy-tag-text" class="tag-text">QUESTTY</span>
+  </div>
+  <span id="buddy-text" class="text">Pinch the orb and tell me what to do.</span>
+  <div id="buddy-chips" class="chips">
+    <div id="buddy-chip-0" class="chip">
+      <span id="buddy-chip-0-label" class="chip-label">Undo</span>
+    </div>
+    <div id="buddy-chip-1" class="chip">
+      <span id="buddy-chip-1-label" class="chip-label">Confirm</span>
+    </div>
+    <div id="buddy-chip-2" class="chip">
+      <span id="buddy-chip-2-label" class="chip-label">Start</span>
+    </div>
+  </div>
+</div>

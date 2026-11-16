@@ -16,6 +16,12 @@ const PANEL_DROP = 0.4;
 const PANEL_SCALE = 0.1;
 
 let collapseHandler: ((collapsed: boolean) => void) | undefined;
+let collapsedNow = false;
+
+/** Is the home panel shrunk to its pill (where the buddy orb and its bubbles live)? */
+export function isWelcomeCollapsed(): boolean {
+  return collapsedNow;
+}
 let pillOpenBlockedUntil = 0;
 
 /**
@@ -52,6 +58,7 @@ export class PanelSystem extends createSystem({}) {
 
     const apply = (collapsed: boolean) => {
       this.collapsed = collapsed;
+      collapsedNow = collapsed;
       full?.setProperties({ display: collapsed ? 'none' : 'flex' });
       pill?.setProperties({ display: collapsed ? 'flex' : 'none' });
     };

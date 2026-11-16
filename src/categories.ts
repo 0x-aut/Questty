@@ -159,6 +159,14 @@ export function highlightCategory(category: CategoryId, ms = HIGHLIGHT_MS): numb
   return system?.highlight(category, ms) ?? 0;
 }
 
+/**
+ * Softly pulse specific cards (AI buddy, PR 6: "what's left today?" and the
+ * acknowledge pulse when the buddy touches a card). Returns how many pulse.
+ */
+export function pulseCards(cardIds: readonly string[], ms = HIGHLIGHT_MS, color?: string): number {
+  return system?.pulseIds(cardIds, ms, color) ?? 0;
+}
+
 // ------------------------------------------------------------------ visuals
 
 const HIGHLIGHT_MS = 3300;
@@ -643,6 +651,19 @@ export class CategorySystem extends createSystem({
       if (card.getValue(QuestCard, 'category') !== category) continue;
       const cardId = card.getValue(QuestCard, 'cardId') as string;
       this.pulses.set(cardId, { start: now, until: now + ms, color: def.accent });
+      n += 1;
+    }
+    return n;
+  }
+
+  pulseIds(cardIds: readonly string[], ms: number, color?: string): number {
+    const now = performance.now();
+    let n = 0;
+    for (const cardId of cardIds) {
+      const card = cardEntity(cardId);
+      if (card === undefined || card.hasComponent(QuestCardTween)) continue;
+      const def = getCategory(card.getValue(QuestCard, 'category') as string) ?? getCategory(UNSORTED)!;
+      this.pulses.set(cardId, { start: now, until: now + ms, color: color ?? def.accent });
       n += 1;
     }
     return n;

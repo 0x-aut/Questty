@@ -115,6 +115,16 @@ export class CardPersistenceSystem extends createSystem({
       } else if (type === 'floated') {
         this.save(entity, null);
         this.dropAnchor(id);
+      } else if (type === 'renamed') {
+        const record = records.get(id);
+        if (record !== undefined) {
+          record.title = entity.getValue(QuestCard, 'title') as string;
+          saveCards(records.values());
+        } else {
+          this.save(entity, null);
+        }
+      } else if (type === 'updated') {
+        this.save(entity, null);
       } else if (type === 'categorized') {
         const record = records.get(id);
         if (record !== undefined) {
