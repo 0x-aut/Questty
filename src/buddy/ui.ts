@@ -17,6 +17,8 @@
 import {
   CanvasTexture,
   createSystem,
+  Grabbed,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
@@ -30,12 +32,13 @@ import {
   type Entity,
 } from '@iwsdk/core';
 import { QuestCard, QuestCardTween } from '../quest-component.js';
-import { createQuestCard, findQuestCard, onCardEvent } from '../quest-card.js';
+import { createQuestCard, emitCardEvent, findQuestCard, onCardEvent } from '../quest-card.js';
+import { setCardWorldPose } from '../surfaces.js';
 import { pulseCards } from '../categories.js';
 import { isWelcomeCollapsed, setWelcomeCollapsed } from '../panel.js';
 import { getBuddyFocusApi } from '../session-events.js';
 import { focusNow } from '../focus-store.js';
-import { CARD_UNITS_H, CARD_UNITS_W, homeForward, nextFreeSlot } from '../card-layout.js';
+import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE, homeForward, nextFreeSlot } from '../card-layout.js';
 import { floatingCardPositions } from '../card-arrange.js';
 import { cleanReply, validateActions, type BuddyAction, type BuddyCard, type Rejection } from './actions.js';
 import { classify, parseCommand } from './parser.js';
@@ -57,6 +60,11 @@ const FADE_OUT_MS = 380;
 const LINE_COLOR = '#ffe7b0';
 const ACK_COLOR = '#f2d27c';
 const SUGGESTIONS = ["What's left today?", 'Plan my day'];
+/** Same seated-reach spot as the Focus session card (quest-input.ts). */
+const FOCUS_DISTANCE = 0.52;
+const FOCUS_DROP = 0.14;
+const FOCUS_PANEL_UNITS = 2.0;
+const GLIDE_MS = 650;
 
 type ChipKind = 'plain' | 'primary' | 'danger';
 type Chip = { label: string; kind: ChipKind; run: () => void };
@@ -168,6 +176,7 @@ export class BuddySystem extends createSystem({
       getPlan: () => (this.plan === null ? null : [...this.plan]),
       setPlan: (order) => this.setPlan(order),
       cards: () => this.cardList(),
+      bringForward: (entity) => this.bringForward(entity),
     });
     this.logOrb('idle');
 
@@ -225,6 +234,7 @@ export class BuddySystem extends createSystem({
   update(): void {
     const now = performance.now();
     this.placeOrb(now);
+    this.updateGlides(now);
     this.lines.update(now);
     if (!this.busy && this.orbHoldUntil > 0 && now > this.orbHoldUntil) {
       this.orbHoldUntil = 0;
@@ -546,6 +556,67 @@ export class BuddySystem extends createSystem({
     const forward = head.getWorldDirection(new Vector3()).negate();
     const pose = nextFreeSlot(position, homeForward(forward), floatingCardPositions(this.queries.cards.entities));
     return createQuestCard({ title, xp: 20, position: pose.position, quaternion: pose.quaternion, category });
+  }
+
+  /**
+   * Focus on a card floating in the arc: it glides to the same seated-reach
+   * spot as the Focus session card (PR 4b), so its controls never sit behind a
+   * neighbour. Pinned cards stay where the user stuck them.
+   */
+  private bringForward(entity: Entity): (() => void) | null {
+    const object = entity.object3D;
+    if (object == null || (entity.getValue(QuestCard, 'zoneId') as string).length > 0) return null;
+    object.updateWorldMatrix(true, false);
+    const from = { p: object.getWorldPosition(new Vector3()), q: object.getWorldQuaternion(new Quaternion()) };
+    const head = this.world.player.head;
+    head.updateWorldMatrix(true, false);
+    const eye = head.getWorldPosition(new Vector3());
+    const forward = homeForward(head.getWorldDirection(new Vector3()).negate());
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-4) forward.set(0, 0, -1);
+    forward.normalize();
+    const right = new Vector3(-forward.z, 0, forward.x);
+    const shift = (FOCUS_PANEL_UNITS * FLOAT_CARD_SCALE + 0.015) / 2;
+    const p = eye.clone().addScaledVector(forward, FOCUS_DISTANCE).addScaledVector(right, -shift);
+    p.y = eye.y - FOCUS_DROP;
+    const q = new Quaternion().setFromRotationMatrix(new Matrix4().lookAt(eye, p, new Vector3(0, 1, 0)));
+    this.glide(entity, p, q);
+    return () => {
+      if (entity.active && (entity.getValue(QuestCard, 'zoneId') as string).length === 0) this.glide(entity, from.p, from.q);
+    };
+  }
+
+  private readonly glides = new Map<Entity, { from: Vector3; fromQ: Quaternion; to: Vector3; toQ: Quaternion; start: number }>();
+
+  private glide(entity: Entity, to: Vector3, toQ: Quaternion): void {
+    const object = entity.object3D;
+    if (object == null) return;
+    object.updateWorldMatrix(true, false);
+    this.glides.set(entity, {
+      from: object.getWorldPosition(new Vector3()),
+      fromQ: object.getWorldQuaternion(new Quaternion()),
+      to: to.clone(),
+      toQ: toQ.clone(),
+      start: performance.now(),
+    });
+  }
+
+  private updateGlides(now: number): void {
+    for (const [entity, g] of this.glides) {
+      if (!entity.active || entity.hasComponent(Grabbed) || entity.hasComponent(QuestCardTween)) {
+        this.glides.delete(entity);
+        continue;
+      }
+      const t = Math.min(1, (now - g.start) / (GLIDE_MS * BUDDY_SLOW));
+      const e = 1 - (1 - t) ** 3;
+      const p = g.from.clone().lerp(g.to, e);
+      const q = g.fromQ.clone().slerp(g.toQ, e);
+      setCardWorldPose(entity, p, q, FLOAT_CARD_SCALE);
+      if (t >= 1) {
+        this.glides.delete(entity);
+        emitCardEvent('floated', entity);
+      }
+    }
   }
 
   private setPlan(order: string[] | null): void {

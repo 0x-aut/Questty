@@ -46,6 +46,8 @@ export type ExecutorHost = {
   getPlan(): string[] | null;
   setPlan(order: string[] | null): void;
   cards(): BuddyCard[];
+  /** A floating card the buddy starts focus on glides to the focus spot; returns how to send it back. */
+  bringForward(entity: Entity): (() => void) | null;
 };
 
 type CardSnap = {
@@ -123,7 +125,7 @@ export class BuddyExecutor {
       result.confirm = {
         label: held.length === 1 ? 'Delete' : `Delete ${held.length}`,
         actions: held,
-        reply: `Delete ${names}? This can't be found again later.`,
+        reply: `Delete ${names}?`,
       };
       for (const a of held) {
         if ('card_id' in a) result.touched.push(a.card_id);
@@ -217,11 +219,13 @@ export class BuddyExecutor {
             log(false, 'refused');
             break;
           }
+          const sendBack = this.host.bringForward(entity);
           result.touched.push(action.card_id);
           result.changed = true;
           replies.push(`${action.minutes} minutes on "${quote(titleOf(action.card_id))}". Go.`);
           undos.push(async () => {
             focus.restore(null);
+            sendBack?.();
             return [action.card_id];
           });
           log(true);
