@@ -198,7 +198,7 @@ export class BuddySystem extends createSystem({
   private readonly dupLog: Array<{ event: string; titles: string[]; at: number }> = [];
   /** PR 8: the last Live delegation, so a repeated hearing runs once. */
   private lastDelegation?: { key: string; start: number; end: number; reply: Promise<string> };
-  private readonly delegationLog: Array<{ text: string; at: number; dropped: boolean }> = [];
+  private readonly delegationLog: Array<{ text: string; at: number; dropped: boolean; sinceLastMs: number | null }> = [];
 
   init(): void {
     try {
@@ -396,7 +396,7 @@ export class BuddySystem extends createSystem({
     this.markUsed();
     setWelcomeCollapsed(true);
     const session = new TalkSession({
-      command: (text) => this.talkCommand(text),
+      command: (text, heardAt) => this.talkCommand(text, heardAt),
       caption: (who, text) => this.sayCaption(who === 'you' ? `"${text}"` : text, who === 'you' ? 'YOU' : 'QUESTTY  ·  TALKING'),
       state: (state, detail) => this.onTalkState(state, detail),
       levels: (out, inp) => {
@@ -430,22 +430,26 @@ export class BuddySystem extends createSystem({
 
   /**
    * A delegated voice request. PR 8: GPT-Live can delegate the same request
-   * twice when it hears it twice; the same words within ~5 s of the last
-   * delegation (from its start until 5 s after it finished) run once, and the
-   * repeat gets the first one's result back.
+   * twice when it hears it twice. The same words raised within ~5 s of the
+   * last delegation (by when GPT-Live raised them: within 5 s of the first
+   * one, while it is still running, or within 5 s after it finished) run
+   * once, and the repeat gets the first one's result back. Delegations queue,
+   * so the time they were raised is what counts, not when they get to run.
    */
-  private talkCommand(text: string): Promise<string> {
+  private talkCommand(text: string, heardAt = performance.now()): Promise<string> {
     const key = delegationKey(text);
-    const now = performance.now();
     const last = this.lastDelegation;
-    if (last !== undefined && last.key === key && key.length > 0 && (last.end === 0 || now - last.end < DELEGATION_DEDUPE_MS)) {
+    const within =
+      last !== undefined &&
+      (heardAt - last.start < DELEGATION_DEDUPE_MS || last.end === 0 || heardAt - last.end < DELEGATION_DEDUPE_MS);
+    if (last !== undefined && within && last.key === key && key.length > 0) {
       console.info('[buddy] duplicate Live delegation dropped:', text);
-      this.delegationLog.push({ text, at: Date.now(), dropped: true });
+      this.delegationLog.push({ text, at: Date.now(), dropped: true, sinceLastMs: Math.round(heardAt - last.start) });
       return last.reply;
     }
-    this.delegationLog.push({ text, at: Date.now(), dropped: false });
+    this.delegationLog.push({ text, at: Date.now(), dropped: false, sinceLastMs: last !== undefined ? Math.round(heardAt - last.start) : null });
     if (this.delegationLog.length > 40) this.delegationLog.shift();
-    const entry = { key, start: now, end: 0, reply: Promise.resolve('') };
+    const entry = { key, start: heardAt, end: 0, reply: Promise.resolve('') };
     entry.reply = this.runTalkCommand(text).finally(() => {
       entry.end = performance.now();
     });

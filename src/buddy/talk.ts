@@ -22,8 +22,12 @@
 export type TalkState = 'off' | 'connecting' | 'live' | 'closing' | 'failed';
 
 export type TalkHost = {
-  /** Run one spoken request through the validated pipeline; resolve with the line to say. */
-  command(text: string): Promise<string>;
+  /**
+   * Run one spoken request through the validated pipeline; resolve with the
+   * line to say. `heardAt` is when GPT-Live raised the delegation
+   * (performance.now()), so the host can drop a repeated hearing (PR 8).
+   */
+  command(text: string, heardAt: number): Promise<string>;
   /** Captions for the bubble: who is speaking and the text so far. */
   caption(who: 'you' | 'buddy', text: string): void;
   state(state: TalkState, detail?: string): void;
@@ -268,7 +272,8 @@ export class TalkSession {
         this.lastActivity = performance.now();
         // Cancel the generic spoken acknowledgement; the real result follows.
         this.send({ type: 'session.thinking.append', delegation_id: id, content: 'Working on it in the room.' });
-        this.queue = this.queue.then(() => this.runDelegation(id));
+        const heardAt = performance.now();
+        this.queue = this.queue.then(() => this.runDelegation(id, heardAt));
         break;
       }
       case 'session.usage.updated': {
@@ -294,7 +299,7 @@ export class TalkSession {
     }
   }
 
-  private async runDelegation(id: string): Promise<void> {
+  private async runDelegation(id: string, heardAt: number): Promise<void> {
     // Transcript deltas can trail the delegation event a little.
     if (this.youSinceDelegation.trim().length === 0) await delay(600);
     const text = this.youSinceDelegation.trim();
@@ -304,7 +309,7 @@ export class TalkSession {
       reply = "I didn't catch what to do. Ask the user to say it again.";
     } else {
       try {
-        reply = await this.host.command(text);
+        reply = await this.host.command(text, heardAt);
       } catch {
         reply = 'That did not work. Nothing changed.';
       }
