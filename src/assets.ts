@@ -61,6 +61,7 @@ export default defineAssets({
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
   'quest-card': uikitml('quest-card.uikitml', 'Quest Card'),
   'focus-action': uikitml('focus-action.uikitml', 'Focus Action'),
+  'focus-timer': uikitml('focus-timer.uikitml', 'Focus Timer'),
   'label-grab': uikitml('label-grab.uikitml', 'Grab Label'),
   'label-select': uikitml('label-select.uikitml', 'Select Label'),
   'label-spin': uikitml('label-spin.uikitml', 'Spin Label'),

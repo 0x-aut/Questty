@@ -20,8 +20,14 @@ import {
   requestCardCompletion,
   requestCardFocus,
   requestCardNudge,
+  requestFocusCommand,
   setCardActionModeHandler,
+  type CardActionMode,
+  type FocusCommand,
+  type FocusPanelInfo,
 } from './session-events.js';
+import { DEFAULT_FOCUS_MIN, focusChoices, suggestedFocusMinutes } from './session.js';
+import type { BlurLevel } from './focus-store.js';
 import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE } from './card-layout.js';
 import {
   flyCard,
@@ -43,6 +49,13 @@ const FLOATING_HINT = 'Pinch to grab, drop on a wall, desk or door';
 let activeWorld: World | undefined;
 let nextCardId = 1;
 const FOCUS_ACTION_ASSET_ID = 'focus-action';
+const BLUR_LABEL: Record<BlurLevel, string> = { off: 'Blur: Off', soft: 'Blur: Soft', strong: 'Blur: Strong' };
+let focusActionEnsurer: ((card: Entity) => void) | undefined;
+
+/** Show the focus panel next to a card that was pinned without a hand release (reload restore). */
+export function showFocusActionFor(card: Entity): void {
+  focusActionEnsurer?.(card);
+}
 
 export function pinnedHint(kind: string): string {
   return `Pinned to ${kind} - pinch Start focus`;
@@ -144,6 +157,9 @@ export class QuestCardSystem extends createSystem({
   private readonly actionNormal = new Vector3();
   private readonly pendingFocusCardIds = new Set<string>();
   private readonly actionListeners = new Map<Entity, () => void>();
+  /** Last mode requested per card, applied when its panel is created later. */
+  private readonly desiredModes = new Map<string, { mode: CardActionMode; info?: FocusPanelInfo }>();
+  private readonly lastInfo = new Map<string, FocusPanelInfo>();
 
   init(): void {
     this.queries.heldCards.subscribe('qualify', (entity) => this.onGrab(entity));
@@ -155,9 +171,11 @@ export class QuestCardSystem extends createSystem({
     this.queries.tweeningCards.subscribe('qualify', (entity) => {
       this.removeActionsForCard(entity.getValue(QuestCard, 'cardId') as string);
     });
-    setCardActionModeHandler((cardId, mode) => this.setActionMode(cardId, mode));
+    setCardActionModeHandler((cardId, mode, info) => this.setActionMode(cardId, mode, info));
+    focusActionEnsurer = (card) => void this.ensureFocusAction(card);
     this.cleanupFuncs.push(() => {
       setCardActionModeHandler(undefined);
+      focusActionEnsurer = undefined;
       for (const entity of this.queries.actions.entities) this.disposeAction(entity);
     });
   }
@@ -173,7 +191,8 @@ export class QuestCardSystem extends createSystem({
           break;
         }
       }
-      if (!pinned && action.getValue(QuestFocusAction, 'mode') === 'focus') this.disposeAction(action);
+      const mode = action.getValue(QuestFocusAction, 'mode') as string;
+      if (!pinned && (mode === 'focus' || mode === 'pick')) this.disposeAction(action);
     }
     for (const [entity, last] of this.heldHints) {
       if (!entity.active) continue;
@@ -288,20 +307,41 @@ export class QuestCardSystem extends createSystem({
       // Pinch-ray (hands or controller trigger) and direct poke both press it.
       action.addComponent(RayInteractable);
       action.addComponent(PokeInteractable);
-      const button = panel.requireElementById('focus-action-button');
-      const nudgeButton = panel.requireElementById('nudge-action-button');
-      const onClick = () => {
-        const mode = action.getValue(QuestFocusAction, 'mode') as string;
-        if (mode === 'focus') requestCardFocus(card);
-        else if (mode === 'done') requestCardCompletion(card);
+      const listeners: Array<() => void> = [];
+      const on = (id: string, handler: () => void) => {
+        const element = panel!.requireElementById(id);
+        element.addEventListener('click', handler);
+        listeners.push(() => element.removeEventListener('click', handler));
       };
-      const onNudge = () => requestCardNudge(card);
-      button.addEventListener('click', onClick);
-      nudgeButton.addEventListener('click', onNudge);
-      this.actionListeners.set(action, () => {
-        button.removeEventListener('click', onClick);
-        nudgeButton.removeEventListener('click', onNudge);
+      const mode = () => action.getValue(QuestFocusAction, 'mode') as string;
+      on('focus-action-button', () => {
+        if (mode() === 'focus') this.setActionMode(cardId, 'pick');
+        else if (mode() === 'done') requestCardCompletion(card);
       });
+      on('nudge-action-button', () => requestCardNudge(card));
+      on('focus-pick-cancel', () => {
+        if (mode() === 'pick') this.setActionMode(cardId, 'focus');
+      });
+      for (let index = 0; index < 4; index += 1) {
+        on(`focus-len-${index}`, () => {
+          if (mode() !== 'pick') return;
+          const minutes = this.choicesFor(card)[index] ?? DEFAULT_FOCUS_MIN;
+          if (!requestCardFocus(card, minutes) && mode() === 'pick') this.setActionMode(cardId, 'focus');
+        });
+      }
+      const command = (name: FocusCommand) => () => {
+        if (mode() === 'done') requestFocusCommand(card, name);
+      };
+      on('focus-pause', command('pause-toggle'));
+      on('focus-extend', command('extend'));
+      on('focus-end', command('end'));
+      on('focus-blur', command('blur'));
+      this.actionListeners.set(action, () => {
+        for (const remove of listeners) remove();
+      });
+      const desired = this.desiredModes.get(cardId);
+      this.desiredModes.delete(cardId);
+      if (desired !== undefined) this.setActionMode(cardId, desired.mode, desired.info);
     } catch (error) {
       panel?.dispose();
       console.warn('[quest] Could not create a card focus control.', error);
@@ -318,7 +358,7 @@ export class QuestCardSystem extends createSystem({
     this.actionNormal.set(0, 0, 1).applyQuaternion(this.cardWorldQuaternion);
     // Just right of the card, in its plane, a hair in front of it.
     const cardScale = cardObject.scale.x;
-    const actionHalfWidth = 0.75 * FOCUS_ACTION_SCALE * (cardScale / 0.12);
+    const actionHalfWidth = 1.0 * FOCUS_ACTION_SCALE * (cardScale / 0.12);
     this.actionPosition
       .copy(this.cardWorldPosition)
       .addScaledVector(this.actionRight, (CARD_UNITS_W / 2) * cardScale + actionHalfWidth + 0.015)
@@ -334,24 +374,59 @@ export class QuestCardSystem extends createSystem({
     return undefined;
   }
 
-  private setActionMode(
-    cardId: string,
-    mode: 'focus' | 'done' | 'disabled' | 'hidden',
-  ): void {
+  private choicesFor(card: Entity): number[] {
+    return focusChoices(suggestedFocusMinutes(card.getValue(QuestCard, 'title') as string));
+  }
+
+  private setActionMode(cardId: string, mode: CardActionMode, info?: FocusPanelInfo): void {
+    const merged = { ...this.lastInfo.get(cardId), ...info };
+    this.lastInfo.set(cardId, merged);
     const action = this.findFocusAction(cardId);
     const panel = action?.object3D;
-    if (action == null || !(panel instanceof UIKitMLAsset)) return;
-    const visible = mode === 'focus' || mode === 'done';
+    if (action == null || !(panel instanceof UIKitMLAsset)) {
+      // The panel may still be loading (or not exist yet): apply it on creation.
+      this.desiredModes.set(cardId, { mode, info: merged });
+      return;
+    }
+    const visible = mode === 'focus' || mode === 'pick' || mode === 'done';
     panel.visible = visible;
     action.setValue(QuestFocusAction, 'mode', mode);
-    if (visible) {
+    const show = (id: string, on: boolean) =>
+      panel.requireElementById<UIKit.Text>(id).setProperties({ display: on ? 'flex' : 'none' });
+    show('focus-action-button', mode === 'focus' || mode === 'done');
+    show('focus-pick', mode === 'pick');
+    show('focus-controls', mode === 'done');
+    show('nudge-action-button', mode === 'done');
+    if (mode === 'focus' || mode === 'done') {
       panel
         .requireElementById<UIKit.Text>('focus-action-label')
-        .setProperties({ text: mode === 'done' ? 'Done' : 'Start focus' });
+        .setProperties({ text: mode === 'done' ? 'Complete' : 'Start focus' });
     }
-    panel
-      .requireElementById<UIKit.Text>('nudge-action-button')
-      .setProperties({ display: mode === 'done' ? 'flex' : 'none' });
+    if (mode === 'pick') {
+      let card: Entity | undefined;
+      for (const entity of this.queries.cards.entities) {
+        if (entity.getValue(QuestCard, 'cardId') === cardId) card = entity;
+      }
+      const suggested = card ? suggestedFocusMinutes(card.getValue(QuestCard, 'title') as string) : null;
+      const choices = card ? this.choicesFor(card) : focusChoices(null);
+      const highlight = suggested ?? DEFAULT_FOCUS_MIN;
+      choices.forEach((minutes, index) => {
+        panel
+          .requireElementById<UIKit.Text>(`focus-len-${index}-label`)
+          .setProperties({ text: `${minutes}m` });
+        panel
+          .requireElementById<UIKit.Text>(`focus-len-${index}`)
+          .setProperties({ variant: minutes === highlight ? 'primary' : 'secondary' } as never);
+      });
+    }
+    if (mode === 'done') {
+      panel
+        .requireElementById<UIKit.Text>('focus-pause-label')
+        .setProperties({ text: merged.paused ? 'Resume' : 'Pause' });
+      panel
+        .requireElementById<UIKit.Text>('focus-blur-label')
+        .setProperties({ text: BLUR_LABEL[merged.blur ?? 'soft'] });
+    }
   }
 
   private removeActionsForCard(cardId: string): void {
