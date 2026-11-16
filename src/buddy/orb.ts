@@ -83,7 +83,7 @@ void main() {
   vec3 base = mix(mix(uCore, uRim, 0.35) * 0.78, uCore * 1.05, g);
   // A slow inner swirl so the surface never looks flat.
   float swirl = sin(vLocal.x * 9.0 + uTime * 0.9) * sin(vLocal.y * 7.0 - uTime * 0.7);
-  base += uRim * swirl * 0.045;
+  base += uRim * swirl * 0.018;
   // Diffuse inner light (top-left), like light inside frosted glass.
   float spot = pow(max(dot(n, normalize(vec3(-0.35, 0.6, 0.72))), 0.0), 6.0);
   vec3 color = base + vec3(1.0) * spot * 0.28 + uRim * fres * (0.9 + 0.8 * uGlow);
@@ -103,8 +103,9 @@ function getHaloTexture(): CanvasTexture {
   if (ctx !== null) {
     const g = ctx.createRadialGradient(64, 64, 6, 64, 64, 64);
     g.addColorStop(0, 'rgba(255,255,255,1)');
-    g.addColorStop(0.3, 'rgba(255,255,255,0.6)');
-    g.addColorStop(0.62, 'rgba(255,255,255,0.16)');
+    g.addColorStop(0.42, 'rgba(255,255,255,0.85)');
+    g.addColorStop(0.62, 'rgba(255,255,255,0.32)');
+    g.addColorStop(0.8, 'rgba(255,255,255,0.08)');
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 128, 128);
@@ -268,7 +269,7 @@ export class BuddyOrb {
     u.uGlow.value = glow;
     this.sphere.scale.setScalar(radius * this.scaleNow);
     this.sphere.position.set(shake * radius, 0, 0);
-    this.halo.scale.setScalar(radius * 3.2 * (0.9 + 0.1 * this.scaleNow));
+    this.halo.scale.setScalar(radius * 4.4 * (0.9 + 0.1 * this.scaleNow));
     this.haloMaterial.color.copy(this.haloColor);
     this.haloMaterial.opacity = haloOpacity;
 
