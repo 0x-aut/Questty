@@ -77,6 +77,7 @@ type Bubble = {
   opacity: number;
   lastOpacity: number;
   sticky: boolean;
+  hovered: boolean;
 };
 
 type RunRecord = {
@@ -633,12 +634,20 @@ export class BuddySystem extends createSystem({
       entity.addComponent(RayInteractable);
       entity.addComponent(PokeInteractable);
       const root = panel.requireElementById('buddy-bubble');
-      root.setProperties({ anchorY: 'top', renderOrder: 6 } as never);
+      // Anchored at its top-left corner: hangs under the orb, grows down and right.
+      root.setProperties({ anchorX: 'left', anchorY: 'top', renderOrder: 6 } as never);
+      // While a pinch-ray rests on the bubble it doesn't fade (time to reach a chip).
+      root.addEventListener('pointerover', () => {
+        if (this.bubble !== undefined) this.bubble.hovered = true;
+      });
+      root.addEventListener('pointerout', () => {
+        if (this.bubble !== undefined) this.bubble.hovered = false;
+      });
       for (let i = 0; i < 3; i += 1) {
         panel.requireElementById(`buddy-chip-${i}`).addEventListener('click', () => this.onChip(i));
       }
       panel.visible = false;
-      this.bubble = { entity, panel, text: '', tag: '', chips: [], shownAt: 0, until: 0, opacity: 0, lastOpacity: -1, sticky: false };
+      this.bubble = { entity, panel, text: '', tag: '', chips: [], shownAt: 0, until: 0, opacity: 0, lastOpacity: -1, sticky: false, hovered: false };
       const queued = this.bubbleQueued;
       this.bubbleQueued = undefined;
       if (queued !== undefined) this.say(queued.text, queued);
@@ -677,6 +686,8 @@ export class BuddySystem extends createSystem({
     }
     const b = this.bubble;
     if (b === undefined) return;
+    // Pointed at with chips to press: hold it a little longer.
+    if (b.hovered && b.chips.length > 0 && b.opacity > 0.5 && b.until - now < 1500 * BUDDY_SLOW) b.until = now + 1500 * BUDDY_SLOW;
     const want = collapsed && now < b.until ? 1 : 0;
     const step = want > b.opacity ? 1000 / FADE_IN_MS : 1000 / FADE_OUT_MS;
     const dt = Math.min(0.1, (now - (this.lastBubbleAt || now)) / 1000);
@@ -705,10 +716,15 @@ export class BuddySystem extends createSystem({
     home.getWorldQuaternion(this.tmpQ);
     const px = PX_AT_PANEL * (home.scale.x / 0.1);
     const size = (pill as unknown as { size?: { peek?: () => [number, number] | undefined } }).size?.peek?.();
-    const pillH = (size?.[1] ?? 112) * px;
+    const pillW = (size?.[0] ?? 352) * px;
+    const pillH = (size?.[1] ?? 116) * px;
     const up = new Vector3(0, 1, 0).applyQuaternion(this.tmpQ);
+    const right = new Vector3(1, 0, 0).applyQuaternion(this.tmpQ);
     const normal = new Vector3(0, 0, 1).applyQuaternion(this.tmpQ);
+    // Top-left corner just under the pill's left edge (under the orb), so the
+    // bubble grows away from the card arc on the right.
     const position = new Vector3(e[12], e[13], e[14])
+      .addScaledVector(right, -pillW / 2 + 0.004)
       .addScaledVector(up, -(pillH / 2 + BUBBLE_GAP) + slide * 0.012)
       .addScaledVector(normal, 0.004);
     b.panel.position.copy(position);
@@ -725,7 +741,21 @@ export class BuddySystem extends createSystem({
       b.panel.updateWorldMatrix(true, false);
       const el = b.panel.getElementById('buddy-bubble');
       const size = (el as unknown as { size?: { peek?: () => [number, number] | undefined } })?.size?.peek?.();
-      return { position: b.panel.getWorldPosition(new Vector3()).toArray(), sizePx: size ?? null, scale: b.panel.scale.x };
+      const pos = b.panel.getWorldPosition(new Vector3());
+      const q = b.panel.getWorldQuaternion(new Quaternion());
+      const px = 0.001 * (b.panel.scale.x / 0.1);
+      const w = (size?.[0] ?? 300) * px;
+      const h = (size?.[1] ?? 150) * px;
+      const r = new Vector3(1, 0, 0).applyQuaternion(q);
+      const u = new Vector3(0, 1, 0).applyQuaternion(q);
+      // Top-left anchored: the corners and edge midpoints in world space.
+      const corners: number[][] = [];
+      for (const fx of [0, 0.5, 1]) {
+        for (const fy of [0, 0.5, 1]) {
+          corners.push(pos.clone().addScaledVector(r, w * fx).addScaledVector(u, -h * fy).toArray());
+        }
+      }
+      return { position: pos.toArray(), sizePx: size ?? null, scale: b.panel.scale.x, corners };
     })();
     this.world.player.head.getWorldPosition(this.head);
     return {

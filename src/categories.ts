@@ -663,6 +663,9 @@ export class CategorySystem extends createSystem({
       const card = cardEntity(cardId);
       if (card === undefined || card.hasComponent(QuestCardTween)) continue;
       const def = getCategory(card.getValue(QuestCard, 'category') as string) ?? getCategory(UNSORTED)!;
+      // A short acknowledge pulse never cuts a longer highlight short.
+      const current = this.pulses.get(cardId);
+      if (current !== undefined && current.until > now + ms) continue;
       this.pulses.set(cardId, { start: now, until: now + ms, color: color ?? def.accent });
       n += 1;
     }

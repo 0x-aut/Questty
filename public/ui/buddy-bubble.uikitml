@@ -10,7 +10,7 @@
   .bubble {
     flex-direction: column;
     gap: 10px;
-    width: 312px;
+    width: 300px;
     padding-top: 12px;
     padding-bottom: 14px;
     padding-left: 16px;
