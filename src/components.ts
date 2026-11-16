@@ -10,7 +10,7 @@ import {
   QuestCard,
   QuestCardTween,
   QuestFocusAction,
-  ZoneMarker,
+  SnapSurface,
 } from './quest-component.js';
 import { Robot } from './robot-component.js';
 
@@ -19,5 +19,5 @@ export default defineComponents([
   QuestCard,
   QuestCardTween,
   QuestFocusAction,
-  ZoneMarker,
+  SnapSurface,
 ]);
