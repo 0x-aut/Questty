@@ -1,0 +1,997 @@
+{
+  "marks": [
+    {
+      "name": "enter-xr",
+      "t": 16.9
+    },
+    {
+      "name": "focus-quick",
+      "t": 45.8
+    },
+    {
+      "name": "start-25-floating",
+      "t": 69.9
+    },
+    {
+      "name": "drag-to-desk-mid-focus",
+      "t": 88.9
+    },
+    {
+      "name": "end-early",
+      "t": 142
+    },
+    {
+      "name": "voice",
+      "t": 152.7
+    },
+    {
+      "name": "pin front wall",
+      "t": 195.8
+    },
+    {
+      "name": "pin coffee table",
+      "t": 253.1
+    },
+    {
+      "name": "pin door",
+      "t": 321.7
+    },
+    {
+      "name": "reload",
+      "t": 391.6
+    },
+    {
+      "name": "restored",
+      "t": 429.6
+    },
+    {
+      "name": "reload-no-anchors",
+      "t": 451.9
+    },
+    {
+      "name": "end",
+      "t": 503.2
+    }
+  ],
+  "spawn": {
+    "card": {
+      "title": "Focus session",
+      "pos": [
+        -0.097,
+        1.471,
+        -0.52
+      ],
+      "normal": [
+        0.18,
+        0.26,
+        0.95
+      ],
+      "scale": 0.09,
+      "state": "Pick a length here, or drag me onto a wall or desk"
+    },
+    "distanceFromHead": 0.544,
+    "dropBelowEyes": 0.129,
+    "facingAngleDeg": 1.35,
+    "ecs": {
+      "title": "Focus session",
+      "zoneId": "",
+      "surfaceId": "",
+      "comps": [
+        "DistanceGrabbable",
+        "Handle"
+      ]
+    },
+    "coach": {
+      "phase": "teach",
+      "seen": false,
+      "tipVisible": true,
+      "handVisible": false,
+      "title": "Focus card's ready here",
+      "body": "Pinch Start, or drag it onto a wall or desk.",
+      "tipAt": [
+        -0.08774999529123306,
+        1.6730082035064697,
+        -0.46799999475479126
+      ]
+    },
+    "pickerDisplay": "flex"
+  },
+  "focusFloating": {
+    "phase": "focus",
+    "questId": "q-mwjqqy2v-utr73",
+    "durationMs": 1500000,
+    "endsAt": 1794863952829,
+    "pausedRemainingMs": null,
+    "consecutiveSkips": 0,
+    "remainingMs": 1496229,
+    "blur": "soft",
+    "shellOpacity": 0.6,
+    "shellTarget": 0.6,
+    "shellAt": [
+      0,
+      1.6106581687927246,
+      0
+    ],
+    "shellWindows": [
+      [
+        -0.003004115818459448,
+        -0.25184895738293106,
+        -0.9677618911453787,
+        0.47181515066339785
+      ],
+      [
+        -0.6372982483230232,
+        -0.09983336019140482,
+        -0.7641231856692345,
+        0.20868175817049595
+      ]
+    ],
+    "timerVisible": true,
+    "timerPosition": [
+      -0.5417035222053528,
+      1.5257998704910278,
+      -0.6495047211647034
+    ],
+    "clock": "24:57",
+    "atMs": 2616
+  },
+  "dragSamples": [
+    {
+      "phase": "before",
+      "atMs": 12049,
+      "focusPhase": "focus",
+      "remainingMs": 1487325,
+      "clock": "24:48",
+      "timerPosition": [
+        -0.542,
+        1.526,
+        -0.65
+      ],
+      "card": [
+        -0.097,
+        1.471,
+        -0.52
+      ],
+      "windowToCardDeg": 10.05,
+      "windowHalfAngleDeg": 27
+    },
+    {
+      "phase": "held",
+      "atMs": 20503,
+      "focusPhase": "focus",
+      "remainingMs": 1478909,
+      "clock": "24:39",
+      "timerPosition": [
+        -0.381,
+        1.526,
+        -0.755
+      ],
+      "card": [
+        -0.008,
+        1.311,
+        -0.631
+      ],
+      "windowToCardDeg": 7.67,
+      "windowHalfAngleDeg": 22
+    },
+    {
+      "phase": "held",
+      "atMs": 24241,
+      "focusPhase": "focus",
+      "remainingMs": 1475275,
+      "clock": "24:36",
+      "timerPosition": [
+        0.084,
+        1.489,
+        -0.837
+      ],
+      "card": [
+        0.065,
+        1.231,
+        -0.652
+      ],
+      "windowToCardDeg": 6.91,
+      "windowHalfAngleDeg": 20.5
+    },
+    {
+      "phase": "held",
+      "atMs": 28630,
+      "focusPhase": "focus",
+      "remainingMs": 1471102,
+      "clock": "24:32",
+      "timerPosition": [
+        0.137,
+        1.451,
+        -0.824
+      ],
+      "card": [
+        0.109,
+        1.192,
+        -0.653
+      ],
+      "windowToCardDeg": 6.55,
+      "windowHalfAngleDeg": 19.8
+    },
+    {
+      "phase": "held",
+      "atMs": 31920,
+      "focusPhase": "focus",
+      "remainingMs": 1467374,
+      "clock": "24:28",
+      "timerPosition": [
+        0.17,
+        1.431,
+        -0.813
+      ],
+      "card": [
+        0.136,
+        1.17,
+        -0.649
+      ],
+      "windowToCardDeg": 6.38,
+      "windowHalfAngleDeg": 19.5
+    },
+    {
+      "phase": "held",
+      "atMs": 35950,
+      "focusPhase": "focus",
+      "remainingMs": 1463158,
+      "clock": "24:24",
+      "timerPosition": [
+        0.192,
+        1.419,
+        -0.805
+      ],
+      "card": [
+        0.154,
+        1.157,
+        -0.646
+      ],
+      "windowToCardDeg": 6.26,
+      "windowHalfAngleDeg": 19.4
+    },
+    {
+      "phase": "held",
+      "atMs": 40471,
+      "focusPhase": "focus",
+      "remainingMs": 1459005,
+      "clock": "24:20",
+      "timerPosition": [
+        0.208,
+        1.41,
+        -0.8
+      ],
+      "card": [
+        0.167,
+        1.148,
+        -0.642
+      ],
+      "windowToCardDeg": 6.16,
+      "windowHalfAngleDeg": 19.3
+    },
+    {
+      "phase": "released",
+      "atMs": 46234,
+      "focusPhase": "focus",
+      "remainingMs": 1453182,
+      "clock": "24:14",
+      "timerPosition": [
+        -0.001,
+        1.385,
+        -0.82
+      ],
+      "card": [
+        -0.003,
+        0.422,
+        -1.868
+      ],
+      "windowToCardDeg": 3.59,
+      "windowHalfAngleDeg": 12.1
+    },
+    {
+      "phase": "settled",
+      "atMs": 47993,
+      "focusPhase": "focus",
+      "remainingMs": 1451515,
+      "clock": "24:12",
+      "timerPosition": [
+        -0.001,
+        1.385,
+        -0.82
+      ],
+      "card": [
+        -0.003,
+        0.422,
+        -1.868
+      ],
+      "windowToCardDeg": 3.59,
+      "windowHalfAngleDeg": 12.1
+    }
+  ],
+  "focusAfterDrag": {
+    "phase": "focus",
+    "questId": "q-mwjqqy2v-utr73",
+    "durationMs": 1500000,
+    "endsAt": 1794863952829,
+    "pausedRemainingMs": null,
+    "consecutiveSkips": 0,
+    "remainingMs": 1450099,
+    "blur": "soft",
+    "shellOpacity": 0.6,
+    "shellTarget": 0.6,
+    "shellAt": [
+      0,
+      1.6106581687927246,
+      0
+    ],
+    "shellWindows": [
+      [
+        0.06127520070456415,
+        -0.5357322766955454,
+        -0.8421616694466824,
+        0.2108933253254741
+      ],
+      [
+        -0.0013015708277981717,
+        -0.26519530060181445,
+        -0.9641938386300203,
+        0.2086817631026918
+      ]
+    ],
+    "timerVisible": true,
+    "timerPosition": [
+      -0.0011063351994380355,
+      1.385242223739624,
+      -0.8195647597312927
+    ],
+    "clock": "24:11"
+  },
+  "focusCardEcsAfterDrag": {
+    "title": "Focus session",
+    "zoneId": "desk",
+    "surfaceId": "room-1",
+    "comps": [
+      "DistanceGrabbable",
+      "Handle"
+    ]
+  },
+  "focusCardFitDesk": {
+    "cardId": "q-mwjqqy2v-utr73",
+    "title": "Focus session",
+    "surfaceId": "room-1",
+    "kind": "desk",
+    "angleDeg": 0,
+    "gapMm": 2.5,
+    "cornersInside": 4,
+    "scale": 0.131,
+    "upDotGravity": null
+  },
+  "timerStillRunning": {
+    "phase": "focus",
+    "deltaMs": 3358,
+    "clockA": "23:59",
+    "clockB": "23:55"
+  },
+  "cardsAfterVoice": [
+    "Focus session",
+    "Email Sam about launch",
+    "Finish the pitch deck",
+    "Gym after lunch",
+    "Call landlord about sink"
+  ],
+  "pins": [
+    {
+      "title": "Finish the pitch deck",
+      "name": "front wall",
+      "way": [
+        {
+          "x": 0.7,
+          "y": 1.45,
+          "z": -3.38
+        }
+      ],
+      "lookAt": {
+        "x": 0.6,
+        "y": 1.35,
+        "z": -3.3
+      },
+      "close": {
+        "x": 0,
+        "y": 0.05,
+        "z": 0.75
+      },
+      "oblique": {
+        "x": 0.9,
+        "y": 0,
+        "z": 0.25
+      },
+      "previewShown": true,
+      "fit": {
+        "cardId": "q-mwjqtoyn-8l3b6",
+        "title": "Finish the pitch deck",
+        "surfaceId": "room-6",
+        "kind": "wall",
+        "angleDeg": 0,
+        "gapMm": 2.5,
+        "cornersInside": 4,
+        "scale": 0.243,
+        "upDotGravity": 1
+      },
+      "after": {
+        "title": "Finish the pitch deck",
+        "pos": [
+          0.703,
+          1.461,
+          -3.398
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "scale": 0.243,
+        "state": "Pinned to Wall - pinch Start focus"
+      },
+      "ecs": {
+        "title": "Finish the pitch deck",
+        "zoneId": "wall",
+        "surfaceId": "room-6",
+        "comps": [
+          "DistanceGrabbable",
+          "Handle"
+        ]
+      }
+    },
+    {
+      "title": "Email Sam about launch",
+      "name": "coffee table",
+      "way": [
+        {
+          "x": 0.25,
+          "y": 0.42,
+          "z": -1.9
+        }
+      ],
+      "lookAt": {
+        "x": 0.1,
+        "y": 0.45,
+        "z": -1.9
+      },
+      "close": {
+        "x": 0,
+        "y": 0.55,
+        "z": 0.3
+      },
+      "oblique": {
+        "x": 0.7,
+        "y": 0.12,
+        "z": 0.1
+      },
+      "previewShown": true,
+      "fit": {
+        "cardId": "q-mwjqtoy0-0b17q",
+        "title": "Email Sam about launch",
+        "surfaceId": "room-1",
+        "kind": "desk",
+        "angleDeg": 0,
+        "gapMm": 2.5,
+        "cornersInside": 4,
+        "scale": 0.074,
+        "upDotGravity": null
+      },
+      "after": {
+        "title": "Email Sam about launch",
+        "pos": [
+          -0.464,
+          0.422,
+          -1.918
+        ],
+        "normal": [
+          0,
+          1,
+          0
+        ],
+        "scale": 0.074,
+        "state": "Pinned to Desk - pinch Start focus"
+      },
+      "ecs": {
+        "title": "Email Sam about launch",
+        "zoneId": "desk",
+        "surfaceId": "room-1",
+        "comps": [
+          "DistanceGrabbable",
+          "Handle"
+        ]
+      }
+    },
+    {
+      "title": "Gym after lunch",
+      "name": "door",
+      "way": [
+        {
+          "x": 2.3,
+          "y": 1.4,
+          "z": 0.6
+        },
+        {
+          "x": 1.45,
+          "y": 1.2,
+          "z": 2.36
+        }
+      ],
+      "lookAt": {
+        "x": 1.45,
+        "y": 1.2,
+        "z": 2.38
+      },
+      "close": {
+        "x": 0,
+        "y": 0.05,
+        "z": -0.75
+      },
+      "oblique": {
+        "x": -0.7,
+        "y": 0,
+        "z": -0.25
+      },
+      "previewShown": true,
+      "fit": {
+        "cardId": "q-mwjqtozx-c0h0p",
+        "title": "Gym after lunch",
+        "surfaceId": "room-2",
+        "kind": "door",
+        "angleDeg": 0,
+        "gapMm": 2.5,
+        "cornersInside": 4,
+        "scale": 0.12,
+        "upDotGravity": 1
+      },
+      "after": {
+        "title": "Gym after lunch",
+        "pos": [
+          1.45,
+          1.21,
+          2.375
+        ],
+        "normal": [
+          0,
+          0,
+          -1
+        ],
+        "scale": 0.12,
+        "state": "Pinned to Door - pinch Start focus"
+      },
+      "ecs": {
+        "title": "Gym after lunch",
+        "zoneId": "door",
+        "surfaceId": "room-2",
+        "comps": [
+          "DistanceGrabbable",
+          "Handle"
+        ]
+      }
+    }
+  ],
+  "fitAll": [
+    {
+      "cardId": "q-mwjqqy2v-utr73",
+      "title": "Focus session",
+      "surfaceId": "room-1",
+      "kind": "desk",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.131,
+      "upDotGravity": null
+    },
+    {
+      "cardId": "q-mwjqtoy0-0b17q",
+      "title": "Email Sam about launch",
+      "surfaceId": "room-1",
+      "kind": "desk",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.074,
+      "upDotGravity": null
+    },
+    {
+      "cardId": "q-mwjqtoyn-8l3b6",
+      "title": "Finish the pitch deck",
+      "surfaceId": "room-6",
+      "kind": "wall",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.243,
+      "upDotGravity": 1
+    },
+    {
+      "cardId": "q-mwjqtozx-c0h0p",
+      "title": "Gym after lunch",
+      "surfaceId": "room-2",
+      "kind": "door",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.12,
+      "upDotGravity": 1
+    }
+  ],
+  "posesBefore": {
+    "Focus session": {
+      "p": [
+        -0.0025,
+        0.4225,
+        -1.8678
+      ],
+      "q": [
+        -0.70711,
+        0,
+        0,
+        0.70711
+      ],
+      "s": 0.1309
+    },
+    "Email Sam about launch": {
+      "p": [
+        -0.4643,
+        0.4225,
+        -1.9183
+      ],
+      "q": [
+        -0.70711,
+        0,
+        0,
+        0.70711
+      ],
+      "s": 0.0736
+    },
+    "Finish the pitch deck": {
+      "p": [
+        0.7031,
+        1.4613,
+        -3.3975
+      ],
+      "q": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "s": 0.2433
+    },
+    "Gym after lunch": {
+      "p": [
+        1.45,
+        1.2096,
+        2.3755
+      ],
+      "q": [
+        0,
+        1,
+        0,
+        0
+      ],
+      "s": 0.1203
+    },
+    "Call landlord about sink": {
+      "p": [
+        0.4919,
+        1.3107,
+        -0.3074
+      ],
+      "q": [
+        -0.20677,
+        -0.47107,
+        -0.11462,
+        0.84983
+      ],
+      "s": 0.09
+    }
+  },
+  "restoredVia": {
+    "q-mwjqqy2v-utr73": "anchor",
+    "q-mwjqtoy0-0b17q": "anchor",
+    "q-mwjqtoyn-8l3b6": "anchor",
+    "q-mwjqtozx-c0h0p": "anchor",
+    "q-mwjqtp0t-38j7p": "pose"
+  },
+  "posesAfter": {
+    "Focus session": {
+      "p": [
+        -0.0025,
+        0.4225,
+        -1.8678
+      ],
+      "q": [
+        -0.70711,
+        0,
+        0,
+        0.70711
+      ],
+      "s": 0.1309
+    },
+    "Email Sam about launch": {
+      "p": [
+        -0.4643,
+        0.4225,
+        -1.9183
+      ],
+      "q": [
+        -0.70711,
+        0,
+        0,
+        0.70711
+      ],
+      "s": 0.0736
+    },
+    "Finish the pitch deck": {
+      "p": [
+        0.7031,
+        1.4613,
+        -3.3975
+      ],
+      "q": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "s": 0.2433
+    },
+    "Gym after lunch": {
+      "p": [
+        1.45,
+        1.2096,
+        2.3755
+      ],
+      "q": [
+        0,
+        1,
+        0,
+        0
+      ],
+      "s": 0.1203
+    },
+    "Call landlord about sink": {
+      "p": [
+        0.4919,
+        1.3107,
+        -0.3074
+      ],
+      "q": [
+        -0.20677,
+        -0.47107,
+        -0.11462,
+        0.84983
+      ],
+      "s": 0.09
+    }
+  },
+  "fitAfterReload": [
+    {
+      "cardId": "q-mwjqqy2v-utr73",
+      "title": "Focus session",
+      "surfaceId": "room-1",
+      "kind": "desk",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.131,
+      "upDotGravity": null
+    },
+    {
+      "cardId": "q-mwjqtoy0-0b17q",
+      "title": "Email Sam about launch",
+      "surfaceId": "room-1",
+      "kind": "desk",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.074,
+      "upDotGravity": null
+    },
+    {
+      "cardId": "q-mwjqtoyn-8l3b6",
+      "title": "Finish the pitch deck",
+      "surfaceId": "room-6",
+      "kind": "wall",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.243,
+      "upDotGravity": 1
+    },
+    {
+      "cardId": "q-mwjqtozx-c0h0p",
+      "title": "Gym after lunch",
+      "surfaceId": "room-2",
+      "kind": "door",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.12,
+      "upDotGravity": 1
+    }
+  ],
+  "restoreDiff": {
+    "Focus session": {
+      "posMm": 0,
+      "rotDeg": 0,
+      "scaleDelta": 0
+    },
+    "Email Sam about launch": {
+      "posMm": 0,
+      "rotDeg": 0,
+      "scaleDelta": 0
+    },
+    "Finish the pitch deck": {
+      "posMm": 0,
+      "rotDeg": 0,
+      "scaleDelta": 0
+    },
+    "Gym after lunch": {
+      "posMm": 0,
+      "rotDeg": 0,
+      "scaleDelta": 0
+    },
+    "Call landlord about sink": {
+      "posMm": 0,
+      "rotDeg": 0,
+      "scaleDelta": 0
+    }
+  },
+  "restoredViaNoAnchors": {
+    "q-mwjqqy2v-utr73": "surface",
+    "q-mwjqtoy0-0b17q": "surface",
+    "q-mwjqtoyn-8l3b6": "surface",
+    "q-mwjqtozx-c0h0p": "surface",
+    "q-mwjqtp0t-38j7p": "pose"
+  },
+  "posesAfterNoAnchors": {
+    "Focus session": {
+      "p": [
+        -0.0025,
+        0.4225,
+        -1.8678
+      ],
+      "q": [
+        -0.70711,
+        0,
+        0,
+        0.70711
+      ],
+      "s": 0.1309
+    },
+    "Email Sam about launch": {
+      "p": [
+        -0.4643,
+        0.4225,
+        -1.9183
+      ],
+      "q": [
+        -0.70711,
+        0,
+        0,
+        0.70711
+      ],
+      "s": 0.0736
+    },
+    "Finish the pitch deck": {
+      "p": [
+        0.7031,
+        1.4613,
+        -3.3975
+      ],
+      "q": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "s": 0.2433
+    },
+    "Gym after lunch": {
+      "p": [
+        1.45,
+        1.2096,
+        2.3755
+      ],
+      "q": [
+        0,
+        1,
+        0,
+        0
+      ],
+      "s": 0.1203
+    },
+    "Call landlord about sink": {
+      "p": [
+        0.4919,
+        1.3107,
+        -0.3074
+      ],
+      "q": [
+        -0.20677,
+        -0.47107,
+        -0.11462,
+        0.84983
+      ],
+      "s": 0.09
+    }
+  },
+  "fitAfterNoAnchors": [
+    {
+      "cardId": "q-mwjqqy2v-utr73",
+      "title": "Focus session",
+      "surfaceId": "room-1",
+      "kind": "desk",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.131,
+      "upDotGravity": null
+    },
+    {
+      "cardId": "q-mwjqtoy0-0b17q",
+      "title": "Email Sam about launch",
+      "surfaceId": "room-1",
+      "kind": "desk",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.074,
+      "upDotGravity": null
+    },
+    {
+      "cardId": "q-mwjqtoyn-8l3b6",
+      "title": "Finish the pitch deck",
+      "surfaceId": "room-6",
+      "kind": "wall",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.243,
+      "upDotGravity": 1
+    },
+    {
+      "cardId": "q-mwjqtozx-c0h0p",
+      "title": "Gym after lunch",
+      "surfaceId": "room-2",
+      "kind": "door",
+      "angleDeg": 0,
+      "gapMm": 2.5,
+      "cornersInside": 4,
+      "scale": 0.12,
+      "upDotGravity": 1
+    }
+  ],
+  "restoreDiffNoAnchors": {
+    "Focus session": {
+      "posMm": 0,
+      "rotDeg": 0,
+      "scaleDelta": 0
+    },
+    "Email Sam about launch": {
+      "posMm": 0,
+      "rotDeg": 0,
+      "scaleDelta": 0
+    },
+    "Finish the pitch deck": {
+      "posMm": 0,
+      "rotDeg": 0,
+      "scaleDelta": 0
+    },
+    "Gym after lunch": {
+      "posMm": 0,
+      "rotDeg": 0,
+      "scaleDelta": 0
+    },
+    "Call landlord about sink": {
+      "posMm": 0,
+      "rotDeg": 0,
+      "scaleDelta": 0
+    }
+  }
+}

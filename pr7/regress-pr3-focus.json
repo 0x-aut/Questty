@@ -1,0 +1,465 @@
+{
+  "marks": [
+    {
+      "name": "start",
+      "t": 27
+    },
+    {
+      "name": "pin-desk",
+      "t": 41.9
+    },
+    {
+      "name": "start-focus-pinch",
+      "t": 98
+    },
+    {
+      "name": "pick-5",
+      "t": 123.3
+    },
+    {
+      "name": "pause",
+      "t": 142
+    },
+    {
+      "name": "resume",
+      "t": 178.4
+    },
+    {
+      "name": "extend",
+      "t": 186.9
+    },
+    {
+      "name": "wait-complete",
+      "t": 205.2
+    },
+    {
+      "name": "completed",
+      "t": 228
+    },
+    {
+      "name": "end",
+      "t": 245.2
+    }
+  ],
+  "states": {
+    "afterStart": {
+      "phase": "focus",
+      "questId": "q-mwjr2b7e-uvm6m",
+      "durationMs": 300000,
+      "endsAt": 1794864448973,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 282750,
+      "blur": "soft",
+      "shellOpacity": 0.6,
+      "shellTarget": 0.6,
+      "shellAt": [
+        0,
+        1.6213585138320923,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.06111368027262748,
+          -0.539151861063301,
+          -0.839988326582884,
+          0.21048225417628252
+        ],
+        [
+          -0.0013025747556177918,
+          -0.2693159934278992,
+          -0.9630509846228027,
+          0.20868176572667813
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.001107188523747027,
+        1.3924399614334106,
+        -0.8185933232307434
+      ],
+      "clock": "04:43"
+    },
+    "fadeEarly": {
+      "phase": "focus",
+      "questId": "q-mwjr2b7e-uvm6m",
+      "durationMs": 300000,
+      "endsAt": 1794864448973,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 277280,
+      "blur": "soft",
+      "shellOpacity": 0.6,
+      "shellTarget": 0.6,
+      "shellAt": [
+        0,
+        1.6213585138320923,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.06111368027262748,
+          -0.539151861063301,
+          -0.839988326582884,
+          0.21048225417628252
+        ],
+        [
+          -0.0013025747556177918,
+          -0.2693159934278992,
+          -0.9630509846228027,
+          0.20868176572667813
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.001107188523747027,
+        1.3924399614334106,
+        -0.8185933232307434
+      ],
+      "clock": "04:38"
+    },
+    "afterShot04": {
+      "phase": "focus",
+      "questId": "q-mwjr2b7e-uvm6m",
+      "durationMs": 300000,
+      "endsAt": 1794864448973,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 187830,
+      "blur": "soft",
+      "shellOpacity": 0.6,
+      "shellTarget": 0.6,
+      "shellAt": [
+        0,
+        1.6213585138320923,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.06111368027262748,
+          -0.539151861063301,
+          -0.839988326582884,
+          0.21048225417628252
+        ],
+        [
+          -0.0013025747556177918,
+          -0.2693159934278992,
+          -0.9630509846228027,
+          0.20868176572667813
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.001107188523747027,
+        1.3924399614334106,
+        -0.8185933232307434
+      ],
+      "clock": "03:08"
+    },
+    "paused1": {
+      "phase": "focus",
+      "questId": "q-mwjr2b7e-uvm6m",
+      "durationMs": 300000,
+      "endsAt": 1794864448973,
+      "pausedRemainingMs": 122200,
+      "consecutiveSkips": 0,
+      "remainingMs": 122200,
+      "blur": "soft",
+      "shellOpacity": 0.24,
+      "shellTarget": 0.24,
+      "shellAt": [
+        0,
+        1.6213585138320923,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.06111368027262748,
+          -0.539151861063301,
+          -0.839988326582884,
+          0.21048225417628252
+        ],
+        [
+          -0.0013025747556177918,
+          -0.2693159934278992,
+          -0.9630509846228027,
+          0.20868176572667813
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.001107188523747027,
+        1.3924399614334106,
+        -0.8185933232307434
+      ],
+      "clock": "02:03"
+    },
+    "paused2": {
+      "phase": "focus",
+      "questId": "q-mwjr2b7e-uvm6m",
+      "durationMs": 300000,
+      "endsAt": 1794864448973,
+      "pausedRemainingMs": 122200,
+      "consecutiveSkips": 0,
+      "remainingMs": 122200,
+      "blur": "soft",
+      "shellOpacity": 0.24,
+      "shellTarget": 0.24,
+      "shellAt": [
+        0,
+        1.6213585138320923,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.06111368027262748,
+          -0.539151861063301,
+          -0.839988326582884,
+          0.21048225417628252
+        ],
+        [
+          -0.0013025747556177918,
+          -0.2693159934278992,
+          -0.9630509846228027,
+          0.20868176572667813
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.001107188523747027,
+        1.3924399614334106,
+        -0.8185933232307434
+      ],
+      "clock": "02:03"
+    },
+    "resumed": {
+      "phase": "focus",
+      "questId": "q-mwjr2b7e-uvm6m",
+      "durationMs": 300000,
+      "endsAt": 1794864815183,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 105460,
+      "blur": "soft",
+      "shellOpacity": 0.6,
+      "shellTarget": 0.6,
+      "shellAt": [
+        0,
+        1.6213585138320923,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.06111368027262748,
+          -0.539151861063301,
+          -0.839988326582884,
+          0.21048225417628252
+        ],
+        [
+          -0.0013025747556177918,
+          -0.2693159934278992,
+          -0.9630509846228027,
+          0.20868176572667813
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.001107188523747027,
+        1.3924399614334106,
+        -0.8185933232307434
+      ],
+      "clock": "01:46"
+    },
+    "extended": {
+      "phase": "focus",
+      "questId": "q-mwjr2b7e-uvm6m",
+      "durationMs": 600000,
+      "endsAt": 1794865115183,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 321680,
+      "blur": "soft",
+      "shellOpacity": 0.6,
+      "shellTarget": 0.6,
+      "shellAt": [
+        0,
+        1.6213585138320923,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.06111368027262748,
+          -0.539151861063301,
+          -0.839988326582884,
+          0.21048225417628252
+        ],
+        [
+          -0.0013025747556177918,
+          -0.2693159934278992,
+          -0.9630509846228027,
+          0.20868176572667813
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.001107188523747027,
+        1.3924399614334106,
+        -0.8185933232307434
+      ],
+      "clock": "05:22"
+    },
+    "afterComplete": {
+      "phase": "break",
+      "questId": "q-mwjr2b7e-uvm6m",
+      "endsAt": 1794865140683,
+      "consecutiveSkips": 0,
+      "remainingMs": 0,
+      "blur": "soft",
+      "shellOpacity": 0.2164835232224765,
+      "shellTarget": 0,
+      "shellAt": [
+        0,
+        1.6213585138320923,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.06111368027262748,
+          -0.539151861063301,
+          -0.839988326582884,
+          0.21048225417628252
+        ],
+        [
+          -0.0013025747556177918,
+          -0.2693159934278992,
+          -0.9630509846228027,
+          0.20868176572667813
+        ]
+      ],
+      "timerVisible": false,
+      "timerPosition": [
+        -0.001107188523747027,
+        1.3924399614334106,
+        -0.8185933232307434
+      ],
+      "clock": "00:01"
+    },
+    "end": {
+      "phase": "idle",
+      "consecutiveSkips": 0,
+      "remainingMs": 0,
+      "blur": "soft",
+      "shellOpacity": 0,
+      "shellTarget": 0,
+      "shellAt": [
+        0,
+        1.6213585138320923,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.06111368027262748,
+          -0.539151861063301,
+          -0.839988326582884,
+          0.21048225417628252
+        ],
+        [
+          -0.0013025747556177918,
+          -0.2693159934278992,
+          -0.9630509846228027,
+          0.20868176572667813
+        ]
+      ],
+      "timerVisible": false,
+      "timerPosition": [
+        -0.001107188523747027,
+        1.3924399614334106,
+        -0.8185933232307434
+      ],
+      "clock": "00:01"
+    }
+  },
+  "progressBefore": "Level 1 | 0 XP",
+  "pinned": {
+    "title": "Plan tomorrow",
+    "pos": [
+      -0.003,
+      0.422,
+      -1.868
+    ],
+    "normal": [
+      0,
+      1,
+      0
+    ],
+    "scale": 0.131,
+    "state": "Pinned to Desk - pinch Start focus"
+  },
+  "startAttempts": 1,
+  "chips": [
+    {
+      "display": null,
+      "text": "5m",
+      "variant": null
+    },
+    {
+      "display": null,
+      "text": "15m",
+      "variant": null
+    },
+    {
+      "display": null,
+      "text": "25m",
+      "variant": null
+    },
+    {
+      "display": null,
+      "text": "45m",
+      "variant": null
+    }
+  ],
+  "chipVariants": [
+    {
+      "display": null,
+      "text": null,
+      "variant": "secondary"
+    },
+    {
+      "display": null,
+      "text": null,
+      "variant": "secondary"
+    },
+    {
+      "display": null,
+      "text": null,
+      "variant": "primary"
+    },
+    {
+      "display": null,
+      "text": null,
+      "variant": "secondary"
+    }
+  ],
+  "pickAttempts": 1,
+  "pauseAttempts": 1,
+  "pauseHeld": {
+    "before": 122200,
+    "after": 122200,
+    "frozen": true
+  },
+  "resumeAttempts": 1,
+  "extendAttempts": 1,
+  "extend": {
+    "beforeDuration": 300000,
+    "afterDuration": 600000,
+    "beforeRemaining": 100260,
+    "afterRemaining": 321680
+  },
+  "progressAfter": "Level 1 | 20 XP",
+  "chimeNotes": 6,
+  "status": {
+    "text": "Look at the farthest point for 20 seconds (00:01)",
+    "displayed": false
+  },
+  "pageErrors": []
+}
