@@ -65,6 +65,7 @@ export default defineAssets({
   'category-chip': uikitml('category-chip.uikitml', 'Category Chip'),
   'category-picker': uikitml('category-picker.uikitml', 'Category Picker'),
   'category-toast': uikitml('category-toast.uikitml', 'Category Toast'),
+  'buddy-bubble': uikitml('buddy-bubble.uikitml', 'Buddy Bubble'),
   'label-grab': uikitml('label-grab.uikitml', 'Grab Label'),
   'label-select': uikitml('label-select.uikitml', 'Select Label'),
   'label-spin': uikitml('label-spin.uikitml', 'Spin Label'),

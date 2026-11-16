@@ -62,7 +62,11 @@ export type CardEventType =
   | 'focused'
   | 'completed'
   | 'removed'
-  | 'categorized';
+  | 'categorized'
+  /** The title changed (AI buddy rename, PR 6). */
+  | 'renamed'
+  /** The pose/zone was put back without a hand (AI buddy undo, PR 6): save it. */
+  | 'updated';
 export type CardEventDetail = { restored?: boolean; target?: SnapTarget; focusReady?: boolean };
 type CardListener = (type: CardEventType, entity: Entity, detail: CardEventDetail) => void;
 const cardListeners = new Set<CardListener>();
@@ -154,6 +158,24 @@ export function setQuestCardState(entity: Entity, text: string): void {
   if (panel instanceof UIKitMLAsset) {
     panel.getElementById<UIKit.Text>('quest-card-state')?.setProperties({ text });
   }
+}
+
+/** Change a card's title (AI buddy rename). Saved with the card; returns false for a dead card. */
+export function renameQuestCard(entity: Entity, title: string): boolean {
+  if (!entity.active) return false;
+  entity.setValue(QuestCard, 'title', title);
+  const panel = entity.object3D;
+  if (panel instanceof UIKitMLAsset) {
+    panel.getElementById<UIKit.Text>('quest-title')?.setProperties({ text: title });
+    panel.name = `Quest Card: ${title}`;
+  }
+  emitCard('renamed', entity);
+  return true;
+}
+
+/** Take a card out of the room for good (AI buddy delete, after a Confirm chip). */
+export function removeQuestCard(entity: Entity): void {
+  if (entity.active) entity.dispose();
 }
 
 export function configureQuestCards(world: World): void {

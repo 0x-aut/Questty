@@ -80,3 +80,13 @@ export function awardXp(amount: number, now = Date.now()): ProgressState {
   saveProgress(next);
   return next;
 }
+
+/** Take back XP from a completion the user undid (AI buddy Undo, PR 6). Streak is left alone. */
+export function revokeXp(amount: number): ProgressState {
+  const previous = getProgress();
+  const lost = Number.isFinite(amount) ? Math.max(0, Math.floor(amount)) : 0;
+  const xp = Math.max(0, previous.xp - lost);
+  const next: ProgressState = { ...previous, xp, level: Math.floor(xp / XP_PER_LEVEL) + 1 };
+  saveProgress(next);
+  return next;
+}

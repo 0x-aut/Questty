@@ -33,8 +33,10 @@ import {
   setCardCompleter,
   setCardNudger,
   setFocusCommander,
+  setBuddyFocusApi,
   setFocusStarter,
   type FocusCommand,
+  type FocusSnapshot,
 } from './session-events.js';
 import {
   advanceBreak,
@@ -51,7 +53,7 @@ import {
   startFocus,
   type SessionState,
 } from './session.js';
-import { awardXp, getProgress, type ProgressState } from './progress.js';
+import { awardXp, getProgress, revokeXp, type ProgressState } from './progress.js';
 import { syncRoomGrowth } from './room-growth.js';
 import {
   BLUR_LEVELS,
@@ -191,6 +193,17 @@ export class SessionSystem extends createSystem({}) {
     setCardNudger((entity) => void this.requestNudge(entity));
     setFocusCommander((entity, command) => this.onCommand(entity, command));
     focusRestorer = () => this.restoreSavedFocus();
+    setBuddyFocusApi({
+      snapshot: () => this.focusSnapshot(),
+      start: (entity, minutes) => this.buddyStart(entity, minutes),
+      control: (command, minutes) => this.buddyControl(command, minutes),
+      restore: (snapshot) => this.buddyRestore(snapshot),
+      complete: (entity) => this.buddyComplete(entity),
+      revokeXp: (amount) => {
+        this.progress = revokeXp(amount);
+        this.updateProgressStatus();
+      },
+    });
     this.cleanupFuncs.push(onCardEvent((type, entity) => this.onActiveCardEvent(type, entity)));
     this.createShell();
     void this.loadTimer();
@@ -232,6 +245,7 @@ export class SessionSystem extends createSystem({}) {
       setCardCompleter(undefined);
       setCardNudger(undefined);
       setFocusCommander(undefined);
+      setBuddyFocusApi(undefined);
       focusRestorer = undefined;
       this.destroyed = true;
       xrManager.removeEventListener('sessionstart', onSessionStart);
@@ -317,6 +331,105 @@ export class SessionSystem extends createSystem({}) {
     this.applyFade();
     this.refreshTimer(true);
     this.persist();
+  }
+
+  // ---- AI buddy (PR 6) ---------------------------------------------------
+
+  private focusSnapshot(): FocusSnapshot | null {
+    if (this.state.phase !== 'focus') return null;
+    return {
+      cardId: this.state.questId,
+      durationMs: this.state.durationMs,
+      endsAt: this.state.endsAt,
+      pausedRemainingMs: this.state.pausedRemainingMs,
+    };
+  }
+
+  /** Any card, floating too (the buddy can start focus on whatever card you name). */
+  private buddyStart(entity: Entity, minutes: number): boolean {
+    if (this.state.phase === 'focus' || !entity.active) return false;
+    // The 20 s look-away break is a suggestion; asking for a new focus ends it.
+    if (this.state.phase === 'break') this.state = { phase: 'idle', consecutiveSkips: this.state.consecutiveSkips };
+    this.setSessionStatus(undefined);
+    allowFloatingFocus(entity.getValue(QuestCard, 'cardId') as string);
+    const ok = this.beginFocus(entity, minutes);
+    if (ok) showFocusActionFor(entity);
+    return ok;
+  }
+
+  private buddyControl(command: 'pause' | 'resume' | 'extend' | 'end', minutes?: number): boolean {
+    const card = this.activeCard;
+    if (this.state.phase !== 'focus' || card === undefined) return false;
+    const paused = this.state.pausedRemainingMs !== null;
+    if (command === 'pause') {
+      if (paused) return false;
+      this.onCommand(card, 'pause-toggle');
+    } else if (command === 'resume') {
+      if (!paused) return false;
+      this.onCommand(card, 'pause-toggle');
+    } else if (command === 'end') {
+      this.endEarly(card);
+    } else {
+      const before = this.state.durationMs;
+      this.state = extendFocus(this.state, focusNow(), Math.max(1, minutes ?? 5) * 60_000);
+      if (this.state.phase !== 'focus' || this.state.durationMs === before) return false;
+      this.afterFocusChange(card);
+    }
+    return true;
+  }
+
+  private afterFocusChange(card: Entity): void {
+    if (this.state.phase !== 'focus') return;
+    const paused = this.state.pausedRemainingMs !== null;
+    setQuestCardState(card, paused ? 'Paused - pinch Resume' : 'Focusing');
+    setCardActionMode(card.getValue(QuestCard, 'cardId') as string, 'done', { paused, blur: this.blurLevel });
+    this.applyFade();
+    this.refreshTimer(true);
+    this.persist();
+  }
+
+  /** Undo: put the focus back exactly as it was (or end it when there was none). */
+  private buddyRestore(snapshot: FocusSnapshot | null): boolean {
+    if (snapshot === null) {
+      if (this.state.phase === 'focus' && this.activeCard !== undefined) this.endEarly(this.activeCard);
+      return true;
+    }
+    const entity = findQuestCard(snapshot.cardId);
+    if (entity === undefined) return false;
+    if (this.state.phase === 'focus' && this.activeCard !== entity && this.activeCard !== undefined) {
+      this.endEarly(this.activeCard);
+    }
+    if (this.state.phase !== 'focus' && !this.buddyStart(entity, Math.max(1, Math.round(snapshot.durationMs / 60_000)))) {
+      return false;
+    }
+    if (this.state.phase !== 'focus') return false;
+    this.state = {
+      ...this.state,
+      durationMs: snapshot.durationMs,
+      endsAt: snapshot.endsAt,
+      pausedRemainingMs: snapshot.pausedRemainingMs,
+    };
+    this.afterFocusChange(entity);
+    return true;
+  }
+
+  /** "Mark laundry done": the same completion as the Complete button (chime, XP, shelf). */
+  private buddyComplete(entity: Entity): number {
+    if (!entity.active) return 0;
+    const xp = entity.getValue(QuestCard, 'xp') as number;
+    if (this.state.phase === 'focus' && this.activeCard === entity) {
+      this.finishFocus(entity, 'manual');
+      return xp;
+    }
+    void this.loadTrophyShelf();
+    this.progress = awardXp(xp);
+    this.updateProgressStatus();
+    void syncRoomGrowth(this.world, this.progress.level);
+    playChime();
+    setQuestCardState(entity, `Completed - +${xp} XP`);
+    setCardActionMode(entity.getValue(QuestCard, 'cardId') as string, 'hidden');
+    tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
+    return xp;
   }
 
   private endEarly(entity: Entity): void {

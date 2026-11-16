@@ -69,3 +69,35 @@ export function setCardActionModeHandler(
 export function setCardActionMode(cardId: string, mode: CardActionMode, info?: FocusPanelInfo): void {
   cardActionModeHandler?.(cardId, mode, info);
 }
+
+// ---- AI buddy (PR 6): drive the real focus timer and completion by voice.
+
+export type FocusSnapshot = {
+  cardId: string;
+  durationMs: number;
+  endsAt: number;
+  pausedRemainingMs: number | null;
+};
+
+export type BuddyFocusApi = {
+  /** The running/paused focus, or null when idle or on a break. */
+  snapshot(): FocusSnapshot | null;
+  /** Start focus on any card (floating ones too). False when a focus is already running. */
+  start(entity: Entity, minutes: number): boolean;
+  /** pause | resume | extend (+minutes) | end on the running focus. False when nothing changed. */
+  control(command: 'pause' | 'resume' | 'extend' | 'end', minutes?: number): boolean;
+  /** Put the focus back exactly as a snapshot had it (null: end any focus). For Undo. */
+  restore(snapshot: FocusSnapshot | null): boolean;
+  /** Finish a card: the focus completion when it is the focus card, else the same chime, XP and shelf. Returns XP awarded. */
+  complete(entity: Entity): number;
+  /** Undo a completion: take the XP back. */
+  revokeXp(amount: number): void;
+};
+
+let buddyFocusApi: BuddyFocusApi | undefined;
+export function setBuddyFocusApi(api: BuddyFocusApi | undefined): void {
+  buddyFocusApi = api;
+}
+export function getBuddyFocusApi(): BuddyFocusApi | undefined {
+  return buddyFocusApi;
+}

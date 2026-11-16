@@ -7,7 +7,9 @@
   voice-button-label, voice-hint, quest-status(-text), quick-focus, quick-more,
   quick-list, template-*, session-status(-text), skip-break, progress-status,
   panel-collapse, panel-full, panel-pill, xr-button, room-debug-toggle(-label),
-  pill-main, pill-counts, pill-count-<today|later|before-leave|custom>(-text) (PR 5).
+  pill-main, pill-counts, pill-count-<today|later|before-leave|custom>(-text) (PR 5),
+  pill-orb, pill-sub (PR 6: the AI buddy orb is drawn over voice-orb / pill-orb
+  by buddy/orb.ts; these elements are its pinch targets and its dark well).
 -->
 <style>
   .panel-root {
@@ -103,11 +105,11 @@
     border-radius: 54px;
     justify-content: center;
     align-items: center;
-    background-color: #f7ecb0;
+    background-color: #e9e3d2;
   }
 
   .ring:dark {
-    background-color: #3a3620;
+    background-color: #1d1e22;
   }
 
   .orb {
@@ -116,7 +118,6 @@
     border-radius: 42px;
     justify-content: center;
     align-items: center;
-    background-color: #f5d90a;
   }
 
   .orb-icon {
@@ -236,12 +237,17 @@
   }
 
   .pill-orb {
-    width: 40px;
-    height: 40px;
-    border-radius: 20px;
+    width: 56px;
+    height: 56px;
+    border-radius: 28px;
     justify-content: center;
     align-items: center;
-    background-color: #f5d90a;
+    background-color: #e9e3d2;
+    cursor: pointer;
+  }
+
+  .pill-orb:dark {
+    background-color: #17181b;
   }
 
   .pill-icon {
@@ -316,12 +322,10 @@
     </div>
     <div id="voice-button" class="hero">
       <div id="voice-ring" class="ring">
-        <div id="voice-orb" class="orb">
-          <Mic class="orb-icon"></Mic>
-        </div>
+        <div id="voice-orb" class="orb"></div>
       </div>
       <span id="voice-button-label" class="hero-label">What's on your mind?</span>
-      <span id="voice-hint" class="hero-hint">Pinch the mic and talk it through</span>
+      <span id="voice-hint" class="hero-hint">Pinch the orb and talk it through</span>
     </div>
     <div id="quest-status" class="quest-status" style="display: none">
       <span id="quest-status-text" class="quest-status-text">Listening...</span>
@@ -370,12 +374,10 @@
   </div>
   <div id="panel-pill" class="pill" style="display: none">
     <div id="pill-main" class="pill-main">
-      <div class="pill-orb">
-        <Mic class="pill-icon"></Mic>
-      </div>
+      <div id="pill-orb" class="pill-orb"></div>
       <div class="pill-text">
         <span class="pill-title">Questty</span>
-        <span class="pill-sub">Pinch to talk or add quests</span>
+        <span id="pill-sub" class="pill-sub">Pinch the orb to talk</span>
       </div>
     </div>
     <div id="pill-counts" class="pill-counts" style="display: none">
