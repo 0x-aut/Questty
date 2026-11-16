@@ -1,0 +1,204 @@
+{
+  "marks": [
+    {
+      "name": "live-start",
+      "t": 62
+    },
+    {
+      "name": "live-wait-command",
+      "t": 85.7
+    },
+    {
+      "name": "live-stop",
+      "t": 168.1
+    },
+    {
+      "name": "end",
+      "t": 175.2
+    }
+  ],
+  "checks": {
+    "L1 real session goes live (session.started over the data channel)": {
+      "ok": true,
+      "detail": {
+        "state": "live",
+        "sessionId": "live_u7_EkxbTp3oN2nwE3CkWg3h0rvhIXhloNGy",
+        "error": null,
+        "events": {
+          "session.started": 1
+        }
+      }
+    },
+    "L2 GPT-Live delegated the spoken command to the app": {
+      "ok": true,
+      "detail": {
+        "delegations": [
+          {
+            "id": "item_EkxcEw8Hq4hpUuq70UIar",
+            "text": "Move the gym card to the right wall",
+            "reply": "Moved \"Gym after lunch\" to the wall on your right."
+          }
+        ],
+        "you": "Move the gym card to the right wall"
+      }
+    },
+    "L2 the card moved: gym flush on the RIGHT wall": {
+      "ok": true,
+      "detail": {
+        "gym": {
+          "cardId": "q-mwjpu072-ovya5",
+          "title": "Gym after lunch",
+          "surfaceId": "room-5",
+          "kind": "wall",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.175,
+          "upDotGravity": 1
+        },
+        "p": [
+          2.4975,
+          1.4907,
+          0
+        ]
+      }
+    },
+    "L3 GPT-Live spoke a reply (output transcript captioned)": {
+      "ok": true,
+      "detail": {
+        "buddy": "Done, gym card's on the right wall.",
+        "captions": [
+          {
+            "t": 86.4,
+            "tag": "QUESTTY  ·  TALKING",
+            "text": "I'm here. Tell me what to move or start."
+          },
+          {
+            "t": 118,
+            "tag": "YOU",
+            "text": "\"Move the gym card\""
+          },
+          {
+            "t": 120.3,
+            "tag": "THINKING",
+            "text": "\"Move the gym card to the right wall\""
+          },
+          {
+            "t": 131.8,
+            "tag": "QUESTTY  ·  TALKING",
+            "text": "Done, gym card's on the right wall."
+          }
+        ]
+      }
+    },
+    "L3 remote audio level seen by the orb": {
+      "ok": true,
+      "detail": 0.38037238678123875
+    },
+    "L4 graceful close (session.close -> session.closed)": {
+      "ok": true,
+      "detail": {
+        "state": "off",
+        "closedReason": "close_requested",
+        "usageSeconds": 93,
+        "events": {
+          "session.started": 1,
+          "session.usage.updated": 6,
+          "session.input_transcript.delta": 14,
+          "session.delegation.created": 2,
+          "session.thinking.appended": 2,
+          "session.output_transcript.delta": 11,
+          "session.commentary.appended": 2,
+          "session.closed": 1
+        }
+      }
+    }
+  },
+  "liveCalls": [
+    {
+      "t": 75.2,
+      "status": 201,
+      "sessionId": "live_u7_EkxbTp3oN2nwE3CkWg3h0rvhIXhloNGy",
+      "error": null,
+      "upstreamStatus": null,
+      "answerSdpBytes": 1666,
+      "answerCandidates": [
+        "a=candidate:1365812362 1 udp 2130706431 40.64.120.63 3478 typ host ufrag ERO9z8/u7/3oN2nw",
+        "a=candidate:993865896 1 udp 2130706431 4.155.146.196 3478 typ host ufrag ERO9z8/u7/3oN2nw",
+        "a=candidate:2457617900 1 udp 2130706431 40.118.236.137 3478 typ host ufrag ERO9z8/u7/3oN2nw",
+        "a=candidate:2832417414 1 udp 2130706431 20.168.48.117 3478 typ host ufrag ERO9z8/u7/3oN2nw",
+        "a=candidate:1432411780 1 tcp 1671430143 4.155.146.196 443 typ host tcptype passive ufrag ERO9z8/u7/3oN2nw",
+        "a=candidate:2121466552 1 tcp 1671430143 40.118.236.137 443 typ host tcptype passive ufrag ERO9z8/u7/3oN2nw"
+      ]
+    }
+  ],
+  "liveConfigured": true,
+  "delegatedAt": 1794860959166,
+  "audio": {
+    "bytes": 784481,
+    "error": null
+  },
+  "durationS": 175.2,
+  "captions": [
+    {
+      "t": 86.4,
+      "tag": "QUESTTY  ·  TALKING",
+      "text": "I'm here. Tell me what to move or start."
+    },
+    {
+      "t": 118,
+      "tag": "YOU",
+      "text": "\"Move the gym card\""
+    },
+    {
+      "t": 120.3,
+      "tag": "THINKING",
+      "text": "\"Move the gym card to the right wall\""
+    },
+    {
+      "t": 131.8,
+      "tag": "QUESTTY  ·  TALKING",
+      "text": "Done, gym card's on the right wall."
+    }
+  ],
+  "talk": {
+    "state": "off",
+    "sessionId": "live_u7_EkxbTp3oN2nwE3CkWg3h0rvhIXhloNGy",
+    "events": {
+      "session.started": 1,
+      "session.usage.updated": 6,
+      "session.input_transcript.delta": 14,
+      "session.delegation.created": 2,
+      "session.thinking.appended": 2,
+      "session.output_transcript.delta": 11,
+      "session.commentary.appended": 2,
+      "session.closed": 1
+    },
+    "delegations": [
+      {
+        "id": "item_EkxcEw8Hq4hpUuq70UIar",
+        "text": "Move the gym card to the right wall",
+        "reply": "Moved \"Gym after lunch\" to the wall on your right."
+      },
+      {
+        "id": "item_EkxcxRG79UlBz2LdAYMwQ",
+        "text": "Move the gym card to the right wall",
+        "reply": "Moved \"Gym after lunch\" to the wall on your right."
+      }
+    ],
+    "you": "Move the gym card to the right wall",
+    "buddy": "Moved it to the right wall again.",
+    "usageSeconds": 93,
+    "closedReason": "close_requested",
+    "error": null,
+    "peakOutput": 0.5293960089302858,
+    "startedAt": 1794860903130,
+    "endedAt": 1794861008778,
+    "liveConfigured": true
+  },
+  "livePosts": 1,
+  "summary": {
+    "pass": 6,
+    "fail": 0
+  }
+}

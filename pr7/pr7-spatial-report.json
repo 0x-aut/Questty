@@ -1,0 +1,927 @@
+{
+  "marks": [
+    {
+      "name": "setup",
+      "t": 28.1
+    },
+    {
+      "name": "A-left-wall",
+      "t": 64.4
+    },
+    {
+      "name": "A-desk",
+      "t": 82
+    },
+    {
+      "name": "A-right-wall",
+      "t": 99.8
+    },
+    {
+      "name": "A-undo",
+      "t": 114.4
+    },
+    {
+      "name": "A-here",
+      "t": 118.8
+    },
+    {
+      "name": "A-next-to",
+      "t": 134.2
+    },
+    {
+      "name": "A-arrange",
+      "t": 149.6
+    },
+    {
+      "name": "A-arrange-undo",
+      "t": 165.5
+    },
+    {
+      "name": "A-find",
+      "t": 169.4
+    },
+    {
+      "name": "A-focus-on",
+      "t": 187.8
+    },
+    {
+      "name": "A-door",
+      "t": 211.1
+    },
+    {
+      "name": "B-offline",
+      "t": 224.2
+    },
+    {
+      "name": "end",
+      "t": 300.3
+    }
+  ],
+  "checks": {
+    "A1 place_card wall_left: flush on a wall at x=-2.5": {
+      "ok": true,
+      "detail": {
+        "f": {
+          "cardId": "q-mwjp8j7x-yhfcm",
+          "title": "Gym after lunch",
+          "surfaceId": "room-4",
+          "kind": "wall",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.175,
+          "upDotGravity": 1
+        },
+        "reply": "Moved \"Gym after lunch\" to the wall on your left."
+      }
+    },
+    "A1 left wall really is the left one (x < -2.3)": {
+      "ok": true,
+      "detail": {
+        "p": [
+          -2.4975,
+          1.4907,
+          0
+        ],
+        "q": [
+          0,
+          0.70711,
+          0,
+          0.70711
+        ],
+        "s": 0.1752
+      }
+    },
+    "A1 reply names the place": {
+      "ok": true,
+      "detail": "Moved \"Gym after lunch\" to the wall on your left."
+    },
+    "A2 place_card desk: flush on the coffee table": {
+      "ok": true,
+      "detail": {
+        "cardId": "q-mwjp8j5e-bjcva",
+        "title": "Email Sam about launch",
+        "surfaceId": "room-1",
+        "kind": "desk",
+        "angleDeg": 0,
+        "gapMm": 2.5,
+        "cornersInside": 4,
+        "scale": 0.131,
+        "upDotGravity": null
+      }
+    },
+    "A3 place_card wall_right: flush, x > 2.3": {
+      "ok": true,
+      "detail": {
+        "f": {
+          "cardId": "q-mwjp8j7x-yhfcm",
+          "title": "Gym after lunch",
+          "surfaceId": "room-5",
+          "kind": "wall",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.175,
+          "upDotGravity": 1
+        },
+        "p": [
+          2.4975,
+          1.4907,
+          0
+        ]
+      }
+    },
+    "A4 Undo: back on the left wall where it was (< 1 cm), still flush": {
+      "ok": true,
+      "detail": {
+        "back": 0,
+        "f": {
+          "cardId": "q-mwjp8j7x-yhfcm",
+          "title": "Gym after lunch",
+          "surfaceId": "room-4",
+          "kind": "wall",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.175,
+          "upDotGravity": 1
+        }
+      }
+    },
+    "A5 place_card here: floating at the seated focus spot (0.45-0.6 m ahead, below the eyes)": {
+      "ok": true,
+      "detail": {
+        "dist": 0.5290616693732405,
+        "y": 1.4707,
+        "head": [
+          0,
+          1.6106719048693776,
+          0
+        ]
+      }
+    },
+    "A6 next_to: same surface as Email Sam, flush": {
+      "ok": true,
+      "detail": {
+        "fl": {
+          "cardId": "q-mwjp8j8o-a6ef3",
+          "title": "Call landlord about sink",
+          "surfaceId": "room-1",
+          "kind": "desk",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.074,
+          "upDotGravity": null
+        },
+        "fe": {
+          "cardId": "q-mwjp8j5e-bjcva",
+          "title": "Email Sam about launch",
+          "surfaceId": "room-1",
+          "kind": "desk",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.131,
+          "upDotGravity": null
+        }
+      }
+    },
+    "A6: no card overlaps": {
+      "ok": true,
+      "detail": []
+    },
+    "A7: no card overlaps": {
+      "ok": true,
+      "detail": []
+    },
+    "A7 arrange: all 4 today cards flush on the front wall (z = -3.4)": {
+      "ok": true,
+      "detail": {
+        "front": [
+          {
+            "cardId": "q-mwjp8j5e-bjcva",
+            "title": "Email Sam about launch",
+            "surfaceId": "room-6",
+            "kind": "wall",
+            "angleDeg": 0,
+            "gapMm": 2.5,
+            "cornersInside": 4,
+            "scale": 0.238,
+            "upDotGravity": 1
+          },
+          {
+            "cardId": "q-mwjp8j6m-nwpft",
+            "title": "Finish the pitch deck",
+            "surfaceId": "room-6",
+            "kind": "wall",
+            "angleDeg": 0,
+            "gapMm": 2.5,
+            "cornersInside": 4,
+            "scale": 0.238,
+            "upDotGravity": 1
+          },
+          {
+            "cardId": "q-mwjp8j7x-yhfcm",
+            "title": "Gym after lunch",
+            "surfaceId": "room-6",
+            "kind": "wall",
+            "angleDeg": 0,
+            "gapMm": 2.5,
+            "cornersInside": 4,
+            "scale": 0.238,
+            "upDotGravity": 1
+          },
+          {
+            "cardId": "q-mwjp8j8o-a6ef3",
+            "title": "Call landlord about sink",
+            "surfaceId": "room-6",
+            "kind": "wall",
+            "angleDeg": 0,
+            "gapMm": 2.5,
+            "cornersInside": 4,
+            "scale": 0.238,
+            "upDotGravity": 1
+          }
+        ],
+        "reply": "Lined up 4 cards on the wall in front of you."
+      }
+    },
+    "A7 arrange: in one neat row (same height within 2 cm)": {
+      "ok": true,
+      "detail": [
+        1.4907,
+        1.4907,
+        1.4907,
+        1.4907
+      ]
+    },
+    "A7 Undo arrange: cards back where they were": {
+      "ok": true,
+      "detail": {
+        "p": [
+          -2.4975,
+          1.4907,
+          0
+        ],
+        "q": [
+          0,
+          0.70711,
+          0,
+          0.70711
+        ],
+        "s": 0.1752
+      }
+    },
+    "A8 find: light line to the card + reply says where": {
+      "ok": true,
+      "detail": {
+        "lines": [
+          {
+            "cardId": "q-mwjp8j7x-yhfcm",
+            "start": [
+              -0.6521535913956639,
+              1.2331296231594002,
+              -0.2881759463579913
+            ],
+            "end": [
+              -2.4934999470673187,
+              1.5402538949102162,
+              0.12526906585973724
+            ],
+            "progress": 1,
+            "opacity": 0
+          },
+          {
+            "cardId": "q-mwjp8j8o-a6ef3",
+            "start": [
+              -0.6521535913956639,
+              1.2331296231594002,
+              -0.2881759463579913
+            ],
+            "end": [
+              -0.5169195502623916,
+              0.4264999852161366,
+              -1.8710906305955624
+            ],
+            "progress": 1,
+            "opacity": 0
+          },
+          {
+            "cardId": "q-mwjp8j7x-yhfcm",
+            "start": [
+              -0.6521535913956639,
+              1.2331296231594002,
+              -0.2881759463579913
+            ],
+            "end": [
+              -2.4934999470673187,
+              1.5402538949102162,
+              0.12526906585973724
+            ],
+            "progress": 1,
+            "opacity": 0
+          }
+        ],
+        "reply": "\"Gym after lunch\" is on the wall on your left."
+      }
+    },
+    "A9 focus_on: Email Sam unpinned to the focus spot and a 15 min focus runs": {
+      "ok": true,
+      "detail": {
+        "phase": "focus",
+        "card": {
+          "id": "q-mwjp8j5e-bjcva",
+          "title": "Email Sam about launch",
+          "category": "today",
+          "state": "focusing"
+        }
+      }
+    },
+    "A9 Undo focus_on: focus gone, card back on the desk, flush": {
+      "ok": true,
+      "detail": {
+        "phase": "idle",
+        "f": {
+          "cardId": "q-mwjp8j5e-bjcva",
+          "title": "Email Sam about launch",
+          "surfaceId": "room-1",
+          "kind": "desk",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.131,
+          "upDotGravity": null
+        }
+      }
+    },
+    "A10 place_card door: flush on the door": {
+      "ok": true,
+      "detail": {
+        "cardId": "q-mwjp8j7x-yhfcm",
+        "title": "Gym after lunch",
+        "surfaceId": "room-2",
+        "kind": "door",
+        "angleDeg": 0,
+        "gapMm": 2.5,
+        "cornersInside": 4,
+        "scale": 0.12,
+        "upDotGravity": 1
+      }
+    },
+    "B1 offline place_card wall_left: flush": {
+      "ok": true,
+      "detail": {
+        "mode": "offline",
+        "f": {
+          "cardId": "q-mwjp8j5e-bjcva",
+          "title": "Email Sam about launch",
+          "surfaceId": "room-4",
+          "kind": "wall",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.175,
+          "upDotGravity": 1
+        }
+      }
+    },
+    "B2: no card overlaps": {
+      "ok": true,
+      "detail": []
+    },
+    "B2 offline arrange desk: every card flush on the coffee table": {
+      "ok": true,
+      "detail": {
+        "desk": [
+          [
+            "Email Sam about launch",
+            0.095,
+            4
+          ],
+          [
+            "Finish the pitch deck",
+            0.095,
+            4
+          ],
+          [
+            "Gym after lunch",
+            0.095,
+            4
+          ],
+          [
+            "Call landlord about sink",
+            0.095,
+            4
+          ]
+        ],
+        "reply": "Lined up 4 cards on your desk."
+      }
+    },
+    "B3 offline find: says it is on the desk": {
+      "ok": true,
+      "detail": "\"Gym after lunch\" is on the desk in front of you."
+    },
+    "B4 offline focus_on: 5 min focus, card at the focus spot": {
+      "ok": true,
+      "detail": {
+        "fs3": "focus",
+        "actions": [
+          {
+            "type": "focus_on",
+            "card_id": "q-mwjp8j6m-nwpft",
+            "minutes": 5
+          }
+        ]
+      }
+    },
+    "B5 offline place here": {
+      "ok": true,
+      "detail": [
+        {
+          "type": "place_card",
+          "card_id": "q-mwjp8j7x-yhfcm",
+          "target": "here"
+        }
+      ]
+    },
+    "B5 Undo here: gym back on the desk, flush": {
+      "ok": true,
+      "detail": {
+        "cardId": "q-mwjp8j7x-yhfcm",
+        "title": "Gym after lunch",
+        "surfaceId": "room-1",
+        "kind": "desk",
+        "angleDeg": 0,
+        "gapMm": 2.5,
+        "cornersInside": 4,
+        "scale": 0.095,
+        "upDotGravity": null
+      }
+    },
+    "B6 unknown place: no move, a helpful reply": {
+      "ok": true,
+      "detail": "Cards can't go there. Try a wall, the desk, the door, or here."
+    }
+  },
+  "aiRequests": [
+    {
+      "text": "move the gym card to the left wall",
+      "mode": "ai"
+    },
+    {
+      "text": "put email sam on the desk",
+      "mode": "ai"
+    },
+    {
+      "text": "move the gym card to the right wall",
+      "mode": "ai"
+    },
+    {
+      "text": "bring the pitch deck here",
+      "mode": "ai"
+    },
+    {
+      "text": "put the landlord card next to email sam",
+      "mode": "ai"
+    },
+    {
+      "text": "line up my today cards on the front wall",
+      "mode": "ai"
+    },
+    {
+      "text": "where's the gym card?",
+      "mode": "ai"
+    },
+    {
+      "text": "focus on email sam",
+      "mode": "ai"
+    },
+    {
+      "text": "pin the gym card to the door",
+      "mode": "ai"
+    },
+    {
+      "text": "move email sam to the wall on my left",
+      "mode": "down"
+    }
+  ],
+  "runs": [
+    {
+      "text": "move the gym card to the left wall",
+      "mode": "ai",
+      "actions": [
+        {
+          "type": "place_card",
+          "card_id": "q-mwjp8j7x-yhfcm",
+          "target": "wall_left"
+        }
+      ],
+      "reply": "Moved \"Gym after lunch\" to the wall on your left.",
+      "log": [
+        {
+          "type": "place_card",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "put email sam on the desk",
+      "mode": "ai",
+      "actions": [
+        {
+          "type": "place_card",
+          "card_id": "q-mwjp8j5e-bjcva",
+          "target": "desk"
+        }
+      ],
+      "reply": "Moved \"Email Sam about launch\" to your desk.",
+      "log": [
+        {
+          "type": "place_card",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "move the gym card to the right wall",
+      "mode": "ai",
+      "actions": [
+        {
+          "type": "place_card",
+          "card_id": "q-mwjp8j7x-yhfcm",
+          "target": "wall_right"
+        }
+      ],
+      "reply": "Moved \"Gym after lunch\" to the wall on your right.",
+      "log": [
+        {
+          "type": "place_card",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "bring the pitch deck here",
+      "mode": "ai",
+      "actions": [
+        {
+          "type": "place_card",
+          "card_id": "q-mwjp8j6m-nwpft",
+          "target": "here"
+        }
+      ],
+      "reply": "Moved \"Finish the pitch deck\" to right in front of you.",
+      "log": [
+        {
+          "type": "place_card",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "put the landlord card next to email sam",
+      "mode": "ai",
+      "actions": [
+        {
+          "type": "place_card",
+          "card_id": "q-mwjp8j8o-a6ef3",
+          "target": "next_to",
+          "ref_card_id": "q-mwjp8j5e-bjcva"
+        }
+      ],
+      "reply": "Moved \"Call landlord about sink\" to next to \"Email Sam about launch\".",
+      "log": [
+        {
+          "type": "place_card",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "line up my today cards on the front wall",
+      "mode": "ai",
+      "actions": [
+        {
+          "type": "arrange",
+          "target": "wall_front",
+          "category": "today"
+        }
+      ],
+      "reply": "Lined up 4 cards on the wall in front of you.",
+      "log": [
+        {
+          "type": "arrange",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "where's the gym card?",
+      "mode": "ai",
+      "actions": [
+        {
+          "type": "find",
+          "card_id": "q-mwjp8j7x-yhfcm"
+        }
+      ],
+      "reply": "\"Gym after lunch\" is on the wall on your left.",
+      "log": [
+        {
+          "type": "find",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "focus on email sam",
+      "mode": "ai",
+      "actions": [
+        {
+          "type": "focus_on",
+          "card_id": "q-mwjp8j5e-bjcva",
+          "minutes": 15
+        }
+      ],
+      "reply": "15 minutes on \"Email Sam about launch\", right in front of you.",
+      "log": [
+        {
+          "type": "focus_on",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "pin the gym card to the door",
+      "mode": "ai",
+      "actions": [
+        {
+          "type": "place_card",
+          "card_id": "q-mwjp8j7x-yhfcm",
+          "target": "door"
+        }
+      ],
+      "reply": "Moved \"Gym after lunch\" to the door.",
+      "log": [
+        {
+          "type": "place_card",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "move email sam to the wall on my left",
+      "mode": "offline",
+      "actions": [
+        {
+          "type": "place_card",
+          "card_id": "q-mwjp8j5e-bjcva",
+          "target": "wall_left"
+        }
+      ],
+      "reply": "Moved \"Email Sam about launch\" to the wall on your left.",
+      "log": [
+        {
+          "type": "place_card",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "line up my cards on the desk",
+      "mode": "offline",
+      "actions": [
+        {
+          "type": "arrange",
+          "target": "desk"
+        }
+      ],
+      "reply": "Lined up 4 cards on your desk.",
+      "log": [
+        {
+          "type": "arrange",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "where is the gym card",
+      "mode": "offline",
+      "actions": [
+        {
+          "type": "find",
+          "card_id": "q-mwjp8j7x-yhfcm"
+        }
+      ],
+      "reply": "\"Gym after lunch\" is on the desk in front of you.",
+      "log": [
+        {
+          "type": "find",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "focus on the pitch deck for 5 minutes",
+      "mode": "offline",
+      "actions": [
+        {
+          "type": "focus_on",
+          "card_id": "q-mwjp8j6m-nwpft",
+          "minutes": 5
+        }
+      ],
+      "reply": "5 minutes on \"Finish the pitch deck\", right in front of you.",
+      "log": [
+        {
+          "type": "focus_on",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "end it",
+      "mode": "offline",
+      "actions": [
+        {
+          "type": "focus_control",
+          "command": "end"
+        }
+      ],
+      "reply": "Focus ended.",
+      "log": [
+        {
+          "type": "focus_control",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "bring the gym card here",
+      "mode": "offline",
+      "actions": [
+        {
+          "type": "place_card",
+          "card_id": "q-mwjp8j7x-yhfcm",
+          "target": "here"
+        }
+      ],
+      "reply": "Moved \"Gym after lunch\" to right in front of you.",
+      "log": [
+        {
+          "type": "place_card",
+          "ok": true
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "text": "move the gym card to the ceiling",
+      "mode": "offline",
+      "actions": [],
+      "reply": "Cards can't go there. Try a wall, the desk, the door, or here.",
+      "log": [],
+      "rejected": []
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "room-1",
+      "kind": "desk",
+      "source": "room",
+      "position": [
+        0,
+        0.42,
+        -1.95
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ],
+      "width": 1.15,
+      "height": 0.6
+    },
+    {
+      "id": "room-2",
+      "kind": "door",
+      "source": "room",
+      "position": [
+        1.45,
+        1.028,
+        2.378
+      ],
+      "normal": [
+        0,
+        0,
+        -1
+      ],
+      "width": 0.85,
+      "height": 2.06
+    },
+    {
+      "id": "room-3",
+      "kind": "desk",
+      "source": "room",
+      "position": [
+        -0.95,
+        0.74,
+        1.35
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ],
+      "width": 0.9,
+      "height": 0.9
+    },
+    {
+      "id": "room-4",
+      "kind": "wall",
+      "source": "room",
+      "position": [
+        -2.5,
+        1.35,
+        -0.5
+      ],
+      "normal": [
+        1,
+        0,
+        0
+      ],
+      "width": 5.8,
+      "height": 2.7
+    },
+    {
+      "id": "room-5",
+      "kind": "wall",
+      "source": "room",
+      "position": [
+        2.5,
+        1.35,
+        -0.5
+      ],
+      "normal": [
+        -1,
+        0,
+        0
+      ],
+      "width": 5.8,
+      "height": 2.7
+    },
+    {
+      "id": "room-6",
+      "kind": "wall",
+      "source": "room",
+      "position": [
+        0,
+        1.35,
+        -3.4
+      ],
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "width": 5,
+      "height": 2.7
+    },
+    {
+      "id": "room-7",
+      "kind": "wall",
+      "source": "room",
+      "position": [
+        0,
+        1.35,
+        2.4
+      ],
+      "normal": [
+        0,
+        0,
+        -1
+      ],
+      "width": 5,
+      "height": 2.7
+    }
+  ],
+  "durationS": 300.3,
+  "summary": {
+    "pass": 25,
+    "fail": 0
+  }
+}

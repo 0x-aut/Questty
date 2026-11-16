@@ -1,0 +1,416 @@
+{
+  "calls": [
+    {
+      "t": 60.8,
+      "url": "/api/transcribe",
+      "status": 200,
+      "request": {
+        "mimeType": "audio/webm;codecs=opus",
+        "audioBytes": 38463
+      },
+      "response": {
+        "text": "I need to email Sam about the lunch, finish the pitch deck, go to the gym after lunch, and call my landlord about the sink."
+      }
+    },
+    {
+      "t": 66.1,
+      "url": "/api/quests",
+      "status": 200,
+      "request": {
+        "text": "I need to email Sam about the lunch, finish the pitch deck, go to the gym after lunch, and call my landlord about the sink."
+      },
+      "response": {
+        "quests": [
+          {
+            "title": "Email Sam About Lunch",
+            "xp": 10,
+            "zone": "desk",
+            "when": "unsorted"
+          },
+          {
+            "title": "Finish the Pitch Deck",
+            "xp": 40,
+            "zone": "desk",
+            "when": "unsorted"
+          },
+          {
+            "title": "Go to the Gym",
+            "xp": 30,
+            "zone": "door",
+            "when": "unsorted"
+          },
+          {
+            "title": "Call Landlord About Sink",
+            "xp": 20,
+            "zone": "desk",
+            "when": "unsorted"
+          }
+        ]
+      }
+    },
+    {
+      "t": 92.9,
+      "url": "/api/buddy",
+      "status": 200,
+      "request": {
+        "text": "move the gym card to later and start 25 minutes on the pitch deck"
+      },
+      "response": {
+        "reply": "Done—gym is later, and the pitch deck timer is running.",
+        "actions": [
+          {
+            "type": "set_category",
+            "card_id": "q-mwjotsku-7jomf",
+            "category": "later"
+          },
+          {
+            "type": "start_focus",
+            "card_id": "q-mwjotsk1-6h9qu",
+            "minutes": 25
+          }
+        ]
+      }
+    }
+  ],
+  "marks": [
+    {
+      "name": "a-start",
+      "t": 31.6
+    },
+    {
+      "name": "a-end",
+      "t": 87.6
+    },
+    {
+      "name": "b-start",
+      "t": 87.6
+    },
+    {
+      "name": "b-end",
+      "t": 108.4
+    }
+  ],
+  "cardsAfterDump": [
+    {
+      "id": "q-mwjotsik-4b9n3",
+      "title": "Email Sam About Lunch",
+      "category": "unsorted",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjotsk1-6h9qu",
+      "title": "Finish the Pitch Deck",
+      "category": "unsorted",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjotsku-7jomf",
+      "title": "Go to the Gym",
+      "category": "unsorted",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjotslx-8c348",
+      "title": "Call Landlord About Sink",
+      "category": "unsorted",
+      "state": "floating"
+    }
+  ],
+  "buddyRun": {
+    "text": "move the gym card to later and start 25 minutes on the pitch deck",
+    "source": "tap",
+    "mode": "ai",
+    "actions": [
+      {
+        "type": "set_category",
+        "card_id": "q-mwjotsku-7jomf",
+        "category": "later"
+      },
+      {
+        "type": "start_focus",
+        "card_id": "q-mwjotsk1-6h9qu",
+        "minutes": 25
+      }
+    ],
+    "rejected": [],
+    "reply": "Done—gym is later, and the pitch deck timer is running.",
+    "log": [
+      {
+        "type": "set_category",
+        "ok": true
+      },
+      {
+        "type": "start_focus",
+        "ok": true
+      }
+    ],
+    "at": 1794859225698
+  },
+  "cardsAfterCommand": [
+    {
+      "id": "q-mwjotsik-4b9n3",
+      "title": "Email Sam About Lunch",
+      "category": "unsorted",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjotsk1-6h9qu",
+      "title": "Finish the Pitch Deck",
+      "category": "unsorted",
+      "state": "focusing"
+    },
+    {
+      "id": "q-mwjotsku-7jomf",
+      "title": "Go to the Gym",
+      "category": "later",
+      "state": "floating"
+    },
+    {
+      "id": "q-mwjotslx-8c348",
+      "title": "Call Landlord About Sink",
+      "category": "unsorted",
+      "state": "floating"
+    }
+  ],
+  "focus": {
+    "phase": "focus",
+    "questId": "q-mwjotsk1-6h9qu",
+    "durationMs": 1500000,
+    "endsAt": 1794860730247,
+    "pausedRemainingMs": null,
+    "consecutiveSkips": 0,
+    "remainingMs": 1495485,
+    "blur": "soft",
+    "shellOpacity": 0.6,
+    "shellTarget": 0.6,
+    "shellAt": [
+      0,
+      1.610671877861023,
+      0
+    ],
+    "shellWindows": [
+      [
+        -0.0030041158628240864,
+        -0.2518489024640876,
+        -0.9677619054372398,
+        0.47181515617968056
+      ],
+      [
+        -0.6372982759880798,
+        -0.09983346642281024,
+        -0.7641231487166364,
+        0.20868176696863525
+      ]
+    ],
+    "timerVisible": true,
+    "timerPosition": [
+      -0.5417035222053528,
+      1.5258134603500366,
+      -0.6495046615600586
+    ],
+    "clock": "24:56"
+  },
+  "buddyState": {
+    "orb": {
+      "state": "idle",
+      "position": [
+        -0.6521535913956639,
+        1.2327498223628914,
+        -0.2881759463579913
+      ],
+      "radius": 0.023520000350475315,
+      "visible": true,
+      "log": [
+        {
+          "state": "idle",
+          "at": 8201
+        },
+        {
+          "state": "listening",
+          "at": 38439
+        },
+        {
+          "state": "thinking",
+          "at": 56455
+        },
+        {
+          "state": "idle",
+          "at": 65464
+        },
+        {
+          "state": "done",
+          "at": 65464
+        },
+        {
+          "state": "idle",
+          "at": 67352
+        },
+        {
+          "state": "thinking",
+          "at": 88061
+        },
+        {
+          "state": "acting",
+          "at": 92623
+        },
+        {
+          "state": "done",
+          "at": 94064
+        },
+        {
+          "state": "idle",
+          "at": 95528
+        }
+      ]
+    },
+    "bubble": {
+      "visible": true,
+      "opacity": 1,
+      "hovered": false,
+      "text": "Done—gym is later, and the pitch deck timer is running.",
+      "tag": "QUESTTY",
+      "chips": [
+        {
+          "label": "Undo",
+          "kind": "plain"
+        }
+      ],
+      "box": {
+        "position": [
+          -0.6407678127288818,
+          1.1506388187408447,
+          -0.23869718611240387
+        ],
+        "sizePx": [
+          300,
+          153.39999389648438
+        ],
+        "scale": 0.10000000149011612,
+        "corners": [
+          [
+            -0.6407678127288818,
+            1.1506388187408447,
+            -0.23869718611240387
+          ],
+          [
+            -0.6095959190220906,
+            1.0840445713846465,
+            -0.21687039140908296
+          ],
+          [
+            -0.5784240253152996,
+            1.0174503240284483,
+            -0.19504359670576205
+          ],
+          [
+            -0.5547313475781583,
+            1.1506388180416485,
+            -0.36156999559722747
+          ],
+          [
+            -0.5235594538713672,
+            1.0840445706854502,
+            -0.3397432008939065
+          ],
+          [
+            -0.4923875601645761,
+            1.017450323329252,
+            -0.31791640619058564
+          ],
+          [
+            -0.46869488242743496,
+            1.150638817342452,
+            -0.48444280508205106
+          ],
+          [
+            -0.4375229887206438,
+            1.0840445699862538,
+            -0.4626160103787301
+          ],
+          [
+            -0.4063510950138527,
+            1.0174503226300555,
+            -0.44078921567540924
+          ]
+        ]
+      }
+    },
+    "plan": null,
+    "badges": [],
+    "lines": [
+      {
+        "cardId": "q-mwjotsku-7jomf",
+        "start": [
+          -0.6440253266592266,
+          1.2153849593408195,
+          -0.28248447440525726
+        ],
+        "end": [
+          0.22885834604862434,
+          1.3351325213151928,
+          -0.5456039109060744
+        ],
+        "progress": 1,
+        "opacity": 0
+      },
+      {
+        "cardId": "q-mwjotsk1-6h9qu",
+        "start": [
+          -0.6440253266592266,
+          1.2153849593408195,
+          -0.28248447440525726
+        ],
+        "end": [
+          -0.3414219056892352,
+          1.3351325215591359,
+          -0.4832089082329501
+        ],
+        "progress": 1,
+        "opacity": 0
+      }
+    ],
+    "runs": [
+      {
+        "text": "move the gym card to later and start 25 minutes on the pitch deck",
+        "source": "tap",
+        "mode": "ai",
+        "actions": [
+          {
+            "type": "set_category",
+            "card_id": "q-mwjotsku-7jomf",
+            "category": "later"
+          },
+          {
+            "type": "start_focus",
+            "card_id": "q-mwjotsk1-6h9qu",
+            "minutes": 25
+          }
+        ],
+        "rejected": [],
+        "reply": "Done—gym is later, and the pitch deck timer is running.",
+        "log": [
+          {
+            "type": "set_category",
+            "ok": true
+          },
+          {
+            "type": "start_focus",
+            "ok": true
+          }
+        ],
+        "at": 1794859225698
+      }
+    ],
+    "undoDepth": 1,
+    "offer": null,
+    "busy": false,
+    "used": true,
+    "head": [
+      0,
+      1.6106719048693776,
+      0
+    ]
+  },
+  "durationS": 108.4,
+  "realOpenAICalls": 3
+}

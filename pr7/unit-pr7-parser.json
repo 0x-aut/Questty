@@ -1,0 +1,142 @@
+[
+ {
+  "name": "parse: move the gym card to the left wall",
+  "ok": true
+ },
+ {
+  "name": "parse: put the gym card on the wall to my right",
+  "ok": true
+ },
+ {
+  "name": "parse: stick email sam on the wall in front of me",
+  "ok": true
+ },
+ {
+  "name": "parse: put the dentist one on the desk",
+  "ok": true
+ },
+ {
+  "name": "parse: move the pitch deck to the table",
+  "ok": true
+ },
+ {
+  "name": "parse: pin gym to the door",
+  "ok": true
+ },
+ {
+  "name": "parse: bring the pitch deck here",
+  "ok": true
+ },
+ {
+  "name": "parse: bring the pitch deck in front of me",
+  "ok": true
+ },
+ {
+  "name": "parse: put email sam next to the gym card",
+  "ok": true
+ },
+ {
+  "name": "parse: move the gym card to later",
+  "ok": true
+ },
+ {
+  "name": "parse: line up my today cards on the desk",
+  "ok": true
+ },
+ {
+  "name": "parse: arrange everything on the left wall",
+  "ok": true
+ },
+ {
+  "name": "parse: lay out my cards in front of me",
+  "ok": true
+ },
+ {
+  "name": "parse: focus on the pitch deck for 15 minutes",
+  "ok": true
+ },
+ {
+  "name": "parse: focus on email sam",
+  "ok": true
+ },
+ {
+  "name": "parse: start 25 minutes on the pitch deck",
+  "ok": true
+ },
+ {
+  "name": "parse: where's the gym card?",
+  "ok": true
+ },
+ {
+  "name": "parse: find the dentist",
+  "ok": true
+ },
+ {
+  "name": "parse: where is email sam",
+  "ok": true
+ },
+ {
+  "name": "parse: what's left today?",
+  "ok": true
+ },
+ {
+  "name": "classify: move to wall is a command",
+  "ok": true
+ },
+ {
+  "name": "classify: where is a command",
+  "ok": true
+ },
+ {
+  "name": "classify: brain dump stays a dump",
+  "ok": true
+ },
+ {
+  "name": "placeFromWords: later is no place",
+  "ok": true
+ },
+ {
+  "name": "validate: keeps 4 good spatial actions",
+  "ok": true
+ },
+ {
+  "name": "validate: refuses bad target / unknown ids / bad minutes",
+  "ok": true
+ },
+ {
+  "name": "resolve: left wall",
+  "ok": true
+ },
+ {
+  "name": "resolve: right wall",
+  "ok": true
+ },
+ {
+  "name": "resolve: front wall",
+  "ok": true
+ },
+ {
+  "name": "resolve: desk = coffee table ahead, not the dining table behind",
+  "ok": true
+ },
+ {
+  "name": "resolve: door",
+  "ok": true
+ },
+ {
+  "name": "resolve: facing +x, \"left\" is the front wall (z=-3.4)",
+  "ok": true
+ },
+ {
+  "name": "resolve: no left wall -> offers the nearest",
+  "ok": true
+ },
+ {
+  "name": "wallScore: back wall is never \"front\"",
+  "ok": true
+ },
+ {
+  "name": "describe: card on left wall",
+  "ok": true
+ }
+]

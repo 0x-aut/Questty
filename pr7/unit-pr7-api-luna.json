@@ -1,0 +1,94 @@
+[
+ {
+  "name": "quests: 200 with 3 quests",
+  "ok": true
+ },
+ {
+  "name": "quests: Responses API endpoint",
+  "ok": true
+ },
+ {
+  "name": "quests: model gpt-6-luna",
+  "ok": true
+ },
+ {
+  "name": "quests: reasoning effort set, no temperature/top_p",
+  "ok": true
+ },
+ {
+  "name": "quests: strict json schema in text.format",
+  "ok": true
+ },
+ {
+  "name": "quests: store false, key not in body",
+  "ok": true
+ },
+ {
+  "name": "nudge: plain text via Luna, effort none",
+  "ok": true
+ },
+ {
+  "name": "quests: OPENAI_QUESTS_MODEL override",
+  "ok": true
+ },
+ {
+  "name": "quests: refusal -> 502",
+  "ok": true
+ },
+ {
+  "name": "quests: OpenAI 400 -> 502 quest-generation-failed",
+  "ok": true
+ },
+ {
+  "name": "transcribe: gpt-transcribe, one call",
+  "ok": true
+ },
+ {
+  "name": "transcribe: 404 on gpt-transcribe -> one retry with gpt-4o-mini-transcribe",
+  "ok": true
+ },
+ {
+  "name": "transcribe: 401 is not retried (bad key)",
+  "ok": true
+ },
+ {
+  "name": "live: 201 with session id + answer sdp",
+  "ok": true
+ },
+ {
+  "name": "live: POST /v1/live/sessions",
+  "ok": true
+ },
+ {
+  "name": "live: gpt-live-1, client delegation, webrtc transport, no audio.format",
+  "ok": true
+ },
+ {
+  "name": "live: instructions say delegate, never claim success",
+  "ok": true
+ },
+ {
+  "name": "live: key never in the response",
+  "ok": true
+ },
+ {
+  "name": "live: bad sdp -> 400",
+  "ok": true
+ },
+ {
+  "name": "live: GET configured",
+  "ok": true
+ },
+ {
+  "name": "live: upstream error -> 502 (client falls back)",
+  "ok": true
+ },
+ {
+  "name": "live: no key -> 500 server-not-configured",
+  "ok": true
+ },
+ {
+  "name": "liveSessionBody: voice default marin",
+  "ok": true
+ }
+]

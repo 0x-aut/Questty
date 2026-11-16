@@ -1,0 +1,443 @@
+{
+  "marks": [
+    {
+      "name": "T1-pinch-start",
+      "t": 64.4
+    },
+    {
+      "name": "T2-spoken-command",
+      "t": 96.1
+    },
+    {
+      "name": "T3-interrupt",
+      "t": 141.7
+    },
+    {
+      "name": "T4-undo-by-voice",
+      "t": 186.1
+    },
+    {
+      "name": "T5-pinch-stop",
+      "t": 197.1
+    },
+    {
+      "name": "T7-fallback",
+      "t": 217.7
+    },
+    {
+      "name": "end",
+      "t": 259.2
+    }
+  ],
+  "checks": {
+    "T0 /api/live GET probe says configured (Live offered)": {
+      "ok": true,
+      "detail": {
+        "state": "off",
+        "liveConfigured": true
+      }
+    },
+    "T1 pinch the orb -> a talk session goes live (session.started)": {
+      "ok": true,
+      "detail": {
+        "state": "live",
+        "sessionId": "live_fake_1",
+        "events": {
+          "session.started": 1
+        },
+        "delegations": [],
+        "you": "",
+        "buddy": "",
+        "usageSeconds": null,
+        "closedReason": null,
+        "error": null,
+        "peakOutput": 0.000013117195875862639,
+        "startedAt": 1794860613787,
+        "endedAt": 0,
+        "liveConfigured": true
+      }
+    },
+    "T1 orb is in the talking state": {
+      "ok": true,
+      "detail": "talking"
+    },
+    "T2 caption shows what the user said (tag YOU)": {
+      "ok": true,
+      "detail": {
+        "visible": true,
+        "opacity": 1,
+        "hovered": false,
+        "text": "\"Move the gym card to the left wall.\"",
+        "tag": "YOU",
+        "chips": [],
+        "box": {
+          "position": [
+            -0.6407678127288818,
+            1.1510186195373535,
+            -0.23869718611240387
+          ],
+          "sizePx": [
+            300,
+            97.4000015258789
+          ],
+          "scale": 0.10000000149011612,
+          "corners": [
+            [
+              -0.6407678127288818,
+              1.1510186195373535,
+              -0.23869718611240387
+            ],
+            [
+              -0.6209754879869734,
+              1.1087351772154102,
+              -0.2248384512884436
+            ],
+            [
+              -0.6011831632450649,
+              1.0664517348934666,
+              -0.2109797164644833
+            ],
+            [
+              -0.5547313475781583,
+              1.1510186188381573,
+              -0.36156999559722747
+            ],
+            [
+              -0.5349390228362499,
+              1.108735176516214,
+              -0.3477112607732672
+            ],
+            [
+              -0.5151466980943414,
+              1.0664517341942703,
+              -0.3338525259493069
+            ],
+            [
+              -0.46869488242743496,
+              1.1510186181389608,
+              -0.48444280508205106
+            ],
+            [
+              -0.4489025576855265,
+              1.1087351758170174,
+              -0.4705840702580908
+            ],
+            [
+              -0.42911023294361805,
+              1.0664517334950738,
+              -0.4567253354341305
+            ]
+          ]
+        }
+      }
+    },
+    "T2 delegation ran through the validated executor: gym card flush on the LEFT wall": {
+      "ok": true,
+      "detail": {
+        "gym": {
+          "cardId": "q-mwjpnne9-weftx",
+          "title": "Gym after lunch",
+          "surfaceId": "room-4",
+          "kind": "wall",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.175,
+          "upDotGravity": 1
+        },
+        "p": [
+          -2.4975,
+          1.4907,
+          0
+        ],
+        "delegation": {
+          "id": "item_1",
+          "text": "Move the gym card to the left wall.",
+          "reply": "Moved \"Gym after lunch\" to the wall on your left."
+        }
+      }
+    },
+    "T2 app suppresses the generic ack (thinking.append) then sends the result (commentary.append, same delegation id)": {
+      "ok": true,
+      "detail": {
+        "thinking": {
+          "type": "session.thinking.append",
+          "delegation_id": "item_1",
+          "content": "Working on it in the room."
+        },
+        "comm": {
+          "type": "session.commentary.append",
+          "delegation_id": "item_1",
+          "content": "App result (say it briefly, in your own words): Moved \"Gym after lunch\" to the wall on your left."
+        }
+      }
+    },
+    "T2 the command ran as a voice command with a validated place_card action": {
+      "ok": true,
+      "detail": {
+        "text": "Move the gym card to the left wall.",
+        "source": "voice",
+        "mode": "offline",
+        "actions": [
+          {
+            "type": "place_card",
+            "card_id": "q-mwjpnne9-weftx",
+            "target": "wall_left"
+          }
+        ],
+        "rejected": [],
+        "reply": "Moved \"Gym after lunch\" to the wall on your left.",
+        "log": [
+          {
+            "type": "place_card",
+            "ok": true
+          }
+        ],
+        "at": 1794860655169,
+        "apiError": "server-not-configured"
+      }
+    },
+    "T2 the buddy speaks the confirmation: caption tag TALKING": {
+      "ok": true,
+      "detail": {
+        "visible": true,
+        "opacity": 1,
+        "hovered": false,
+        "text": "Moved \"Gym after lunch\" to the wall on your left.",
+        "tag": "QUESTTY  ·  TALKING",
+        "chips": [
+          {
+            "label": "Undo",
+            "kind": "plain"
+          }
+        ],
+        "box": {
+          "position": [
+            -0.6407678127288818,
+            1.1510186195373535,
+            -0.23869718611240387
+          ],
+          "sizePx": [
+            300,
+            153.39999389648438
+          ],
+          "scale": 0.10000000149011612,
+          "corners": [
+            [
+              -0.6407678127288818,
+              1.1510186195373535,
+              -0.23869718611240387
+            ],
+            [
+              -0.6095959190220906,
+              1.0844243721811553,
+              -0.21687039140908296
+            ],
+            [
+              -0.5784240253152996,
+              1.017830124824957,
+              -0.19504359670576205
+            ],
+            [
+              -0.5547313475781583,
+              1.1510186188381573,
+              -0.36156999559722747
+            ],
+            [
+              -0.5235594538713672,
+              1.084424371481959,
+              -0.3397432008939065
+            ],
+            [
+              -0.4923875601645761,
+              1.0178301241257608,
+              -0.31791640619058564
+            ],
+            [
+              -0.46869488242743496,
+              1.1510186181389608,
+              -0.48444280508205106
+            ],
+            [
+              -0.4375229887206438,
+              1.0844243707827625,
+              -0.4626160103787301
+            ],
+            [
+              -0.4063510950138527,
+              1.0178301234265643,
+              -0.44078921567540924
+            ]
+          ]
+        }
+      }
+    },
+    "T2 orb hears the buddy: output audio level > 0": {
+      "ok": true,
+      "detail": 1
+    },
+    "T3 interruption: the user talks over the buddy -> caption switches to the user at once": {
+      "ok": true,
+      "detail": {
+        "visible": true,
+        "opacity": 1,
+        "hovered": false,
+        "text": "\"Where is the pitch deck?\"",
+        "tag": "YOU",
+        "chips": [
+          {
+            "label": "Undo",
+            "kind": "plain"
+          }
+        ],
+        "box": {
+          "position": [
+            -0.6407678127288818,
+            1.1510186195373535,
+            -0.23869718611240387
+          ],
+          "sizePx": [
+            300,
+            130.89999389648438
+          ],
+          "scale": 0.10000000149011612,
+          "corners": [
+            [
+              -0.6407678127288818,
+              1.1510186195373535,
+              -0.23869718611240387
+            ],
+            [
+              -0.6141680678898155,
+              1.0941921076774523,
+              -0.22007184447534658
+            ],
+            [
+              -0.5875683230507491,
+              1.0373655958175514,
+              -0.20144650283828927
+            ],
+            [
+              -0.5547313475781583,
+              1.1510186188381573,
+              -0.36156999559722747
+            ],
+            [
+              -0.528131602739092,
+              1.094192106978256,
+              -0.34294465396017015
+            ],
+            [
+              -0.5015318579000256,
+              1.0373655951183551,
+              -0.3243193123231129
+            ],
+            [
+              -0.46869488242743496,
+              1.1510186181389608,
+              -0.48444280508205106
+            ],
+            [
+              -0.4420951375883686,
+              1.0941921062790596,
+              -0.46581746344499375
+            ],
+            [
+              -0.41549539274930225,
+              1.0373655944191587,
+              -0.4471921218079365
+            ]
+          ]
+        }
+      }
+    },
+    "T3 second delegation (find) answered": {
+      "ok": true,
+      "detail": {
+        "id": "item_2",
+        "text": "Where is the pitch deck?",
+        "reply": "\"Finish the pitch deck\" is floating on your left."
+      }
+    },
+    "T5 pinch again -> graceful close: session.close sent, session.closed received (usage 31 s)": {
+      "ok": true,
+      "detail": {
+        "state": "off",
+        "closeSent": true,
+        "usage": 31,
+        "reason": "client_closed"
+      }
+    },
+    "T5 orb back to idle": {
+      "ok": true,
+      "detail": "idle"
+    },
+    "T7 Live down -> talk state failed, says so": {
+      "ok": true,
+      "detail": {
+        "state": "failed",
+        "error": "live-session-failed"
+      }
+    },
+    "T7 fallback push-to-talk -> transcribe -> buddy -> pitch deck flush on the desk": {
+      "ok": true,
+      "detail": {
+        "lastRun": {
+          "text": "move the pitch deck to the desk",
+          "mode": "offline",
+          "actions": [
+            {
+              "type": "place_card",
+              "card_id": "q-mwjpnnd6-vux8v",
+              "target": "desk"
+            }
+          ]
+        },
+        "deskFit": {
+          "cardId": "q-mwjpnnd6-vux8v",
+          "title": "Finish the pitch deck",
+          "surfaceId": "room-1",
+          "kind": "desk",
+          "angleDeg": 0,
+          "gapMm": 2.5,
+          "cornersInside": 4,
+          "scale": 0.131,
+          "upDotGravity": null
+        }
+      }
+    }
+  },
+  "undoByVoice": {
+    "delegation": {
+      "id": "item_3",
+      "text": "Undo that move.",
+      "reply": "Undone."
+    },
+    "gym": {
+      "id": "q-mwjpnne9-weftx",
+      "title": "Gym after lunch",
+      "category": "today",
+      "state": "floating"
+    }
+  },
+  "durationS": 259.2,
+  "talk": {
+    "state": "failed",
+    "sessionId": "",
+    "events": {},
+    "delegations": [],
+    "you": "",
+    "buddy": "",
+    "usageSeconds": null,
+    "closedReason": "live-session-failed",
+    "error": "live-session-failed",
+    "peakOutput": 0,
+    "startedAt": 1794860765926,
+    "endedAt": 1794860773186,
+    "liveConfigured": true
+  },
+  "summary": {
+    "pass": 15,
+    "fail": 0
+  }
+}
