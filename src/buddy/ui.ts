@@ -70,6 +70,13 @@ const GLIDE_MS = 650;
 
 type ChipKind = 'plain' | 'primary' | 'danger';
 type Chip = { label: string; kind: ChipKind; run: () => void };
+/** Move `value` toward `target` (0..1) at 1/inMs up and 1/outMs down per ms; exact at the target. */
+export function stepToward(value: number, target: number, dtS: number, inMs: number, outMs: number): number {
+  if (value === target) return value;
+  if (target > value) return Math.min(target, value + (1000 / inMs) * dtS);
+  return Math.max(target, value - (1000 / outMs) * dtS);
+}
+
 const CHIP_STYLE: Record<ChipKind, { bg: string; border: string }> = {
   plain: { bg: '#e6dece', border: '#d3c9b4' },
   primary: { bg: '#f0d787', border: '#d8bb5e' },
@@ -952,10 +959,12 @@ export class BuddySystem extends createSystem({
     // Pointed at with chips to press: hold it a little longer.
     if (b.hovered && b.chips.length > 0 && b.opacity > 0.5 && b.until - now < 1500 * BUDDY_SLOW) b.until = now + 1500 * BUDDY_SLOW;
     const want = collapsed && now < b.until ? 1 : 0;
-    const step = want > b.opacity ? 1000 / FADE_IN_MS : 1000 / FADE_OUT_MS;
     const dt = Math.min(0.1, (now - (this.lastBubbleAt || now)) / 1000);
     this.lastBubbleAt = now;
-    b.opacity = want > b.opacity ? Math.min(1, b.opacity + step * dt) : Math.max(0, b.opacity - step * dt);
+    // Ease toward the wanted opacity and stop there. (PR 6 treated "already
+    // there" as "fade out", so a fully shown bubble dipped by dt/FADE_OUT_MS
+    // every other frame and bounced back: the flicker under the orb.)
+    b.opacity = stepToward(b.opacity, want, dt, FADE_IN_MS, FADE_OUT_MS);
     const visible = b.opacity > 0.01;
     if (b.panel.visible !== visible) b.panel.visible = visible;
     if (!visible) return;
