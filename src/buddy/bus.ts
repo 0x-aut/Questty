@@ -33,3 +33,25 @@ export function reportMic(state: MicState, detail?: string): void {
 export function reportMicLevel(level: number): void {
   link?.level(level);
 }
+
+// PR 7: talk mode. Pinching the pill orb asks the buddy to start or stop a
+// GPT-Live talk session; when it can't (no server key, offline, no WebRTC)
+// it returns false and the mic falls back to push-to-talk.
+let talkToggle: (() => boolean) | undefined;
+let pushToTalk: (() => void) | undefined;
+
+export function setTalkToggle(fn: (() => boolean) | undefined): void {
+  talkToggle = fn;
+}
+
+export function toggleBuddyTalk(): boolean {
+  return talkToggle?.() ?? false;
+}
+
+export function setPushToTalk(fn: (() => void) | undefined): void {
+  pushToTalk = fn;
+}
+
+export function startPushToTalk(): void {
+  pushToTalk?.();
+}

@@ -48,7 +48,8 @@ import { aimPoint, describeSpot, resolvePlace, whereLabel } from './spatial.js';
 import type { PlaceTarget } from './actions.js';
 import { BuddyOrb, type OrbState } from './orb.js';
 import { BUDDY_SLOW, LightLines } from './light-line.js';
-import { setBuddyLink, type MicState } from './bus.js';
+import { setBuddyLink, setTalkToggle, startPushToTalk, type MicState } from './bus.js';
+import { TalkSession, talkSupported, type TalkState } from './talk.js';
 
 const USED_KEY = 'questty.buddy.v1';
 /** UIKit px -> metres at the home panel's scale (0.01 units/px x 0.1). */
@@ -198,6 +199,9 @@ export class BuddySystem extends createSystem({
       level: (level) => this.orb.setLevel(level),
     });
 
+    setTalkToggle(() => this.toggleTalk());
+    void this.probeLive();
+
     const off = onCardEvent((type, entity) => {
       if (type !== 'completed' && type !== 'removed') return;
       const id = entity.getValue(QuestCard, 'cardId') as string;
@@ -226,6 +230,11 @@ export class BuddySystem extends createSystem({
           orb: (state: OrbState) => this.setOrb(state),
           say: (text: string) => this.say(text, { ms: 4000 }),
           bubbleObject: () => this.bubble?.panel ?? null,
+          talk: () => (this.talk ? { ...this.talk.debug, liveConfigured: this.liveOk } : { state: 'off', liveConfigured: this.liveOk }),
+          talkToggle: () => this.toggleTalk(),
+          setLive: (ok: boolean) => {
+            this.liveOk = ok;
+          },
           trace: () => this.bubbleTrace.splice(0),
           experiment: (name: string) => {
             const b = this.bubble;
@@ -253,6 +262,8 @@ export class BuddySystem extends createSystem({
     }
 
     this.cleanupFuncs.push(off, () => {
+      setTalkToggle(undefined);
+      this.talk?.stop('dispose');
       setBuddyLink(undefined);
       this.orb.dispose();
     });
@@ -265,8 +276,9 @@ export class BuddySystem extends createSystem({
     this.lines.update(now);
     if (!this.busy && this.orbHoldUntil > 0 && now > this.orbHoldUntil) {
       this.orbHoldUntil = 0;
-      this.setOrb(this.orbAfter);
+      this.setOrb(this.orbAfter === 'idle' && this.talkLive() ? 'talking' : this.orbAfter);
     }
+    this.talk?.tick(now);
     this.updateBubble(now);
   }
 
@@ -305,6 +317,95 @@ export class BuddySystem extends createSystem({
     group.quaternion.copy(this.tmpQ);
     group.visible = panel.visible !== false;
     this.orb.update(now, this.orbRadius, this.world.player.head);
+  }
+
+  // ------------------------------------------------------------ talk mode (PR 7)
+
+  private talk: TalkSession | null = null;
+  private liveOk = false;
+
+  /** Is GPT-Live configured on the server? (GET /api/live, never the key itself) */
+  private async probeLive(): Promise<void> {
+    try {
+      const res = await fetch('/api/live', { method: 'GET' });
+      const body = res.ok ? ((await res.json()) as { configured?: unknown }) : null;
+      this.liveOk = body?.configured === true;
+    } catch {
+      this.liveOk = false;
+    }
+  }
+
+  private talkLive(): boolean {
+    return this.talk !== null && (this.talk.state === 'live' || this.talk.state === 'connecting');
+  }
+
+  /** Pinch on the orb: start or stop talking. False = not available (use push-to-talk). */
+  private toggleTalk(): boolean {
+    if (this.talk !== null && this.talk.state !== 'off' && this.talk.state !== 'failed') {
+      this.talk.stop('user');
+      return true;
+    }
+    if (!this.liveOk || !talkSupported() || (typeof navigator !== 'undefined' && navigator.onLine === false)) return false;
+    this.markUsed();
+    setWelcomeCollapsed(true);
+    const session = new TalkSession({
+      command: (text) => this.talkCommand(text),
+      caption: (who, text) => this.sayCaption(who === 'you' ? `"${text}"` : text, who === 'you' ? 'YOU' : 'QUESTTY  ·  TALKING'),
+      state: (state, detail) => this.onTalkState(state, detail),
+      levels: (out, inp) => {
+        this.orb.setVoiceLevel(out);
+        if (this.orb.state === 'talking') this.orb.setLevel(inp);
+      },
+    });
+    this.talk = session;
+    session.start().catch(() => undefined);
+    return true;
+  }
+
+  private onTalkState(state: TalkState, detail?: string): void {
+    if (state === 'connecting') {
+      this.setOrb('thinking');
+      this.say('Connecting...', { tag: 'TALK', sticky: true });
+    } else if (state === 'live') {
+      this.setOrb('talking');
+      this.say("I'm here. Tell me what to move or start.", { tag: 'QUESTTY  ·  TALKING', ms: 5000 });
+    } else if (state === 'off') {
+      if (this.orb.state === 'talking' || this.orb.state === 'thinking') this.setOrb('idle');
+      const why = detail === 'idle' ? 'Talk ended after a quiet minute.' : 'Talk ended.';
+      this.say(why, { tag: 'QUESTTY', ms: 3000 });
+    } else if (state === 'failed') {
+      // Live is down: the same pinch falls back to push-to-talk -> transcribe -> buddy.
+      this.setOrb('error', 1500);
+      this.say("Voice chat isn't available. Push-to-talk instead.", { tag: 'QUESTTY', ms: 4000 });
+      if (detail !== 'connection-failed' && detail !== 'events-closed') startPushToTalk();
+    }
+  }
+
+  /** A delegated voice request: same validated pipeline as a typed or push-to-talk one. */
+  private async talkCommand(text: string): Promise<string> {
+    for (let i = 0; i < 40 && this.busy; i += 1) await new Promise((r) => window.setTimeout(r, 250));
+    const record = await this.handle(text, 'voice');
+    if (this.talkLive()) this.setOrb('talking');
+    if (record === null) return this.bubble?.text ?? 'Done.';
+    return record.reply;
+  }
+
+  /** Talk captions: update the bubble's text in place, keeping its chips (Undo stays reachable). */
+  private sayCaption(text: string, tag: string): void {
+    const b = this.bubble;
+    if (b === undefined) {
+      this.say(text, { tag, ms: 5000 });
+      return;
+    }
+    const clipped = text.length > 120 ? `...${text.slice(-117)}` : text;
+    b.text = clipped;
+    b.tag = tag;
+    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text: clipped });
+    b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: tag });
+    b.panel.getElementById<UIKit.Text>('buddy-tag-dot')?.setProperties({ backgroundColor: tag === 'YOU' ? '#ef9a84' : '#c9a6e0' });
+    const now = performance.now();
+    b.sticky = false;
+    b.until = Math.max(b.until === Infinity ? 0 : b.until, now + 5000 * BUDDY_SLOW);
   }
 
   // ------------------------------------------------------------ mic link
@@ -444,7 +545,9 @@ export class BuddySystem extends createSystem({
     }
     record.log = result.log;
     const allOk = result.log.length > 0 && result.log.every((l) => l.ok) && result.confirm === undefined;
-    record.reply = aiReply !== null && allOk && result.offer === undefined ? aiReply : result.reply;
+    // Spatial results are grounded in the room (where it landed, where it is): the executor's line wins.
+    const spatial = validated.actions.some((a) => a.type === 'place_card' || a.type === 'arrange' || a.type === 'find' || a.type === 'focus_on');
+    record.reply = aiReply !== null && allOk && result.offer === undefined && !spatial ? aiReply : result.reply;
     await this.present(result, record.reply, this.tagFor(record.mode));
     return record;
   }

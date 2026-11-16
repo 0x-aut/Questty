@@ -30,8 +30,8 @@ import {
   type Object3D,
 } from '@iwsdk/core';
 
-export type OrbState = 'idle' | 'listening' | 'thinking' | 'acting' | 'done' | 'error';
-export const ORB_STATES: readonly OrbState[] = ['idle', 'listening', 'thinking', 'acting', 'done', 'error'];
+export type OrbState = 'idle' | 'listening' | 'thinking' | 'acting' | 'done' | 'error' | 'talking';
+export const ORB_STATES: readonly OrbState[] = ['idle', 'listening', 'thinking', 'acting', 'done', 'error', 'talking'];
 
 type Palette = { core: string; rim: string; halo: string };
 // A luminous pearl: a pale core, a warm rim of light, a soft halo. Muted tints, no neon.
@@ -42,6 +42,8 @@ const PALETTE: Record<OrbState, Palette> = {
   acting: { core: '#fbefcf', rim: '#f6c75a', halo: '#f5c04a' },
   done: { core: '#e3efd9', rim: '#9cc98a', halo: '#8fc27c' },
   error: { core: '#f3d6cf', rim: '#de8a7a', halo: '#d97f6f' },
+  // PR 7 talk mode: a soft pearl-lilac, pulsing with the buddy's voice.
+  talking: { core: '#f1e8f3', rim: '#c9a6e0', halo: '#b998d8' },
 };
 
 const PALETTE_C: Record<OrbState, { core: Color; rim: Color; halo: Color }> = Object.fromEntries(
@@ -207,6 +209,14 @@ export class BuddyOrb {
     this.level = Math.max(0, Math.min(1, level));
   }
 
+  /** Talk mode: the buddy's own voice level 0..1 (output audio), smoothed per frame. */
+  setVoiceLevel(level: number): void {
+    this.voiceTarget = Math.max(0, Math.min(1, level));
+  }
+
+  private voiceTarget = 0;
+  private voice = 0;
+
   /** Radius in metres; the group's world scale. */
   update(now: number, radius: number, camera: Object3D): void {
     const t = now / 1000;
@@ -258,6 +268,15 @@ export class BuddyOrb {
         glow = 0.7 * Math.exp(-since * 0.8) + 0.25;
         haloOpacity = 0.7;
         break;
+      case 'talking': {
+        // Breathes while listening in a call, swells with the buddy's voice.
+        this.voice += (this.voiceTarget - this.voice) * 0.35;
+        const b = 0.5 - 0.5 * Math.cos((t * 2 * Math.PI) / 2.6);
+        scale = 1 + 0.03 * b + 0.22 * this.voice + 0.08 * this.level;
+        glow = 0.45 + 0.5 * this.voice;
+        haloOpacity = 0.5 + 0.45 * this.voice + 0.1 * b;
+        break;
+      }
       case 'error':
         shake = since < 0.5 ? Math.sin(since * 50) * 0.08 * (1 - since / 0.5) : 0;
         scale = 0.98;

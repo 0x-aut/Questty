@@ -2,7 +2,7 @@ import { createSystem, Matrix4, Quaternion, UIKit, UIKitMLAsset, Vector3 } from 
 import { allowFloatingFocus, createQuestCard, setQuestCardState, showFocusActionFor } from './quest-card.js';
 import { setWelcomeCollapsed, suppressPillOpen } from './panel.js';
 import { classify } from './buddy/parser.js';
-import { buddyReady, reportMic, reportMicLevel, sendBuddyCommand, type MicState } from './buddy/bus.js';
+import { buddyReady, reportMic, reportMicLevel, sendBuddyCommand, setPushToTalk, toggleBuddyTalk, type MicState } from './buddy/bus.js';
 import { setCardActionMode } from './session-events.js';
 import { inferWhenFromTranscript, splitQuests, type QuestSuggestion } from './splitQuests.js';
 import { isCategoryId, UNSORTED } from './category-config.js';
@@ -169,8 +169,15 @@ export class QuestInputSystem extends createSystem({
     const onPillOrb = (event?: { stopPropagation?: () => void }) => {
       suppressPillOpen();
       event?.stopPropagation?.();
+      // PR 7: with no push-to-talk in progress, the orb starts/stops a talk
+      // session (GPT-Live). Without Live it stays push-to-talk.
+      if ((this.voiceState === 'idle' || this.voiceState === 'error') && toggleBuddyTalk()) return;
       this.onVoiceButton();
     };
+    setPushToTalk(() => {
+      if (this.voiceState === 'idle') this.onVoiceButton();
+    });
+    this.cleanupFuncs.push(() => setPushToTalk(undefined));
     pillOrb?.addEventListener('click', onPillOrb as never);
     this.cleanupFuncs.push(() => pillOrb?.removeEventListener('click', onPillOrb as never));
 
