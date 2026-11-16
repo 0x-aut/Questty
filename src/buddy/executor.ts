@@ -47,7 +47,7 @@ export type PlaceOutcome =
   | { ok: false; reply: string; offer?: { label: string; target: PlaceTarget } };
 
 export type ExecutorHost = {
-  spawnCard(title: string, category?: string): Promise<Entity>;
+  spawnCard(title: string, category?: string, xp?: number): Promise<Entity>;
   getPlan(): string[] | null;
   setPlan(order: string[] | null): void;
   cards(): BuddyCard[];
@@ -149,7 +149,7 @@ export class BuddyExecutor {
       const log = (ok: boolean, note?: string) => result.log.push({ type: action.type, ok, note });
       switch (action.type) {
         case 'add_card': {
-          const entity = await this.host.spawnCard(action.title, action.category);
+          const entity = await this.host.spawnCard(action.title, action.category, action.xp);
           const id = entity.getValue(QuestCard, 'cardId') as string;
           result.touched.push(id);
           result.changed = true;

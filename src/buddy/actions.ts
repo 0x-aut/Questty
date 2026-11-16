@@ -24,7 +24,8 @@ export type PlaceTarget = (typeof PLACE_TARGETS)[number];
 export const MAX_ARRANGE = 8;
 
 export type BuddyAction =
-  | { type: 'add_card'; title: string; category?: BuddyCategory }
+  /** `xp` is internal (a brain-dump item added anyway keeps its XP); the validator never emits it. */
+  | { type: 'add_card'; title: string; category?: BuddyCategory; xp?: number }
   | { type: 'rename_card'; card_id: string; title: string }
   | { type: 'set_category'; card_id: string; category: BuddyCategory }
   | { type: 'list_cards'; category: BuddyCategory | 'all' }

@@ -2,7 +2,19 @@ import { createSystem, Matrix4, Quaternion, UIKit, UIKitMLAsset, Vector3 } from 
 import { allowFloatingFocus, createQuestCard, setQuestCardState, showFocusActionFor } from './quest-card.js';
 import { setWelcomeCollapsed, suppressPillOpen } from './panel.js';
 import { classify } from './buddy/parser.js';
-import { buddyReady, reportMic, reportMicLevel, sendBuddyCommand, setPushToTalk, toggleBuddyTalk, type MicState } from './buddy/bus.js';
+import {
+  askDumpDuplicates,
+  buddyReady,
+  buddyWantsAnswer,
+  dismissBuddyQuestion,
+  findDumpDuplicates,
+  reportMic,
+  reportMicLevel,
+  sendBuddyCommand,
+  setPushToTalk,
+  toggleBuddyTalk,
+  type MicState,
+} from './buddy/bus.js';
 import { setCardActionMode } from './session-events.js';
 import { inferWhenFromTranscript, splitQuests, type QuestSuggestion } from './splitQuests.js';
 import { isCategoryId, UNSORTED } from './category-config.js';
@@ -292,7 +304,9 @@ export class QuestInputSystem extends createSystem({
         }
         // One mic, two jobs (PR 6): a command goes to the buddy, a brain dump
         // (a list, "I need to...") becomes cards as before.
-        if (buddyReady() && classify(text) === 'command') {
+        // PR 8: "yes" / "skip" / "show it" answer the buddy's pending
+        // duplicate question, whatever the router would call them.
+        if (buddyReady() && (buddyWantsAnswer(text) || classify(text) === 'command')) {
           this.setVoiceState('idle', undefined);
           sendBuddyCommand(text, 'voice');
           return;
@@ -310,6 +324,8 @@ export class QuestInputSystem extends createSystem({
   }
 
   private async createFromSpeech(text: string): Promise<void> {
+    // A new brain dump is "another command": a pending buddy question lapses silently.
+    dismissBuddyQuestion();
     this.setVoiceState('thinking', `Making quests from: "${truncate(text, 60)}"`, 'busy');
     const controller = new AbortController();
     this.requestController = controller;
@@ -357,15 +373,33 @@ export class QuestInputSystem extends createSystem({
       this.setVoiceState('error', 'Did not catch any tasks. Try again.', 'error');
       return;
     }
+    // PR 8: items already on the board are not added; the buddy asks once about them.
+    const dupIdx = new Set(findDumpDuplicates(quests.map((q) => q.title)));
+    const fresh = quests.filter((_, i) => !dupIdx.has(i));
+    const dups = quests.filter((_, i) => dupIdx.has(i));
     try {
-      await this.spawnFloatingQuests(quests);
+      await this.spawnFloatingQuests(fresh);
     } catch (error) {
       console.warn('[quest] Could not create dictated quest cards.', error);
     }
     if (this.disposed) return;
-    const count = quests.length;
-    const added = `Added ${count} quest${count === 1 ? '' : 's'}${usedAi ? '' : ' (offline split)'}.`;
+    const count = fresh.length;
+    const added =
+      count === 0
+        ? `Nothing new: ${dups.length === 1 ? "it's" : "they're"} already on your board.`
+        : `Added ${count} quest${count === 1 ? '' : 's'}${usedAi ? '' : ' (offline split)'}.`;
     this.setVoiceState('idle', added, 'done');
+    if (dups.length > 0) {
+      setWelcomeCollapsed(true);
+      askDumpDuplicates(
+        dups.map((q) => ({ title: q.title, category: q.when, xp: q.xp })),
+        count,
+      );
+      this.statusTimer = window.setTimeout(() => {
+        if (this.voiceState === 'idle') this.setStatus(undefined);
+      }, 6_000);
+      return;
+    }
     reportMic('cards', added);
     this.statusTimer = window.setTimeout(() => {
       if (this.voiceState === 'idle') this.setStatus(undefined);

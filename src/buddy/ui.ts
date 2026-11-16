@@ -40,7 +40,18 @@ import { getBuddyFocusApi } from '../session-events.js';
 import { focusNow } from '../focus-store.js';
 import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE, homeForward, nextFreeSlot } from '../card-layout.js';
 import { floatingCardPositions } from '../card-arrange.js';
-import { cleanReply, validateActions, type BuddyAction, type BuddyCard, type Rejection } from './actions.js';
+import { BUDDY_CATEGORIES, cleanReply, validateActions, type BuddyAction, type BuddyCard, type BuddyCategory, type Rejection } from './actions.js';
+import { getCategory } from '../category-config.js';
+import {
+  answerKind,
+  DELEGATION_DEDUPE_MS,
+  delegationKey,
+  DUP_QUESTION_MS,
+  findDuplicate,
+  shortWhere,
+  type DupAnswer,
+} from './dedupe.js';
+import type { DumpItem } from './bus.js';
 import { classify, parseCommand } from './parser.js';
 import { askBuddyApi, resetBuddyApiBackoff, type FocusInfo } from './client.js';
 import { BuddyExecutor, type ExecResult, type Offer, type PlaceOutcome, type UndoEntry } from './executor.js';
@@ -98,8 +109,18 @@ type Bubble = {
   hovered: boolean;
 };
 
+/** PR 8: an add the buddy held back because the card is already on the board. */
+type DupItem = { title: string; category?: string; xp?: number; matchId: string; matchTitle: string };
+type PendingDup = { items: DupItem[]; text: string; askedAt: number; expires: number; via: 'buddy' | 'dump' };
+
+const quoteTitle = (t: string): string => (t.length > 28 ? `${t.slice(0, 27)}...` : t);
+
 type RunRecord = {
   text: string;
+  /** PR 8: adds held back as duplicates (asked about instead). */
+  held?: Array<{ title: string; match: string }>;
+  /** PR 8: how a pending duplicate question was answered. */
+  answer?: DupAnswer;
   source: 'voice' | 'tap';
   mode: 'ai' | 'offline' | 'local';
   apiError?: string;
@@ -170,6 +191,14 @@ export class BuddySystem extends createSystem({
   private readonly tmpQ = new Quaternion();
   private readonly head = new Vector3();
   private micState: MicState = 'idle';
+  /** PR 8: the open "You already have X. Add another one?" question. */
+  private pendingDup?: PendingDup;
+  /** DUP_QUESTION_MS; the harness can stretch it (dev hook) for slow screenshots. */
+  private dupTtl = DUP_QUESTION_MS;
+  private readonly dupLog: Array<{ event: string; titles: string[]; at: number }> = [];
+  /** PR 8: the last Live delegation, so a repeated hearing runs once. */
+  private lastDelegation?: { key: string; start: number; end: number; reply: Promise<string> };
+  private readonly delegationLog: Array<{ text: string; at: number; dropped: boolean }> = [];
 
   init(): void {
     try {
@@ -182,7 +211,7 @@ export class BuddySystem extends createSystem({
     this.lines = new LightLines();
     this.world.createTransformEntity(this.lines.group, { parent: this.world.sceneEntity, persistent: true });
     this.executor = new BuddyExecutor({
-      spawnCard: (title, category) => this.spawnCard(title, category),
+      spawnCard: (title, category, xp) => this.spawnCard(title, category, xp),
       getPlan: () => (this.plan === null ? null : [...this.plan]),
       setPlan: (order) => this.setPlan(order),
       cards: () => this.cardList(),
@@ -197,6 +226,15 @@ export class BuddySystem extends createSystem({
       command: (text, source) => void this.handle(text, source),
       mic: (state, detail) => this.onMic(state, detail),
       level: (level) => this.orb.setLevel(level),
+      duplicates: (titles) => {
+        const cards = this.cardList();
+        return titles.flatMap((t, i) => (findDuplicate(t, cards) !== null ? [i] : []));
+      },
+      askDuplicates: (items, added) => this.askDumpDuplicates(items, added),
+      wantsAnswer: (text) => this.questionOpen() && answerKind(text) !== null,
+      dismissQuestion: () => {
+        if (this.pendingDup !== undefined) this.dropDup('superseded');
+      },
     });
 
     setTalkToggle(() => this.toggleTalk());
@@ -232,6 +270,14 @@ export class BuddySystem extends createSystem({
           bubbleObject: () => this.bubble?.panel ?? null,
           talk: () => (this.talk ? { ...this.talk.debug, liveConfigured: this.liveOk } : { state: 'off', liveConfigured: this.liveOk }),
           talkToggle: () => this.toggleTalk(),
+          answerKind: (text: string) => answerKind(text),
+          findDuplicate: (title: string) => findDuplicate(title, this.cardList()),
+          dupLog: () => [...this.dupLog],
+          setDupTtl: (ms?: number) => {
+            this.dupTtl = typeof ms === 'number' && ms > 0 ? ms : DUP_QUESTION_MS;
+            return this.dupTtl;
+          },
+          delegations: () => [...this.delegationLog],
           setLive: (ok: boolean) => {
             this.liveOk = ok;
           },
@@ -279,6 +325,7 @@ export class BuddySystem extends createSystem({
       this.setOrb(this.orbAfter === 'idle' && this.talkLive() ? 'talking' : this.orbAfter);
     }
     this.talk?.tick(now);
+    if (this.pendingDup !== undefined && now > this.pendingDup.expires) this.dropDup('expired');
     this.updateBubble(now);
   }
 
@@ -381,8 +428,33 @@ export class BuddySystem extends createSystem({
     }
   }
 
-  /** A delegated voice request: same validated pipeline as a typed or push-to-talk one. */
-  private async talkCommand(text: string): Promise<string> {
+  /**
+   * A delegated voice request. PR 8: GPT-Live can delegate the same request
+   * twice when it hears it twice; the same words within ~5 s of the last
+   * delegation (from its start until 5 s after it finished) run once, and the
+   * repeat gets the first one's result back.
+   */
+  private talkCommand(text: string): Promise<string> {
+    const key = delegationKey(text);
+    const now = performance.now();
+    const last = this.lastDelegation;
+    if (last !== undefined && last.key === key && key.length > 0 && (last.end === 0 || now - last.end < DELEGATION_DEDUPE_MS)) {
+      console.info('[buddy] duplicate Live delegation dropped:', text);
+      this.delegationLog.push({ text, at: Date.now(), dropped: true });
+      return last.reply;
+    }
+    this.delegationLog.push({ text, at: Date.now(), dropped: false });
+    if (this.delegationLog.length > 40) this.delegationLog.shift();
+    const entry = { key, start: now, end: 0, reply: Promise.resolve('') };
+    entry.reply = this.runTalkCommand(text).finally(() => {
+      entry.end = performance.now();
+    });
+    this.lastDelegation = entry;
+    return entry.reply;
+  }
+
+  /** Same validated pipeline as a typed or push-to-talk command. */
+  private async runTalkCommand(text: string): Promise<string> {
     for (let i = 0; i < 40 && this.busy; i += 1) await new Promise((r) => window.setTimeout(r, 250));
     const record = await this.handle(text, 'voice');
     if (this.talkLive()) this.setOrb('talking');
@@ -479,6 +551,13 @@ export class BuddySystem extends createSystem({
     if (spoken.length === 0 || this.busy) return null;
     this.markUsed();
     setWelcomeCollapsed(true);
+    // PR 8: a short "yes" / "skip" / "show it" answers the open duplicate
+    // question; anything else is a new command and the question lapses quietly.
+    if (this.pendingDup !== undefined) {
+      const kind = this.questionOpen() ? answerKind(spoken) : null;
+      if (kind !== null) return this.resolveDup(kind, spoken, source);
+      this.dropDup(this.questionOpen() ? 'superseded' : 'expired');
+    }
     const cards = this.cardList();
     const local = parseCommand(spoken, cards);
     if (local.kind === 'undo') {
@@ -522,6 +601,26 @@ export class BuddySystem extends createSystem({
     this.runs.push(record);
     if (this.runs.length > 30) this.runs.shift();
 
+    // PR 8: never add a card that is already on the board; ask instead.
+    const held: DupItem[] = [];
+    if (validated.actions.length > 0) {
+      const keep: BuddyAction[] = [];
+      for (const action of validated.actions) {
+        const match = action.type === 'add_card' ? findDuplicate(action.title, cards) : null;
+        if (action.type === 'add_card' && match !== null) {
+          held.push({ title: action.title, category: action.category, xp: action.xp, matchId: match.card.id, matchTitle: match.card.title });
+        } else keep.push(action);
+      }
+      validated = { ...validated, actions: keep };
+      if (held.length > 0) record.held = held.map((h) => ({ title: h.title, match: h.matchId }));
+    }
+    if (validated.actions.length === 0 && held.length > 0) {
+      this.busy = false;
+      this.setOrb('done', 1300);
+      record.reply = this.askDuplicates(held, '', this.tagFor(record.mode), 'buddy');
+      return record;
+    }
+
     if (validated.actions.length === 0) {
       const reply =
         aiReply ?? (local.kind === 'miss' ? local.reply : "Sorry, I can't do that yet. Try \"what's left today?\"");
@@ -547,8 +646,171 @@ export class BuddySystem extends createSystem({
     const allOk = result.log.length > 0 && result.log.every((l) => l.ok) && result.confirm === undefined;
     // Spatial results are grounded in the room (where it landed, where it is): the executor's line wins.
     const spatial = validated.actions.some((a) => a.type === 'place_card' || a.type === 'arrange' || a.type === 'find' || a.type === 'focus_on');
-    record.reply = aiReply !== null && allOk && result.offer === undefined && !spatial ? aiReply : result.reply;
+    record.reply = aiReply !== null && allOk && result.offer === undefined && !spatial && held.length === 0 ? aiReply : result.reply;
+    if (held.length > 0 && result.confirm !== undefined) {
+      // A delete is waiting on its Confirm chip: don't stack a second question on it.
+      record.reply = `${record.reply} Skipped ${held.map((h) => `"${quoteTitle(h.matchTitle)}"`).join(', ')}: already on your board.`;
+      this.logDup('skipped-confirm', held);
+    }
     await this.present(result, record.reply, this.tagFor(record.mode));
+    if (held.length > 0 && result.confirm === undefined) {
+      record.reply = this.askDuplicates(held, record.reply, this.tagFor(record.mode), 'buddy');
+    }
+    return record;
+  }
+
+  // ------------------------------------------------------------ duplicate check (PR 8)
+
+  private questionOpen(): boolean {
+    return this.pendingDup !== undefined && performance.now() <= this.pendingDup.expires;
+  }
+
+  private logDup(event: string, items: DupItem[]): void {
+    this.dupLog.push({ event, titles: items.map((i) => i.title), at: Date.now() });
+    if (this.dupLog.length > 40) this.dupLog.shift();
+  }
+
+  /** Category and spot of a card, e.g. "Today, on the left wall". */
+  private describeCard(id: string): string {
+    const entity = findQuestCard(id);
+    if (entity === undefined) return '';
+    const cat = entity.getValue(QuestCard, 'category') as string;
+    const label = getCategory(cat)?.label ?? 'Unsorted';
+    return entity.object3D == null ? label : `${label}, ${shortWhere(this.where(entity))}`;
+  }
+
+  private dupChips(count: number, withShow = true): Chip[] {
+    const chips: Chip[] = [
+      { label: 'Add anyway', kind: 'primary', run: () => void this.resolveDup('add', 'Add anyway', 'tap') },
+      { label: 'Skip', kind: 'plain', run: () => void this.resolveDup('skip', 'Skip', 'tap') },
+    ];
+    if (withShow) chips.push({ label: count === 1 ? 'Show it' : 'Show them', kind: 'plain', run: () => void this.resolveDup('show', 'Show it', 'tap') });
+    return chips;
+  }
+
+  /** Ask once about held-back adds; returns the full line (also what talk mode says). */
+  private askDuplicates(items: DupItem[], prefix: string, tag: string, via: PendingDup['via']): string {
+    this.pendingOffer = undefined;
+    let question: string;
+    if (items.length === 1) {
+      const where = this.describeCard(items[0].matchId);
+      question = `You already have "${quoteTitle(items[0].matchTitle)}"${where ? ` (${where})` : ''}. Add another one?`;
+    } else {
+      const names = items.slice(0, 3).map((i) => `"${quoteTitle(i.matchTitle)}"`).join(', ');
+      const more = items.length > 3 ? ` and ${items.length - 3} more` : '';
+      question = `${items.length} of these are already on your board: ${names}${more}. Add them anyway?`;
+    }
+    const line = prefix.length > 0 ? `${prefix} ${question}` : question;
+    const now = performance.now();
+    this.pendingDup = { items, text: line, askedAt: now, expires: now + this.dupTtl, via };
+    this.logDup('asked', items);
+    window.setTimeout(() => pulseCards([...new Set(items.map((i) => i.matchId))], 2400 * BUDDY_SLOW, ACK_COLOR), 200);
+    this.say(line, { tag, chips: this.dupChips(items.length), ms: this.dupTtl / BUDDY_SLOW });
+    return line;
+  }
+
+  /** A brain dump (quest-input.ts) added the fresh items and hands over the duplicates. */
+  private askDumpDuplicates(dump: DumpItem[], added: number): void {
+    const cards = this.cardList();
+    const items: DupItem[] = dump.map((d) => {
+      const match = findDuplicate(d.title, cards);
+      return { ...d, matchId: match?.card.id ?? '', matchTitle: match?.card.title ?? d.title };
+    });
+    this.markUsed();
+    this.setOrb('done', 1300);
+    const prefix = added > 0 ? `Added ${added} new.` : '';
+    const reply = this.askDuplicates(items, prefix, 'QUESTTY', 'dump');
+    this.runs.push({
+      text: '(brain dump)',
+      source: 'voice',
+      mode: 'local',
+      actions: [],
+      rejected: [],
+      reply,
+      log: [],
+      held: items.map((h) => ({ title: h.title, match: h.matchId })),
+      at: Date.now(),
+    });
+    if (this.runs.length > 30) this.runs.shift();
+  }
+
+  /** The question lapsed (timeout) or another command came in: drop it without a word. */
+  private dropDup(reason: 'expired' | 'superseded'): void {
+    const pending = this.pendingDup;
+    if (pending === undefined) return;
+    this.pendingDup = undefined;
+    this.logDup(reason, pending.items);
+    console.info(`[buddy] duplicate question ${reason}: treated as Skip`);
+    if (reason === 'expired' && this.bubble !== undefined && this.bubble.text === pending.text) this.hideBubble();
+  }
+
+  /** Add anyway / Skip / Show it, from a chip or a spoken or typed reply. */
+  private async resolveDup(kind: DupAnswer, text: string, source: 'voice' | 'tap'): Promise<RunRecord | null> {
+    const pending = this.pendingDup;
+    if (pending === undefined || this.busy) return null;
+    if (performance.now() > pending.expires) {
+      this.dropDup('expired');
+      return null;
+    }
+    const record: RunRecord = { text, source, mode: 'local', actions: [], rejected: [], reply: '', log: [], at: Date.now(), answer: kind };
+    this.runs.push(record);
+    if (this.runs.length > 30) this.runs.shift();
+    const one = pending.items.length === 1;
+    this.logDup(kind, pending.items);
+
+    if (kind === 'skip') {
+      this.pendingDup = undefined;
+      record.reply = one ? 'Okay, skipped it.' : 'Okay, skipped them.';
+      this.setOrb('done', 1200);
+      this.say(record.reply, { ms: 3000 });
+      return record;
+    }
+
+    if (kind === 'add') {
+      this.pendingDup = undefined;
+      const actions: BuddyAction[] = pending.items.map((i) => {
+        const category = (BUDDY_CATEGORIES as readonly string[]).includes(i.category ?? '') ? (i.category as BuddyCategory) : undefined;
+        return { type: 'add_card', title: i.title, ...(category ? { category } : {}), ...(i.xp !== undefined ? { xp: i.xp } : {}) };
+      });
+      record.actions = actions;
+      this.busy = true;
+      this.setOrb('thinking');
+      let result: ExecResult;
+      try {
+        result = await this.executor.run(actions);
+      } catch (error) {
+        console.warn('[buddy] add anyway failed', error);
+        this.busy = false;
+        record.reply = 'Something went wrong there.';
+        this.setOrb('error', 1800);
+        this.say(record.reply, { ms: 4500 });
+        return record;
+      }
+      record.log = result.log;
+      record.reply = result.reply;
+      await this.present(result, record.reply, 'QUESTTY');
+      return record;
+    }
+
+    // Show it: the find light line to the existing card(s); the question stays open.
+    const ids = [...new Set(pending.items.map((i) => i.matchId))].filter((id) => findQuestCard(id) !== undefined);
+    if (ids.length === 0) {
+      this.pendingDup = undefined;
+      record.reply = 'I can\'t find it anymore. Say "add" to make a new one.';
+      this.say(record.reply, { ms: 4000 });
+      return record;
+    }
+    const actions: BuddyAction[] = ids.slice(0, 6).map((id) => ({ type: 'find', card_id: id }));
+    record.actions = actions;
+    this.busy = true;
+    const result = await this.executor.run(actions);
+    record.log = result.log;
+    const ask = one ? 'Add another one?' : 'Add them anyway?';
+    record.reply = `${ids.length === 1 ? result.reply : `They're highlighted.`} ${ask}`;
+    await this.present(result, record.reply, 'QUESTTY');
+    const now = performance.now();
+    this.pendingDup = { ...pending, text: record.reply, expires: now + this.dupTtl };
+    this.say(record.reply, { tag: 'QUESTTY', chips: this.dupChips(pending.items.length, false), ms: this.dupTtl / BUDDY_SLOW });
     return record;
   }
 
@@ -679,13 +941,13 @@ export class BuddySystem extends createSystem({
 
   // ------------------------------------------------------------ cards
 
-  private async spawnCard(title: string, category?: string): Promise<Entity> {
+  private async spawnCard(title: string, category?: string, xp = 20): Promise<Entity> {
     const head = this.world.player.head;
     head.updateWorldMatrix(true, false);
     const position = head.getWorldPosition(new Vector3());
     const forward = head.getWorldDirection(new Vector3()).negate();
     const pose = nextFreeSlot(position, homeForward(forward), floatingCardPositions(this.queries.cards.entities));
-    return createQuestCard({ title, xp: 20, position: pose.position, quaternion: pose.quaternion, category });
+    return createQuestCard({ title, xp, position: pose.position, quaternion: pose.quaternion, category });
   }
 
   /**
@@ -1160,6 +1422,16 @@ export class BuddySystem extends createSystem({
       runs: this.runs.map((r) => ({ ...r })),
       undoDepth: this.undoStack.length,
       offer: this.pendingOffer ? { label: this.pendingOffer.label, action: this.pendingOffer.action } : null,
+      duplicate: this.pendingDup
+        ? {
+            text: this.pendingDup.text,
+            via: this.pendingDup.via,
+            items: this.pendingDup.items.map((i) => ({ title: i.title, matchId: i.matchId, matchTitle: i.matchTitle })),
+            msLeft: Math.round(this.pendingDup.expires - performance.now()),
+          }
+        : null,
+      dupLog: [...this.dupLog],
+      delegations: [...this.delegationLog],
       busy: this.busy,
       used: this.used,
       head: this.head.toArray(),
