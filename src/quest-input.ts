@@ -2,6 +2,8 @@ import { createSystem, UIKit, UIKitMLAsset, Vector3 } from '@iwsdk/core';
 import { createQuestCard } from './quest-card.js';
 import { splitQuests, type QuestSuggestion } from './splitQuests.js';
 import { startVoiceCapture, type VoiceError, type VoiceSession } from './voice.js';
+import { nextFreeSlot, type CardPose } from './card-layout.js';
+import { floatingCardPositions } from './card-arrange.js';
 import { QuestCard } from './quest-component.js';
 
 type TemplateQuest = QuestSuggestion;
@@ -77,11 +79,8 @@ export class QuestInputSystem extends createSystem({
   private voiceLabel?: UIKit.Text;
   private statusTimer: number | undefined;
   private disposed = false;
-  private floatingSlot = 0;
   private readonly headPosition = new Vector3();
   private readonly forward = new Vector3();
-  private readonly right = new Vector3();
-  private readonly floatingPosition = new Vector3();
 
   init(): void {
     const panel = this.world.getSceneObject<UIKitMLAsset>('welcome-panel');
@@ -231,38 +230,23 @@ export class QuestInputSystem extends createSystem({
   }
 
   private async spawnFloatingQuest(quest: QuestSuggestion): Promise<void> {
-    const position = this.getNextFloatingPosition();
+    const pose = this.getNextFloatingPose();
     await createQuestCard({
       title: quest.title,
       xp: quest.xp,
-      position,
+      position: pose.position,
+      quaternion: pose.quaternion,
     });
   }
 
-  private getNextFloatingPosition(): Vector3 {
-    // Two rows of three in front of the player; the seventh card reuses slot one.
-    const index = this.floatingSlot % 6;
-    this.floatingSlot += 1;
-    const column = index % 3;
-    const row = Math.floor(index / 3);
-
+  /** Next free slot in the seated-reach arc (see card-layout.ts). */
+  private getNextFloatingPose(): CardPose {
     const head = this.world.player.head;
     head.updateWorldMatrix(true, false);
     head.getWorldPosition(this.headPosition);
     head.getWorldDirection(this.forward);
     this.forward.negate();
-    this.forward.y = 0;
-    if (this.forward.lengthSq() < 0.0001) this.forward.set(0, 0, -1);
-    else this.forward.normalize();
-    this.right.set(-this.forward.z, 0, this.forward.x).normalize();
-
-    this.floatingPosition
-      .copy(this.headPosition)
-      .addScaledVector(this.forward, 0.95 + row * 0.05)
-      .addScaledVector(this.right, (column - 1) * 0.42);
-    // Chest height, below the welcome panel, so new cards never hide the mic button.
-    this.floatingPosition.y -= 0.32 + row * 0.34;
-    return this.floatingPosition.clone();
+    return nextFreeSlot(this.headPosition, this.forward, floatingCardPositions(this.queries.cards.entities));
   }
 
   private setVoiceState(

@@ -15,7 +15,7 @@ import {
   type Entity,
 } from '@iwsdk/core';
 import { QuestCard } from './quest-component.js';
-import { setQuestCardState, tweenQuestCardTo } from './quest-card.js';
+import { idleCardHint, setQuestCardState, tweenQuestCardTo } from './quest-card.js';
 import {
   setCardActionMode,
   setCardCompleter,
@@ -240,7 +240,7 @@ export class SessionSystem extends createSystem({}) {
         const cardId = this.activeCard.getValue(QuestCard, 'cardId') as string;
         setQuestCardState(
           this.activeCard,
-          zoneId.length > 0 ? `Pinned to ${zoneId} - poke to focus` : 'Grab and pin to a zone',
+          idleCardHint(this.activeCard),
         );
         if (zoneId.length > 0) setCardActionMode(cardId, 'focus');
       }
@@ -316,7 +316,7 @@ export class SessionSystem extends createSystem({}) {
       const cardId = this.activeCard.getValue(QuestCard, 'cardId') as string;
       setQuestCardState(
         this.activeCard,
-        zoneId.length > 0 ? `Pinned to ${zoneId} - poke to focus` : 'Grab and pin to a zone',
+        idleCardHint(this.activeCard),
       );
       if (zoneId.length > 0) setCardActionMode(cardId, 'focus');
     }

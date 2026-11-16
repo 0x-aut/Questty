@@ -90,7 +90,28 @@ In the desktop XR emulator, click the app viewport to focus it, then use
 **W/A/S/D** or the **arrow keys** to walk. In a Quest headset, use the **left
 thumbstick** to move and the **right thumbstick** to snap-turn; physical walking
 also works within your tracked play space. A hand-only session has no thumbstick:
-use a focused keyboard in the emulator, or physically walk in your room. Card
-grabs use a **near-hand pinch** (close enough to touch the card), not a distant
-pointing ray. Release near a desk, wall, or door marker to pin a compact card in
-the closest free slot (up to six per zone).
+use a focused keyboard in the emulator, or physically walk in your room.
+
+### Placing cards (hands first, seated)
+
+New cards appear in a tidy arc within arm's reach, a little below eye height.
+Everything works with hand tracking alone:
+
+- **Near card:** reach out and pinch it to grab it directly.
+- **Far card or far surface:** point your hand at the card, pinch, then swing the
+  pinch-ray to any wall, desk/table top or door and let go. Cards placed this way
+  fly to the spot you point at.
+- While you hold a card, every surface you can drop it on shows a faint outline.
+  The one it will snap to turns yellow, and a ghost card with "Release to pin to
+  Wall/Desk/Door" shows exactly where it will land.
+- Cards sit flush on walls and doors, a few millimetres off the surface. On a
+  desk they lean back toward you so they are easy to read. Cards on the same
+  surface never overlap.
+- Let go in mid-air, or while pointing at the floor, and the card floats right
+  where you released it. A quick pinch-tap never moves a card.
+- A pinned card gets a **Start focus** button. Pinch it with the ray or poke it.
+
+Surfaces come from WebXR plane detection: on a Quest in passthrough, your real
+room's `wall`, `table` and `door` planes. Without plane detection, a small
+virtual room is used instead. Scene nodes can also be tagged with the
+`SnapSurface` component.

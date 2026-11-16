@@ -6,8 +6,8 @@ import {
   Grabbed,
   Mesh,
   MeshBasicMaterial,
-  OneHandGrabbable,
   PokeInteractable,
+  RayInteractable,
   Quaternion,
   UIKit,
   UIKitMLAsset,
@@ -22,29 +22,36 @@ import {
   requestCardNudge,
   setCardActionModeHandler,
 } from './session-events.js';
+import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE } from './card-layout.js';
 import {
-  beginZoneHold,
-  endZoneHold,
-  findNearestZone,
-  getZonePlacement,
-  MAX_CARDS_PER_ZONE,
-} from './zones.js';
+  flyCard,
+  getDropTarget,
+  setCardWorldPose,
+  setGrabMode,
+} from './surfaces.js';
 
 export type QuestCardOptions = {
   title: string;
   xp: number;
   position: Vector3 | readonly [number, number, number];
-  zoneId?: 'desk' | 'door' | 'wall';
-  slot?: number;
+  /** World orientation; defaults to facing +Z. */
+  quaternion?: Quaternion;
 };
 
-const CARD_SCALE = 0.16;
-const PINNED_CARD_SCALE = 0.12;
 const FOCUS_ACTION_SCALE = 0.12;
-const localCardFront = new Vector3(0, 0, 1);
+const FLOATING_HINT = 'Pinch to grab, drop on a wall, desk or door';
 let activeWorld: World | undefined;
 let nextCardId = 1;
 const FOCUS_ACTION_ASSET_ID = 'focus-action';
+
+export function pinnedHint(kind: string): string {
+  return `Pinned to ${kind} - pinch Start focus`;
+}
+
+export function idleCardHint(entity: Entity): string {
+  const zoneId = entity.getValue(QuestCard, 'zoneId') as string;
+  return zoneId.length > 0 ? pinnedHint(zoneId) : FLOATING_HINT;
+}
 
 export function setQuestCardState(entity: Entity, text: string): void {
   const panel = entity.object3D;
@@ -61,8 +68,7 @@ export async function createQuestCard({
   title,
   xp,
   position,
-  zoneId,
-  slot,
+  quaternion,
 }: QuestCardOptions): Promise<Entity> {
   if (activeWorld === undefined) {
     throw new Error('Quest cards have not been initialized with a world.');
@@ -81,13 +87,10 @@ export async function createQuestCard({
     .setProperties({ text: `+${Math.round(xp)} XP` });
   panel.name = `Quest Card: ${title}`;
   panel.position.copy(worldPosition);
-  panel.scale.setScalar(zoneId ? PINNED_CARD_SCALE : CARD_SCALE);
-  const placement = zoneId ? getZonePlacement(zoneId, slot ?? 0) : null;
-  if (placement !== null) {
-    panel.quaternion.setFromUnitVectors(localCardFront, placement.normal.normalize());
-  }
+  if (quaternion !== undefined) panel.quaternion.copy(quaternion);
+  panel.scale.setScalar(FLOAT_CARD_SCALE);
   const hitbox = new Mesh(
-    new BoxGeometry(2.6, 2.83, 0.5),
+    new BoxGeometry(CARD_UNITS_W, CARD_UNITS_H, 0.5),
     new MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
@@ -108,21 +111,19 @@ export async function createQuestCard({
     cardId,
     title,
     xp: Math.round(xp),
-    zoneId: zoneId ?? '',
-    previousZoneId: '',
-    previousPosition: worldPosition.toArray(),
-    slot: zoneId ? (slot ?? 0) : -1,
+    zoneId: '',
+    surfaceId: '',
+    userPlaced: false,
   });
-  entity.addComponent(OneHandGrabbable);
+  // Pinch-ray grab by default; SurfaceSystem switches to a direct grab when a
+  // hand comes within reach of the card.
+  setGrabMode(entity, 'ray');
   entity.addComponent(AudioSource, {
     src: './audio/chime.mp3',
     maxInstances: 1,
     playbackMode: 'fade-restart',
   });
-  setQuestCardState(
-    entity,
-    zoneId === undefined ? 'Grab and pin to a zone' : `Pinned to ${zoneId} - poke to focus`,
-  );
+  setQuestCardState(entity, FLOATING_HINT);
   return entity;
 }
 
@@ -134,11 +135,8 @@ export class QuestCardSystem extends createSystem({
   actions: { required: [QuestFocusAction] },
 }) {
   private readonly positionBuffer = new Vector3();
-  private readonly targetPosition = new Vector3();
-  private readonly localPosition = new Vector3();
-  private readonly normalBuffer = new Vector3();
   private readonly orientationBuffer = new Quaternion();
-  private readonly parentQuaternion = new Quaternion();
+  private readonly heldHints = new Map<Entity, string>();
   private readonly cardWorldPosition = new Vector3();
   private readonly cardWorldQuaternion = new Quaternion();
   private readonly actionPosition = new Vector3();
@@ -150,11 +148,6 @@ export class QuestCardSystem extends createSystem({
   init(): void {
     this.queries.heldCards.subscribe('qualify', (entity) => this.onGrab(entity));
     this.queries.heldCards.subscribe('disqualify', (entity) => this.onRelease(entity));
-    this.queries.cards.subscribe('qualify', (entity) => {
-      if ((entity.getValue(QuestCard, 'zoneId') as string).length > 0) {
-        void this.ensureFocusAction(entity);
-      }
-    });
     this.queries.cards.subscribe('disqualify', (entity) => {
       this.removeActionsForCard(entity.getValue(QuestCard, 'cardId') as string);
       this.disposeHitbox(entity);
@@ -170,6 +163,27 @@ export class QuestCardSystem extends createSystem({
   }
 
   update(): void {
+    // A focus button only belongs next to a pinned card.
+    for (const action of this.queries.actions.entities) {
+      const cardId = action.getValue(QuestFocusAction, 'cardId') as string;
+      let pinned = false;
+      for (const card of this.queries.cards.entities) {
+        if (card.getValue(QuestCard, 'cardId') === cardId) {
+          pinned = (card.getValue(QuestCard, 'surfaceId') as string).length > 0 && !card.hasComponent(Grabbed);
+          break;
+        }
+      }
+      if (!pinned && action.getValue(QuestFocusAction, 'mode') === 'focus') this.disposeAction(action);
+    }
+    for (const [entity, last] of this.heldHints) {
+      if (!entity.active) continue;
+      const target = getDropTarget(entity.getValue(QuestCard, 'cardId') as string);
+      const hint = target === null ? 'Point at a wall, desk or door' : `Release to pin to ${target.label}`;
+      if (hint !== last) {
+        setQuestCardState(entity, hint);
+        this.heldHints.set(entity, hint);
+      }
+    }
     const now = performance.now();
     for (const entity of this.queries.tweeningCards.entities) {
       const object = entity.object3D;
@@ -201,143 +215,40 @@ export class QuestCardSystem extends createSystem({
 
   private onGrab(entity: Entity): void {
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
-    const zoneId = entity.getValue(QuestCard, 'zoneId') as string;
-    const object = entity.object3D;
-    if (object != null) {
-      object.updateWorldMatrix(true, false);
-      object.getWorldQuaternion(this.orientationBuffer);
-      const previousOrientation = entity.getVectorView(QuestCard, 'previousOrientation');
-      previousOrientation[0] = this.orientationBuffer.x;
-      previousOrientation[1] = this.orientationBuffer.y;
-      previousOrientation[2] = this.orientationBuffer.z;
-      previousOrientation[3] = this.orientationBuffer.w;
-      entity.setValue(QuestCard, 'previousScale', object.scale.x);
-    }
-    entity.setValue(QuestCard, 'previousZoneId', zoneId);
-    entity.setValue(QuestCard, 'previousSlot', entity.getValue(QuestCard, 'slot') as number);
+    // Lifting a card off a surface unpins it; release decides where it goes.
     entity.setValue(QuestCard, 'zoneId', '');
-    entity.setValue(QuestCard, 'slot', -1);
-    object?.scale.setScalar(CARD_SCALE);
-    setQuestCardState(entity, 'Move to a zone, then release');
+    entity.setValue(QuestCard, 'surfaceId', '');
+    entity.setValue(QuestCard, 'userPlaced', true);
+    this.heldHints.set(entity, '');
     this.removeActionsForCard(cardId);
-    beginZoneHold(cardId);
   }
 
   private onRelease(entity: Entity): void {
+    this.heldHints.delete(entity);
+    if (!entity.active || entity.hasComponent(QuestCardTween)) return;
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
-    endZoneHold(cardId);
-
     const object = entity.object3D;
     if (object == null) return;
-    object.updateWorldMatrix(true, false);
-    object.getWorldPosition(this.positionBuffer);
-
-    const nearest = findNearestZone(this.positionBuffer, 0.85);
-    if (nearest === null) {
-      entity.setValue(QuestCard, 'zoneId', '');
-      entity.setValue(QuestCard, 'previousZoneId', '');
-      entity.setValue(QuestCard, 'slot', -1);
-      entity.setValue(QuestCard, 'previousSlot', -1);
-      this.storePreviousPosition(entity, this.positionBuffer);
-      setQuestCardState(entity, 'Floating - move near a surface to pin');
+    const target = getDropTarget(cardId);
+    if (target === null) {
+      // Released in mid-air: stay exactly where it was let go, at floating size.
+      object.updateWorldMatrix(true, false);
+      object.getWorldPosition(this.positionBuffer);
+      object.getWorldQuaternion(this.orientationBuffer);
+      setCardWorldPose(entity, this.positionBuffer, this.orientationBuffer, FLOAT_CARD_SCALE);
+      setQuestCardState(entity, 'Floating - pinch it onto a wall, desk or door');
       return;
     }
-    const occupied = new Set<number>();
-    for (const card of this.queries.cards.entities) {
-      if (card !== entity && card.getValue(QuestCard, 'zoneId') === nearest.zone.id) {
-        occupied.add(card.getValue(QuestCard, 'slot') as number);
+    entity.setValue(QuestCard, 'zoneId', target.kind);
+    entity.setValue(QuestCard, 'surfaceId', target.surfaceId);
+    flyCard(entity, target);
+    setQuestCardState(entity, pinnedHint(target.label));
+    // The focus button is placed from the card's final pose, after the flight.
+    window.setTimeout(() => {
+      if (entity.active && entity.getValue(QuestCard, 'surfaceId') === target.surfaceId) {
+        void this.ensureFocusAction(entity);
       }
-    }
-    let selectedSlot = -1;
-    let bestDistance = Infinity;
-    for (let slot = 0; slot < MAX_CARDS_PER_ZONE; slot += 1) {
-      if (occupied.has(slot)) continue;
-      const candidate = getZonePlacement(nearest.zone.id, slot);
-      if (candidate == null) continue;
-      const distance = candidate.position.distanceToSquared(this.positionBuffer);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        selectedSlot = slot;
-      }
-    }
-    if (selectedSlot < 0) {
-      this.restorePreviousPosition(entity, object);
-      return;
-    }
-
-    const placement = getZonePlacement(nearest.zone.id, selectedSlot);
-    if (placement === null) {
-      this.restorePreviousPosition(entity, object);
-      return;
-    }
-    this.normalBuffer
-      .copy(placement?.normal ?? nearest.zone.normal)
-      .normalize();
-    this.targetPosition.copy(placement?.position ?? nearest.zone.position);
-
-    this.setWorldPosition(object, this.targetPosition);
-    this.orientationBuffer.setFromUnitVectors(localCardFront, this.normalBuffer);
-    this.setWorldQuaternion(object, this.orientationBuffer);
-    object.scale.setScalar(PINNED_CARD_SCALE);
-    entity.setValue(QuestCard, 'zoneId', nearest.zone.id);
-    entity.setValue(QuestCard, 'slot', selectedSlot);
-    entity.setValue(QuestCard, 'previousZoneId', '');
-    this.storePreviousPosition(entity, this.targetPosition);
-    setQuestCardState(entity, `Pinned to ${nearest.zone.label} - poke to focus`);
-    void this.ensureFocusAction(entity);
-  }
-
-  private restorePreviousPosition(entity: Entity, object: NonNullable<Entity['object3D']>): void {
-    const previous = entity.getVectorView(QuestCard, 'previousPosition');
-    this.targetPosition.set(previous[0], previous[1], previous[2]);
-    this.setWorldPosition(object, this.targetPosition);
-    const orientation = entity.getVectorView(QuestCard, 'previousOrientation');
-    this.orientationBuffer.set(orientation[0], orientation[1], orientation[2], orientation[3]);
-    this.setWorldQuaternion(object, this.orientationBuffer);
-    object.scale.setScalar(entity.getValue(QuestCard, 'previousScale') as number);
-    const previousZoneId = entity.getValue(QuestCard, 'previousZoneId') as string;
-    entity.setValue(QuestCard, 'zoneId', previousZoneId);
-    entity.setValue(QuestCard, 'slot', entity.getValue(QuestCard, 'previousSlot') as number);
-    entity.setValue(QuestCard, 'previousZoneId', '');
-    setQuestCardState(
-      entity,
-      previousZoneId ? `Pinned to ${previousZoneId} - poke to focus` : 'Grab and pin to a zone',
-    );
-    if (previousZoneId.length > 0) void this.ensureFocusAction(entity);
-  }
-
-  private setWorldPosition(
-    object: NonNullable<Entity['object3D']>,
-    position: Vector3,
-  ): void {
-    if (object.parent == null) {
-      object.position.copy(position);
-      return;
-    }
-    object.parent.updateWorldMatrix(true, false);
-    this.localPosition.copy(position);
-    object.parent.worldToLocal(this.localPosition);
-    object.position.copy(this.localPosition);
-  }
-
-  private setWorldQuaternion(
-    object: NonNullable<Entity['object3D']>,
-    quaternion: Quaternion,
-  ): void {
-    if (object.parent == null) {
-      object.quaternion.copy(quaternion);
-      return;
-    }
-    object.parent.updateWorldMatrix(true, false);
-    object.parent.getWorldQuaternion(this.parentQuaternion);
-    object.quaternion.copy(quaternion).premultiply(this.parentQuaternion.invert());
-  }
-
-  private storePreviousPosition(entity: Entity, position: Vector3): void {
-    const previous = entity.getVectorView(QuestCard, 'previousPosition');
-    previous[0] = position.x;
-    previous[1] = position.y;
-    previous[2] = position.z;
+    }, 320);
   }
 
   private async ensureFocusAction(card: Entity): Promise<void> {
@@ -369,11 +280,13 @@ export class QuestCardSystem extends createSystem({
         return;
       }
       panel.name = `Focus Action ${cardId}`;
-      panel.scale.setScalar(FOCUS_ACTION_SCALE);
+      panel.scale.setScalar(FOCUS_ACTION_SCALE * (object.scale.x / 0.12));
       this.positionFocusAction(object, panel);
       const action = this.world.createTransformEntity(panel);
       action.object3D!.name = `Focus Action ${cardId}`;
       action.addComponent(QuestFocusAction, { cardId, mode: 'focus' });
+      // Pinch-ray (hands or controller trigger) and direct poke both press it.
+      action.addComponent(RayInteractable);
       action.addComponent(PokeInteractable);
       const button = panel.requireElementById('focus-action-button');
       const nudgeButton = panel.requireElementById('nudge-action-button');
@@ -403,11 +316,13 @@ export class QuestCardSystem extends createSystem({
     cardObject.getWorldQuaternion(this.cardWorldQuaternion);
     this.actionRight.set(1, 0, 0).applyQuaternion(this.cardWorldQuaternion);
     this.actionNormal.set(0, 0, 1).applyQuaternion(this.cardWorldQuaternion);
-    const normalOffset = Math.abs(this.actionNormal.y) >= 0.7 ? 0.35 : 0.08;
+    // Just right of the card, in its plane, a hair in front of it.
+    const cardScale = cardObject.scale.x;
+    const actionHalfWidth = 0.75 * FOCUS_ACTION_SCALE * (cardScale / 0.12);
     this.actionPosition
       .copy(this.cardWorldPosition)
-      .addScaledVector(this.actionRight, 0.32)
-      .addScaledVector(this.actionNormal, normalOffset);
+      .addScaledVector(this.actionRight, (CARD_UNITS_W / 2) * cardScale + actionHalfWidth + 0.015)
+      .addScaledVector(this.actionNormal, 0.01);
     panel.position.copy(this.actionPosition);
     panel.quaternion.copy(this.cardWorldQuaternion);
   }
