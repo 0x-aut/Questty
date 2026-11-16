@@ -1,0 +1,444 @@
+{
+  "states": {
+    "soft": {
+      "phase": "focus",
+      "questId": "quest-1",
+      "durationMs": 1500000,
+      "endsAt": 1794828565962,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 1496813,
+      "blur": "soft",
+      "shellOpacity": 0.6,
+      "shellTarget": 0.6,
+      "shellAt": [
+        0,
+        1.6106817722320557,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.0735410058546289,
+          -0.5075770398857047,
+          -0.8584621535273149,
+          0.24293348919360525
+        ],
+        [
+          -0.0013206705809511807,
+          -0.2168463481060844,
+          -0.9762048540866161,
+          0.2086817585886498
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.0011225700145587325,
+        1.42636239528656,
+        -0.8297741413116455
+      ],
+      "clock": "24:57"
+    },
+    "strong": {
+      "phase": "focus",
+      "questId": "quest-1",
+      "durationMs": 1500000,
+      "endsAt": 1794828565962,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 1477523,
+      "blur": "strong",
+      "shellOpacity": 0.9,
+      "shellTarget": 0.9,
+      "shellAt": [
+        0,
+        1.6106817722320557,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.0735410058546289,
+          -0.5075770398857047,
+          -0.8584621535273149,
+          0.24293348919360525
+        ],
+        [
+          -0.0013206705809511807,
+          -0.2168463481060844,
+          -0.9762048540866161,
+          0.2086817585886498
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.0011225700145587325,
+        1.42636239528656,
+        -0.8297741413116455
+      ],
+      "clock": "24:38"
+    },
+    "off": {
+      "phase": "focus",
+      "questId": "quest-1",
+      "durationMs": 1500000,
+      "endsAt": 1794828565962,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 1459435,
+      "blur": "off",
+      "shellOpacity": 0,
+      "shellTarget": 0,
+      "shellAt": [
+        0,
+        1.6106817722320557,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.0735410058546289,
+          -0.5075770398857047,
+          -0.8584621535273149,
+          0.24293348919360525
+        ],
+        [
+          -0.0013206705809511807,
+          -0.2168463481060844,
+          -0.9762048540866161,
+          0.2086817585886498
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.0011225700145587325,
+        1.42636239528656,
+        -0.8297741413116455
+      ],
+      "clock": "24:20"
+    },
+    "strongAgain": {
+      "phase": "focus",
+      "questId": "quest-1",
+      "durationMs": 1500000,
+      "endsAt": 1794828565962,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 1432049,
+      "blur": "strong",
+      "shellOpacity": 0.9,
+      "shellTarget": 0.9,
+      "shellAt": [
+        0,
+        1.6106817722320557,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.0735410058546289,
+          -0.5075770398857047,
+          -0.8584621535273149,
+          0.24293348919360525
+        ],
+        [
+          -0.0013206705809511807,
+          -0.2168463481060844,
+          -0.9762048540866161,
+          0.2086817585886498
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.0011225700145587325,
+        1.42636239528656,
+        -0.8297741413116455
+      ],
+      "clock": "23:53"
+    },
+    "pausedBeforeReload": {
+      "phase": "focus",
+      "questId": "quest-1",
+      "durationMs": 1500000,
+      "endsAt": 1794828565962,
+      "pausedRemainingMs": 1425640,
+      "consecutiveSkips": 0,
+      "remainingMs": 1425640,
+      "blur": "strong",
+      "shellOpacity": 0.36,
+      "shellTarget": 0.36000000000000004,
+      "shellAt": [
+        0,
+        1.6106817722320557,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.0735410058546289,
+          -0.5075770398857047,
+          -0.8584621535273149,
+          0.24293348919360525
+        ],
+        [
+          -0.0013206705809511807,
+          -0.2168463481060844,
+          -0.9762048540866161,
+          0.2086817585886498
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.0011225700145587325,
+        1.42636239528656,
+        -0.8297741413116455
+      ],
+      "clock": "23:46"
+    },
+    "afterReload": {
+      "phase": "focus",
+      "questId": "quest-1",
+      "durationMs": 1500000,
+      "endsAt": 1794828565962,
+      "pausedRemainingMs": 1425640,
+      "consecutiveSkips": 0,
+      "remainingMs": 1425640,
+      "blur": "strong",
+      "shellOpacity": 0.36000000000000004,
+      "shellTarget": 0.36000000000000004,
+      "shellAt": [
+        0,
+        1.6099176406860352,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.07355411408765657,
+          -0.507316256023934,
+          -0.8586151691384437,
+          0.2429670311277463
+        ],
+        [
+          -0.0013207648482304545,
+          -0.21653282207917784,
+          -0.9762744452983713,
+          0.20868176462703125
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.0011226501083001494,
+        1.4258646965026855,
+        -0.8298332691192627
+      ],
+      "clock": "23:46"
+    },
+    "resumedAfterReload": {
+      "phase": "focus",
+      "questId": "quest-1",
+      "durationMs": 1500000,
+      "endsAt": 1794828632714,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 1424180,
+      "blur": "strong",
+      "shellOpacity": 0.9000000000000001,
+      "shellTarget": 0.9,
+      "shellAt": [
+        0,
+        1.6099176406860352,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.07355411408765657,
+          -0.507316256023934,
+          -0.8586151691384437,
+          0.2429670311277463
+        ],
+        [
+          -0.0013207648482304545,
+          -0.21653282207917784,
+          -0.9762744452983713,
+          0.20868176462703125
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.0011226501083001494,
+        1.4258646965026855,
+        -0.8298332691192627
+      ],
+      "clock": "23:45"
+    },
+    "running3s": {
+      "phase": "focus",
+      "questId": "quest-1",
+      "durationMs": 1500000,
+      "endsAt": 1794828632714,
+      "pausedRemainingMs": null,
+      "consecutiveSkips": 0,
+      "remainingMs": 1421022,
+      "blur": "strong",
+      "shellOpacity": 0.9000000000000001,
+      "shellTarget": 0.9,
+      "shellAt": [
+        0,
+        1.6099176406860352,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.07355411408765657,
+          -0.507316256023934,
+          -0.8586151691384437,
+          0.2429670311277463
+        ],
+        [
+          -0.0013207648482304545,
+          -0.21653282207917784,
+          -0.9762744452983713,
+          0.20868176462703125
+        ]
+      ],
+      "timerVisible": true,
+      "timerPosition": [
+        -0.0011226501083001494,
+        1.4258646965026855,
+        -0.8298332691192627
+      ],
+      "clock": "23:42"
+    },
+    "endedEarly": {
+      "phase": "idle",
+      "consecutiveSkips": 0,
+      "remainingMs": 0,
+      "blur": "strong",
+      "shellOpacity": 0,
+      "shellTarget": 0,
+      "shellAt": [
+        0,
+        1.6099176406860352,
+        0
+      ],
+      "shellWindows": [
+        [
+          0.07355411408765657,
+          -0.507316256023934,
+          -0.8586151691384437,
+          0.2429670311277463
+        ],
+        [
+          -0.0013207648482304545,
+          -0.21653282207917784,
+          -0.9762744452983713,
+          0.20868176462703125
+        ]
+      ],
+      "timerVisible": false,
+      "timerPosition": [
+        -0.0011226501083001494,
+        1.4258646965026855,
+        -0.8298332691192627
+      ],
+      "clock": "23:35"
+    }
+  },
+  "templateAttempts": 1,
+  "pinned": {
+    "title": "Plan the next milestone",
+    "pos": [
+      -0.003,
+      0.506,
+      -1.868
+    ],
+    "normal": [
+      0,
+      0.93,
+      0.37
+    ],
+    "scale": 0.155,
+    "state": "Pinned to Desk - pinch Start focus"
+  },
+  "chips": [
+    {
+      "display": null,
+      "text": "5m",
+      "variant": null
+    },
+    {
+      "display": null,
+      "text": "15m",
+      "variant": null
+    },
+    {
+      "display": null,
+      "text": "25m",
+      "variant": null
+    },
+    {
+      "display": null,
+      "text": "45m",
+      "variant": null
+    }
+  ],
+  "chipVariants": [
+    {
+      "display": null,
+      "text": null,
+      "variant": "secondary"
+    },
+    {
+      "display": null,
+      "text": null,
+      "variant": "secondary"
+    },
+    {
+      "display": null,
+      "text": null,
+      "variant": "primary"
+    },
+    {
+      "display": null,
+      "text": null,
+      "variant": "secondary"
+    }
+  ],
+  "storage": {
+    "timer": "{\"version\":1,\"title\":\"Plan the next milestone\",\"xp\":20,\"zoneId\":\"desk\",\"surfaceId\":\"room-1\",\"position\":[-0.002526880009099841,0.506188690662384,-1.8678029775619507],\"quaternion\":[-0.5591927742797086,0.0005607863339942838,0.0003782551777610958,0.8290373837379479],\"scale\":0.155053049325943,\"durationMs\":1500000,\"endsAt\":1794828565962,\"pausedRemainingMs\":1425640,\"consecutiveSkips\":0}",
+    "blur": "strong"
+  },
+  "reload": {
+    "phase": "focus",
+    "pausedSame": true,
+    "blurRemembered": true,
+    "durationSame": true,
+    "card": [
+      {
+        "title": "Plan the next milestone",
+        "pos": [
+          -0.003,
+          0.506,
+          -1.868
+        ],
+        "normal": [
+          0,
+          0.93,
+          0.37
+        ],
+        "scale": 0.155,
+        "state": "Paused - pinch Resume"
+      }
+    ],
+    "resumeLabel": {
+      "display": null,
+      "text": "Resume",
+      "variant": null
+    }
+  },
+  "runningAfterReload": 3158,
+  "afterEnd": {
+    "startLabel": {
+      "display": null,
+      "text": "Start focus",
+      "variant": null
+    },
+    "storage": null
+  },
+  "pageErrors": []
+}
