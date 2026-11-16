@@ -50,14 +50,37 @@ Questty is a mixed reality focus space for Meta Quest. Pinch and speak everythin
 
 ### OpenAI setup
 
-Copy `.env.example` to `.env` and set `OPENAI_API_KEY` for a Vercel-compatible
-local API runtime, or add it to the deployment platform's server-side environment
-variables (for example, Vercel Project Settings). Never use a `VITE_` prefix or
-commit `.env`: the key is read only by `api/quests.ts`. Voice quest generation
-and the optional in-focus **Need a nudge** action use this server endpoint. The
-managed IWSDK Vite session does not itself run the Vercel `api/` function, so
-without a local function runtime voice input uses local parsing and AI nudges
-are unavailable.
+Copy `.env.example` to `.env` and set `OPENAI_API_KEY`, or add it to the
+deployment platform's server-side environment variables (for example, Vercel
+Project Settings). Never use a `VITE_` prefix or commit `.env`: the key is read
+only by the server functions in `api/`. `npm run dev` serves those functions
+from the Vite dev server (reading `.env`), so voice works locally too.
+
+| Endpoint | Model | Used for |
+| --- | --- | --- |
+| `POST /api/transcribe` | `gpt-4o-mini-transcribe` | Speech to text for the mic button |
+| `GET /api/transcribe` | none | Tells the app whether server transcription is configured |
+| `POST /api/quests` | `gpt-4o-mini` | Turns the transcript into 3-5 quest cards, and the in-focus **Need a nudge** |
+
+### Voice capture
+
+Tap **Speak a quest**, say your tasks, then pause (it stops by itself after a
+short silence) or tap **Done talking**. Recording also stops at 30 seconds.
+The button and the status pill show each step: Starting mic, Listening,
+Transcribing, Making quests, then how many cards were added.
+
+- **Primary path, every browser (Quest Browser included):** the mic is recorded
+  with `MediaRecorder` and sent to `/api/transcribe`. Quest Browser has no Web
+  Speech API, so this is what makes voice work on the headset.
+- **No key on the server:** the app falls back to the browser's Web Speech API
+  where one exists (desktop Chrome or Edge). Where none exists (Quest Browser),
+  it says voice is not set up and points to the quick quests.
+- **No AI for quests:** if `/api/quests` fails, the transcript is split into
+  cards locally (`src/splitQuests.ts`). The quick quest buttons never need AI.
+
+The mic needs a secure context: `https://` (the dev server uses a local
+certificate) or `localhost`. On a headset, allow the microphone when Quest
+Browser asks; doing it once before entering XR avoids a prompt mid-session.
 
 Built for the Meta VR Start Developer Competition 2026 (Productivity track) with the Immersive Web SDK.
 

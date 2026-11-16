@@ -135,7 +135,7 @@
   <div class="panel-content">
     <div class="eyebrow">QUESTTY</div>
     <div class="heading">Choose a quest</div>
-    <div class="body">Speak a task or pick a template.</div>
+    <div class="body">Speak your tasks or pick a template.</div>
     <span id="progress-status" class="progress-status">Level 1 | 0 XP | 0 day streak</span>
     <div class="section-label">QUICK QUESTS</div>
     <div class="template-row">
@@ -160,7 +160,10 @@
       </Button>
     </div>
     <Button id="voice-button" class="button">
-      <ButtonLabel class="button-label">Speak a quest</ButtonLabel>
+      <ButtonIcon>
+        <Mic></Mic>
+      </ButtonIcon>
+      <ButtonLabel id="voice-button-label" class="button-label">Speak a quest</ButtonLabel>
     </Button>
     <div id="quest-status" class="quest-status" style="display: none">
       <span id="quest-status-text" class="quest-status-text">Listening...</span>

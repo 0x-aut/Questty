@@ -48,8 +48,9 @@ void Promise.all(
       xp,
       position: new Vector3(
         Math.sin(radians) * cardRadius,
-        1.6,
-        -1.2 - Math.cos(radians) * 0.2,
+        // Below the welcome panel so its buttons (mic, templates) stay visible.
+        1.3,
+        -1.05 - Math.cos(radians) * 0.2,
       ),
     });
   }),
