@@ -33,7 +33,7 @@ import {
 } from '@iwsdk/core';
 import { QuestCard, QuestCardTween } from '../quest-component.js';
 import { createQuestCard, emitCardEvent, findQuestCard, onCardEvent, pinQuestCard, unpinQuestCard } from '../quest-card.js';
-import { setCardWorldPose, snapTargetOn, spatialSurfaces, surfaceInfo, type SnapTarget, type SurfaceKind } from '../surfaces.js';
+import { rowTargetsOn, setCardWorldPose, snapTargetOn, spatialSurfaces, surfaceInfo, type SnapTarget, type SurfaceKind } from '../surfaces.js';
 import { pulseCards } from '../categories.js';
 import { isWelcomeCollapsed, setWelcomeCollapsed } from '../panel.js';
 import { getBuddyFocusApi } from '../session-events.js';
@@ -796,9 +796,9 @@ export class BuddySystem extends createSystem({
     this.glide(entity, snap.position, snap.quaternion, snap.scale);
   }
 
-  private pinTo(entity: Entity, target: SnapTarget): void {
+  private pinTo(entity: Entity, target: SnapTarget): boolean {
     this.glides.delete(entity);
-    pinQuestCard(entity, target);
+    return pinQuestCard(entity, target);
   }
 
   private floatTo(entity: Entity, p: Vector3, q: Quaternion): void {
@@ -882,19 +882,15 @@ export class BuddySystem extends createSystem({
     const { eye, forward } = this.eyeAndForward();
     const res = resolvePlace(target, spatialSurfaces(), eye, forward);
     if (!res.ok) return this.missReply(target, res.nearest, res.wanted);
-    // Lift them all off their old surfaces first, so they don't block each other.
-    for (const e of entities) {
-      if ((e.getValue(QuestCard, 'surfaceId') as string).length > 0) unpinQuestCard(e);
-    }
     const ids = entities.map((e) => e.getValue(QuestCard, 'cardId') as string);
-    const first = snapTargetOn(res.surface.id, aimPoint(res.surface, eye), ids[0]);
-    if (first === null) return { ok: false, reply: `I lost track of ${res.where}.` };
-    const spacing = (CARD_UNITS_W + FOCUS_PANEL_UNITS) * first.scale + 0.045;
+    const targets = rowTargetsOn(res.surface.id, aimPoint(res.surface, eye), ids);
+    if (targets === null || targets.length !== entities.length) return { ok: false, reply: `I lost track of ${res.where}.` };
+    let count = 0;
     entities.forEach((e, i) => {
-      const t = snapTargetOn(res.surface.id, aimPoint(res.surface, eye, i, entities.length, spacing), ids[i]);
-      if (t !== null) this.pinTo(e, t);
+      if (this.pinTo(e, targets[i])) count += 1;
     });
-    return { ok: true, where: res.where, undo };
+    if (count === 0) return { ok: false, reply: `I couldn't move those cards to ${res.where}.` };
+    return { ok: true, where: res.where, undo, count };
   }
 
   private where(entity: Entity): string {

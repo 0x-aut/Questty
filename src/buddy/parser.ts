@@ -372,7 +372,13 @@ export function parseCommand(input: string, cards: readonly BuddyCard[]): ParseR
     /^(?:move|push|put|shift|send|bump)\s+(.+?)\s+(later|today|tomorrow|tonight)$/u.exec(lower);
   if (move !== null) {
     const cat = categoryFromWords(move[2]);
-    if (cat === null) return { kind: 'miss', reply: 'Move it to Today, Later or Before I leave?' };
+    if (cat === null) {
+      // A place the room can't hold a card on ("the ceiling", "the floor", "the window").
+      if (/\b(ceiling|floor|roof|window|couch|sofa|bed|chair|shelf|lamp)\b/u.test(move[2])) {
+        return { kind: 'miss', reply: "Cards can't go there. Try a wall, the desk, the door, or here." };
+      }
+      return { kind: 'miss', reply: 'Move it to Today, Later or Before I leave?' };
+    }
     const target = card(move[1]);
     if (target === null) return notFound(move[1]);
     return { kind: 'command', actions: [{ type: 'set_category', card_id: target.id, category: cat }] };

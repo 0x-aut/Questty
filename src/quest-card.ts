@@ -66,7 +66,13 @@ export type CardEventType =
   /** The title changed (AI buddy rename, PR 6). */
   | 'renamed'
   /** The pose/zone was put back without a hand (AI buddy undo, PR 6): save it. */
-  | 'updated';
+  | 'updated'
+  /**
+   * PR 7: the buddy is about to move the card without a hand (pin to another
+   * surface, unpin, glide). Like 'grabbed' for persistence: stop following the
+   * old anchor, or it pulls the card straight back to where it was.
+   */
+  | 'moving';
 export type CardEventDetail = { restored?: boolean; target?: SnapTarget; focusReady?: boolean };
 type CardListener = (type: CardEventType, entity: Entity, detail: CardEventDetail) => void;
 const cardListeners = new Set<CardListener>();
@@ -132,6 +138,7 @@ let cardPinner: ((card: Entity, target: SnapTarget) => void) | undefined;
  */
 export function pinQuestCard(card: Entity, target: SnapTarget): boolean {
   if (cardPinner === undefined || !card.active) return false;
+  emitCard('moving', card);
   cardPinner(card, target);
   return true;
 }
@@ -139,6 +146,7 @@ export function pinQuestCard(card: Entity, target: SnapTarget): boolean {
 /** Turn a pinned card back into a floating one in place (the caller moves it). */
 export function unpinQuestCard(card: Entity): void {
   if (!card.active) return;
+  emitCard('moving', card);
   card.setValue(QuestCard, 'zoneId', '');
   card.setValue(QuestCard, 'surfaceId', '');
   setQuestCardState(card, FLOATING_HINT);

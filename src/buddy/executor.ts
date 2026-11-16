@@ -43,7 +43,7 @@ export type ExecResult = {
 
 /** What the room did with a spatial request (PR 7). */
 export type PlaceOutcome =
-  | { ok: true; where: string; undo: () => void }
+  | { ok: true; where: string; undo: () => void; /** How many cards really moved (arrange). */ count?: number }
   | { ok: false; reply: string; offer?: { label: string; target: PlaceTarget } };
 
 export type ExecutorHost = {
@@ -358,7 +358,8 @@ export class BuddyExecutor {
             break;
           }
           result.changed = true;
-          replies.push(`Lined up ${entities.length} ${entities.length === 1 ? 'card' : 'cards'} on ${out.where.replace(/^(right )?in front of you$/u, 'your focus spot')}.`);
+          const moved = out.count ?? entities.length;
+          replies.push(`Lined up ${moved} ${moved === 1 ? 'card' : 'cards'} on ${out.where.replace(/^(right )?in front of you$/u, 'your focus spot')}.`);
           undos.push(async () => {
             out.undo();
             return ids;
