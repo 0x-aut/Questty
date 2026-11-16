@@ -9,7 +9,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { iwsdkDev } from '@iwsdk/vite-plugin-dev';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 
-const API_ROUTES = new Set(['quests', 'transcribe', 'buddy']);
+const API_ROUTES = new Set(['quests', 'transcribe', 'buddy', 'live']);
 const MAX_DEV_BODY_BYTES = 5_000_000;
 
 /**

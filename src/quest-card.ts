@@ -66,7 +66,13 @@ export type CardEventType =
   /** The title changed (AI buddy rename, PR 6). */
   | 'renamed'
   /** The pose/zone was put back without a hand (AI buddy undo, PR 6): save it. */
-  | 'updated';
+  | 'updated'
+  /**
+   * PR 7: the buddy is about to move the card without a hand (pin to another
+   * surface, unpin, glide). Like 'grabbed' for persistence: stop following the
+   * old anchor, or it pulls the card straight back to where it was.
+   */
+  | 'moving';
 export type CardEventDetail = { restored?: boolean; target?: SnapTarget; focusReady?: boolean };
 type CardListener = (type: CardEventType, entity: Entity, detail: CardEventDetail) => void;
 const cardListeners = new Set<CardListener>();
@@ -123,6 +129,28 @@ let activeWorld: World | undefined;
 const FOCUS_ACTION_ASSET_ID = 'focus-action';
 const BLUR_LABEL: Record<BlurLevel, string> = { off: 'Blur: Off', soft: 'Blur: Soft', strong: 'Blur: Strong' };
 let focusActionEnsurer: ((card: Entity) => void) | undefined;
+let cardPinner: ((card: Entity, target: SnapTarget) => void) | undefined;
+
+/**
+ * Pin a card to a snap target exactly like a hand release does (PR 7: the
+ * buddy's spatial tools): zone + surface + userPlaced, the flight that lands
+ * it flush, the pinned hint, its focus panel and the 'pinned' event (saved).
+ */
+export function pinQuestCard(card: Entity, target: SnapTarget): boolean {
+  if (cardPinner === undefined || !card.active) return false;
+  emitCard('moving', card);
+  cardPinner(card, target);
+  return true;
+}
+
+/** Turn a pinned card back into a floating one in place (the caller moves it). */
+export function unpinQuestCard(card: Entity): void {
+  if (!card.active) return;
+  emitCard('moving', card);
+  card.setValue(QuestCard, 'zoneId', '');
+  card.setValue(QuestCard, 'surfaceId', '');
+  setQuestCardState(card, FLOATING_HINT);
+}
 
 /**
  * Cards whose focus panel works while floating: the Focus session quick-start
@@ -296,6 +324,7 @@ export class QuestCardSystem extends createSystem({
     });
     setCardActionModeHandler((cardId, mode, info) => this.setActionMode(cardId, mode, info));
     focusActionEnsurer = (card) => void this.ensureFocusAction(card);
+    cardPinner = (card, target) => this.pin(card, target);
     focusActionMover = (card) => {
       const action = this.findFocusAction(card.getValue(QuestCard, 'cardId') as string);
       const panel = action?.object3D;
@@ -304,6 +333,7 @@ export class QuestCardSystem extends createSystem({
     this.cleanupFuncs.push(() => {
       setCardActionModeHandler(undefined);
       focusActionEnsurer = undefined;
+      cardPinner = undefined;
       focusActionMover = undefined;
       for (const entity of this.queries.actions.entities) this.disposeAction(entity);
     });

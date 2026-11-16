@@ -166,6 +166,43 @@ export function allSurfaceInfo(): SurfaceInfo[] {
   return activeSystem?.infos() ?? [];
 }
 
+export type SpatialSurface = {
+  id: string;
+  kind: SurfaceKind;
+  /** Semantic label ('wall', 'table', 'door', ...) or the source for virtual surfaces. */
+  label: string;
+  /** Centre of the plane's polygon, in world space. */
+  center: Vector3;
+  /** Into the room (walls/doors face the head; desks face up). */
+  normal: Vector3;
+  width: number;
+  height: number;
+};
+
+/** Every snap surface with its centre and inward normal (PR 7: spatial buddy tools). */
+export function spatialSurfaces(): SpatialSurface[] {
+  return activeSystem?.spatial() ?? [];
+}
+
+/**
+ * Where a card would land on one surface near `point`: the same conforming,
+ * no-overlap placement a hand drop uses (flush, inside the polygon, beside
+ * cards already there). Null when the surface is gone.
+ */
+export function snapTargetOn(surfaceId: string, point: Vector3, cardId: string): SnapTarget | null {
+  return activeSystem?.targetOn(surfaceId, point, cardId) ?? null;
+}
+
+/**
+ * PR 7: flush poses for several cards lined up on one surface (the buddy's
+ * arrange): one shared scale, one neat row centred near `point` (wrapping to
+ * more rows only when a single row would make the cards too small), clear of
+ * every other card already there. Null when the surface is gone.
+ */
+export function rowTargetsOn(surfaceId: string, point: Vector3, cardIds: string[]): SnapTarget[] | null {
+  return activeSystem?.rowOn(surfaceId, point, cardIds) ?? null;
+}
+
 /** Gently light up every snap surface outline for `ms` (placement coach mark). */
 export function glowSurfaces(ms: number): void {
   if (activeSystem !== undefined) activeSystem.glowUntil = performance.now() + ms;
@@ -263,6 +300,32 @@ export class SurfaceSystem extends createSystem({
       label = plane?.semanticLabel ?? label;
     }
     return { surfaceId: frame.id, kind: frame.kind, label, origin: frame.origin.clone(), quaternion };
+  }
+
+  spatial(): SpatialSurface[] {
+    this.refreshFrames(true);
+    return this.frames.map((f) => ({
+      id: f.id,
+      kind: f.kind,
+      label: this.frameInfo(f).label,
+      center: f.origin.clone().addScaledVector(f.u, f.cx).addScaledVector(f.v, f.cz),
+      normal: f.normal.clone(),
+      width: f.width,
+      height: f.height,
+    }));
+  }
+
+  targetOn(surfaceId: string, point: Vector3, cardId: string): SnapTarget | null {
+    this.refreshFrames(true);
+    const frame = this.frames.find((f) => f.id === surfaceId);
+    return frame === undefined ? null : this.placeOn(frame, point, cardId, 'ray');
+  }
+
+  rowOn(surfaceId: string, point: Vector3, cardIds: string[]): SnapTarget[] | null {
+    this.refreshFrames(true);
+    const frame = this.frames.find((f) => f.id === surfaceId);
+    if (frame === undefined || cardIds.length === 0) return null;
+    return this.placeRow(frame, point, cardIds);
   }
 
   getPreview(cardId: string): SnapTarget | null {
@@ -700,6 +763,156 @@ export class SurfaceSystem extends createSystem({
     this.m.makeBasis(xAxis, yAxis, zAxis);
     const quaternion = new Quaternion().setFromRotationMatrix(this.m);
     return { surfaceId: frame.id, kind: frame.kind, label: LABEL[frame.kind], position, quaternion, scale, via, crowded };
+  }
+
+  /** Card axes on a frame (+Z the surface normal, +Y the text's up), like placeOn. */
+  private cardAxes(frame: Frame): { xAxis: Vector3; yAxis: Vector3; zAxis: Vector3 } {
+    const zAxis = frame.normal.clone();
+    const yAxis = new Vector3();
+    if (frame.kind === 'desk') {
+      yAxis.copy(this.deskUp(frame));
+    } else {
+      yAxis.set(0, 1, 0).addScaledVector(zAxis, -zAxis.y);
+      if (yAxis.lengthSq() < 1e-4) yAxis.copy(frame.v);
+      yAxis.normalize();
+    }
+    const xAxis = new Vector3().crossVectors(yAxis, zAxis).normalize();
+    return { xAxis, yAxis, zAxis };
+  }
+
+  /**
+   * A row (or a few rows) of cards on one frame, all at one scale, each with
+   * room for its focus panel on its right. Rows stay level (one height per
+   * row), the block stays inside the polygon and clear of the other cards on
+   * the surface; it shrinks before it would overlap or spill over an edge.
+   */
+  private placeRow(frame: Frame, point: Vector3, cardIds: string[]): SnapTarget[] {
+    this.world.player.head.getWorldPosition(this.head);
+    const n = cardIds.length;
+    const { xAxis, yAxis, zAxis } = this.cardAxes(frame);
+    const ru = xAxis.dot(frame.u);
+    const rv = xAxis.dot(frame.v);
+    const uu = yAxis.dot(frame.u);
+    const uv = yAxis.dot(frame.v);
+    const halfA = Math.abs(ru) * frame.width / 2 + Math.abs(rv) * frame.height / 2 - EDGE_INSET;
+    const halfB = Math.abs(uu) * frame.width / 2 + Math.abs(uv) * frame.height / 2 - EDGE_INSET;
+    const cA = frame.cx * ru + frame.cz * rv;
+    const cB = frame.cx * uu + frame.cz * uv;
+    const distance = this.head.distanceTo(point);
+    const wanted = Math.max(0.06, Math.min(0.28, Math.max(PINNED_NEAR_SCALE, distance * 0.07)));
+    // Slot = card + its focus panel + gap; row pitch = card height + gap.
+    const slotW = (s: number) => (CARD_UNITS_W + FOCUS_PANEL_UNITS) * s + 0.015 + CARD_GAP;
+    const rowH = (s: number) => CARD_UNITS_H * s + CARD_GAP;
+    const fitScale = (perRow: number, rows: number) =>
+      Math.min(
+        wanted,
+        (2 * halfA + CARD_GAP - 0.015 * perRow - CARD_GAP * perRow) / ((CARD_UNITS_W + FOCUS_PANEL_UNITS) * perRow),
+        (2 * halfB + CARD_GAP - CARD_GAP * rows) / (CARD_UNITS_H * rows),
+      );
+    // Fewest rows that keep the cards at least ~80 % of the best possible size.
+    let rows = 1;
+    let bestScale = -Infinity;
+    for (let r = 1; r <= n; r += 1) bestScale = Math.max(bestScale, fitScale(Math.ceil(n / r), r));
+    for (let r = 1; r <= n; r += 1) {
+      if (fitScale(Math.ceil(n / r), r) >= Math.min(wanted, bestScale) * 0.8) {
+        rows = r;
+        break;
+      }
+    }
+    let scale = Math.max(0.05, fitScale(Math.ceil(n / rows), rows));
+
+    // Other cards on this surface (not the ones being lined up).
+    const mine = new Set(cardIds);
+    const others: Array<{ a: number; b: number; w: number; h: number }> = [];
+    for (const other of this.queries.cards.entities) {
+      if (mine.has(other.getValue(QuestCard, 'cardId') as string)) continue;
+      if (other.hasComponent(QuestCardTween)) continue;
+      const o = other.object3D;
+      if (o == null) continue;
+      if (other.getValue(QuestCard, 'surfaceId') !== frame.id && !this.liesOn(o, frame)) continue;
+      const flight = this.flights.get(other);
+      const op = flight ? flight.to.clone() : o.getWorldPosition(new Vector3());
+      const os = flight ? flight.sTo : o.scale.x;
+      const r = op.sub(frame.origin);
+      others.push({
+        a: r.dot(xAxis) + (FOCUS_PANEL_UNITS * os + 0.015) / 2,
+        b: r.dot(yAxis),
+        w: (CARD_UNITS_W + FOCUS_PANEL_UNITS) * os + 0.015,
+        h: CARD_UNITS_H * os,
+      });
+    }
+    const toLocal = (ca: number, cb: number) => ({ x: ca * ru + cb * uu, z: ca * rv + cb * uv });
+    const rel = this.tmpB.copy(point).sub(frame.origin);
+    const aimA = rel.dot(xAxis);
+    const aimB = rel.dot(yAxis);
+
+    const layout = (s: number, shiftB: number) => {
+      const perRow = Math.ceil(n / rows);
+      const sw = slotW(s);
+      const rh = rowH(s);
+      const blockW = perRow * sw - CARD_GAP;
+      const blockH = rows * rh - CARD_GAP;
+      const centreA = blockW / 2 >= halfA ? cA : Math.max(cA - halfA + blockW / 2, Math.min(cA + halfA - blockW / 2, aimA));
+      const lowB = cB - halfB + blockH / 2;
+      const highB = cB + halfB - blockH / 2;
+      const centreB = highB < lowB ? cB : Math.max(lowB, Math.min(highB, aimB + shiftB));
+      const slots: Array<{ a: number; b: number }> = [];
+      for (let i = 0; i < n; i += 1) {
+        const row = Math.floor(i / perRow);
+        const inRow = Math.min(perRow, n - row * perRow);
+        const col = i % perRow;
+        const groupA = centreA + (col - (inRow - 1) / 2) * sw;
+        // Card centre sits left of the group centre (its focus panel is on its right).
+        const a = groupA - (FOCUS_PANEL_UNITS * s + 0.015) / 2;
+        const b = centreB + blockH / 2 - CARD_UNITS_H * s / 2 - row * rh;
+        slots.push({ a, b });
+      }
+      const w = CARD_UNITS_W * s;
+      const h = CARD_UNITS_H * s;
+      const panelExtra = FOCUS_PANEL_UNITS * s + 0.015;
+      const clear = slots.every(({ a, b }) =>
+        others.every(
+          (o) =>
+            Math.abs(o.a - (a + panelExtra / 2)) >= (o.w + w + panelExtra) / 2 + CARD_GAP - 1e-4 ||
+            Math.abs(o.b - b) >= (o.h + h) / 2 + CARD_GAP - 1e-4,
+        ),
+      );
+      const inside = slots.every(({ a, b }) =>
+        [[-1, -1], [1, -1], [1, 1], [-1, 1]].every(([sa, sb]) => {
+          const l = toLocal(a + (sa * w) / 2, b + (sb * h) / 2);
+          return insideFrame(frame, l.x, l.z);
+        }),
+      );
+      return { slots, clear, inside };
+    };
+
+    let chosen: ReturnType<typeof layout> | null = null;
+    for (let attempt = 0; attempt < 8 && chosen === null; attempt += 1) {
+      const rh = rowH(scale);
+      // Try the aimed height first, then step the whole block down/up a row at a time.
+      for (const k of [0, -1, 1, -2, 2, -3, 3]) {
+        const l = layout(scale, k * rh);
+        if (l.clear && l.inside) {
+          chosen = l;
+          break;
+        }
+      }
+      if (chosen === null) scale *= 0.85;
+    }
+    chosen ??= layout(scale, 0);
+
+    this.m.makeBasis(xAxis, yAxis, zAxis);
+    const quaternion = new Quaternion().setFromRotationMatrix(this.m);
+    return chosen.slots.map(({ a, b }) => ({
+      surfaceId: frame.id,
+      kind: frame.kind,
+      label: LABEL[frame.kind],
+      position: frame.origin.clone().addScaledVector(xAxis, a).addScaledVector(yAxis, b).addScaledVector(frame.normal, SURFACE_GAP),
+      quaternion: quaternion.clone(),
+      scale,
+      via: 'ray' as const,
+      crowded: !(chosen!.clear && chosen!.inside),
+    }));
   }
 
   /**

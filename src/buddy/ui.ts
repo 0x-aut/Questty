@@ -32,21 +32,35 @@ import {
   type Entity,
 } from '@iwsdk/core';
 import { QuestCard, QuestCardTween } from '../quest-component.js';
-import { createQuestCard, emitCardEvent, findQuestCard, onCardEvent } from '../quest-card.js';
-import { setCardWorldPose } from '../surfaces.js';
+import { createQuestCard, emitCardEvent, findQuestCard, onCardEvent, pinQuestCard, unpinQuestCard } from '../quest-card.js';
+import { rowTargetsOn, setCardWorldPose, snapTargetOn, spatialSurfaces, surfaceInfo, type SnapTarget, type SurfaceKind } from '../surfaces.js';
 import { pulseCards } from '../categories.js';
 import { isWelcomeCollapsed, setWelcomeCollapsed } from '../panel.js';
 import { getBuddyFocusApi } from '../session-events.js';
 import { focusNow } from '../focus-store.js';
 import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE, homeForward, nextFreeSlot } from '../card-layout.js';
 import { floatingCardPositions } from '../card-arrange.js';
-import { cleanReply, validateActions, type BuddyAction, type BuddyCard, type Rejection } from './actions.js';
+import { BUDDY_CATEGORIES, cleanReply, validateActions, type BuddyAction, type BuddyCard, type BuddyCategory, type Rejection } from './actions.js';
+import { getCategory } from '../category-config.js';
+import {
+  answerKind,
+  DELEGATION_DEDUPE_MS,
+  delegationKey,
+  DUP_QUESTION_MS,
+  findDuplicate,
+  shortWhere,
+  type DupAnswer,
+} from './dedupe.js';
+import type { DumpItem } from './bus.js';
 import { classify, parseCommand } from './parser.js';
 import { askBuddyApi, resetBuddyApiBackoff, type FocusInfo } from './client.js';
-import { BuddyExecutor, type ExecResult, type Offer, type UndoEntry } from './executor.js';
+import { BuddyExecutor, type ExecResult, type Offer, type PlaceOutcome, type UndoEntry } from './executor.js';
+import { aimPoint, describeSpot, resolvePlace, whereLabel } from './spatial.js';
+import type { PlaceTarget } from './actions.js';
 import { BuddyOrb, type OrbState } from './orb.js';
 import { BUDDY_SLOW, LightLines } from './light-line.js';
-import { setBuddyLink, type MicState } from './bus.js';
+import { setBuddyLink, setTalkToggle, startPushToTalk, type MicState } from './bus.js';
+import { TalkSession, talkSupported, type TalkState } from './talk.js';
 
 const USED_KEY = 'questty.buddy.v1';
 /** UIKit px -> metres at the home panel's scale (0.01 units/px x 0.1). */
@@ -68,6 +82,13 @@ const GLIDE_MS = 650;
 
 type ChipKind = 'plain' | 'primary' | 'danger';
 type Chip = { label: string; kind: ChipKind; run: () => void };
+/** Move `value` toward `target` (0..1) at 1/inMs up and 1/outMs down per ms; exact at the target. */
+export function stepToward(value: number, target: number, dtS: number, inMs: number, outMs: number): number {
+  if (value === target) return value;
+  if (target > value) return Math.min(target, value + (1000 / inMs) * dtS);
+  return Math.max(target, value - (1000 / outMs) * dtS);
+}
+
 const CHIP_STYLE: Record<ChipKind, { bg: string; border: string }> = {
   plain: { bg: '#e6dece', border: '#d3c9b4' },
   primary: { bg: '#f0d787', border: '#d8bb5e' },
@@ -88,8 +109,18 @@ type Bubble = {
   hovered: boolean;
 };
 
+/** PR 8: an add the buddy held back because the card is already on the board. */
+type DupItem = { title: string; category?: string; xp?: number; matchId: string; matchTitle: string };
+type PendingDup = { items: DupItem[]; text: string; askedAt: number; expires: number; via: 'buddy' | 'dump' };
+
+const quoteTitle = (t: string): string => (t.length > 28 ? `${t.slice(0, 27)}...` : t);
+
 type RunRecord = {
   text: string;
+  /** PR 8: adds held back as duplicates (asked about instead). */
+  held?: Array<{ title: string; match: string }>;
+  /** PR 8: how a pending duplicate question was answered. */
+  answer?: DupAnswer;
   source: 'voice' | 'tap';
   mode: 'ai' | 'offline' | 'local';
   apiError?: string;
@@ -160,6 +191,14 @@ export class BuddySystem extends createSystem({
   private readonly tmpQ = new Quaternion();
   private readonly head = new Vector3();
   private micState: MicState = 'idle';
+  /** PR 8: the open "You already have X. Add another one?" question. */
+  private pendingDup?: PendingDup;
+  /** DUP_QUESTION_MS; the harness can stretch it (dev hook) for slow screenshots. */
+  private dupTtl = DUP_QUESTION_MS;
+  private readonly dupLog: Array<{ event: string; titles: string[]; at: number }> = [];
+  /** PR 8: the last Live delegation, so a repeated hearing runs once. */
+  private lastDelegation?: { key: string; start: number; end: number; reply: Promise<string> };
+  private readonly delegationLog: Array<{ text: string; at: number; dropped: boolean; sinceLastMs: number | null }> = [];
 
   init(): void {
     try {
@@ -172,11 +211,14 @@ export class BuddySystem extends createSystem({
     this.lines = new LightLines();
     this.world.createTransformEntity(this.lines.group, { parent: this.world.sceneEntity, persistent: true });
     this.executor = new BuddyExecutor({
-      spawnCard: (title, category) => this.spawnCard(title, category),
+      spawnCard: (title, category, xp) => this.spawnCard(title, category, xp),
       getPlan: () => (this.plan === null ? null : [...this.plan]),
       setPlan: (order) => this.setPlan(order),
       cards: () => this.cardList(),
       bringForward: (entity) => this.bringForward(entity),
+      place: (entity, target, refId) => this.place(entity, target, refId),
+      arrange: (entities, target) => this.arrange(entities, target),
+      where: (entity) => this.where(entity),
     });
     this.logOrb('idle');
 
@@ -184,7 +226,19 @@ export class BuddySystem extends createSystem({
       command: (text, source) => void this.handle(text, source),
       mic: (state, detail) => this.onMic(state, detail),
       level: (level) => this.orb.setLevel(level),
+      duplicates: (titles) => {
+        const cards = this.cardList();
+        return titles.flatMap((t, i) => (findDuplicate(t, cards) !== null ? [i] : []));
+      },
+      askDuplicates: (items, added) => this.askDumpDuplicates(items, added),
+      wantsAnswer: (text) => this.questionOpen() && answerKind(text) !== null,
+      dismissQuestion: () => {
+        if (this.pendingDup !== undefined) this.dropDup('superseded');
+      },
     });
+
+    setTalkToggle(() => this.toggleTalk());
+    void this.probeLive();
 
     const off = onCardEvent((type, entity) => {
       if (type !== 'completed' && type !== 'removed') return;
@@ -213,6 +267,34 @@ export class BuddySystem extends createSystem({
           resetApi: () => resetBuddyApiBackoff(),
           orb: (state: OrbState) => this.setOrb(state),
           say: (text: string) => this.say(text, { ms: 4000 }),
+          bubbleObject: () => this.bubble?.panel ?? null,
+          talk: () => (this.talk ? { ...this.talk.debug, liveConfigured: this.liveOk } : { state: 'off', liveConfigured: this.liveOk }),
+          talkToggle: () => this.toggleTalk(),
+          answerKind: (text: string) => answerKind(text),
+          findDuplicate: (title: string) => findDuplicate(title, this.cardList()),
+          dupLog: () => [...this.dupLog],
+          setDupTtl: (ms?: number) => {
+            this.dupTtl = typeof ms === 'number' && ms > 0 ? ms : DUP_QUESTION_MS;
+            return this.dupTtl;
+          },
+          delegations: () => [...this.delegationLog],
+          setLive: (ok: boolean) => {
+            this.liveOk = ok;
+          },
+          trace: () => this.bubbleTrace.splice(0),
+          experiment: (name: string) => {
+            const b = this.bubble;
+            this.lines.group.visible = name !== 'no-lines';
+            this.orb.group.visible = name !== 'no-orb';
+            if (b !== undefined && name === 'bubble-top') {
+              b.panel.traverse((o) => {
+                const m = (o as unknown as { material?: { depthTest: boolean } }).material;
+                if (m !== undefined) m.depthTest = false;
+                o.renderOrder = 1000;
+              });
+            }
+            return name;
+          },
           forgetUsed: () => {
             this.used = false;
             try {
@@ -226,6 +308,8 @@ export class BuddySystem extends createSystem({
     }
 
     this.cleanupFuncs.push(off, () => {
+      setTalkToggle(undefined);
+      this.talk?.stop('dispose');
       setBuddyLink(undefined);
       this.orb.dispose();
     });
@@ -238,8 +322,10 @@ export class BuddySystem extends createSystem({
     this.lines.update(now);
     if (!this.busy && this.orbHoldUntil > 0 && now > this.orbHoldUntil) {
       this.orbHoldUntil = 0;
-      this.setOrb(this.orbAfter);
+      this.setOrb(this.orbAfter === 'idle' && this.talkLive() ? 'talking' : this.orbAfter);
     }
+    this.talk?.tick(now);
+    if (this.pendingDup !== undefined && now > this.pendingDup.expires) this.dropDup('expired');
     this.updateBubble(now);
   }
 
@@ -278,6 +364,124 @@ export class BuddySystem extends createSystem({
     group.quaternion.copy(this.tmpQ);
     group.visible = panel.visible !== false;
     this.orb.update(now, this.orbRadius, this.world.player.head);
+  }
+
+  // ------------------------------------------------------------ talk mode (PR 7)
+
+  private talk: TalkSession | null = null;
+  private liveOk = false;
+
+  /** Is GPT-Live configured on the server? (GET /api/live, never the key itself) */
+  private async probeLive(): Promise<void> {
+    try {
+      const res = await fetch('/api/live', { method: 'GET' });
+      const body = res.ok ? ((await res.json()) as { configured?: unknown }) : null;
+      this.liveOk = body?.configured === true;
+    } catch {
+      this.liveOk = false;
+    }
+  }
+
+  private talkLive(): boolean {
+    return this.talk !== null && (this.talk.state === 'live' || this.talk.state === 'connecting');
+  }
+
+  /** Pinch on the orb: start or stop talking. False = not available (use push-to-talk). */
+  private toggleTalk(): boolean {
+    if (this.talk !== null && this.talk.state !== 'off' && this.talk.state !== 'failed') {
+      this.talk.stop('user');
+      return true;
+    }
+    if (!this.liveOk || !talkSupported() || (typeof navigator !== 'undefined' && navigator.onLine === false)) return false;
+    this.markUsed();
+    setWelcomeCollapsed(true);
+    const session = new TalkSession({
+      command: (text, heardAt) => this.talkCommand(text, heardAt),
+      caption: (who, text) => this.sayCaption(who === 'you' ? `"${text}"` : text, who === 'you' ? 'YOU' : 'QUESTTY  ·  TALKING'),
+      state: (state, detail) => this.onTalkState(state, detail),
+      levels: (out, inp) => {
+        this.orb.setVoiceLevel(out);
+        if (this.orb.state === 'talking') this.orb.setLevel(inp);
+      },
+    });
+    this.talk = session;
+    session.start().catch(() => undefined);
+    return true;
+  }
+
+  private onTalkState(state: TalkState, detail?: string): void {
+    if (state === 'connecting') {
+      this.setOrb('thinking');
+      this.say('Connecting...', { tag: 'TALK', sticky: true });
+    } else if (state === 'live') {
+      this.setOrb('talking');
+      this.say("I'm here. Tell me what to move or start.", { tag: 'QUESTTY  ·  TALKING', ms: 5000 });
+    } else if (state === 'off') {
+      if (this.orb.state === 'talking' || this.orb.state === 'thinking') this.setOrb('idle');
+      const why = detail === 'idle' ? 'Talk ended after a quiet minute.' : 'Talk ended.';
+      this.say(why, { tag: 'QUESTTY', ms: 3000 });
+    } else if (state === 'failed') {
+      // Live is down: the same pinch falls back to push-to-talk -> transcribe -> buddy.
+      this.setOrb('error', 1500);
+      this.say("Voice chat isn't available. Push-to-talk instead.", { tag: 'QUESTTY', ms: 4000 });
+      if (detail !== 'connection-failed' && detail !== 'events-closed') startPushToTalk();
+    }
+  }
+
+  /**
+   * A delegated voice request. PR 8: GPT-Live can delegate the same request
+   * twice when it hears it twice. The same words raised within ~5 s of the
+   * last delegation (by when GPT-Live raised them: within 5 s of the first
+   * one, while it is still running, or within 5 s after it finished) run
+   * once, and the repeat gets the first one's result back. Delegations queue,
+   * so the time they were raised is what counts, not when they get to run.
+   */
+  private talkCommand(text: string, heardAt = performance.now()): Promise<string> {
+    const key = delegationKey(text);
+    const last = this.lastDelegation;
+    const within =
+      last !== undefined &&
+      (heardAt - last.start < DELEGATION_DEDUPE_MS || last.end === 0 || heardAt - last.end < DELEGATION_DEDUPE_MS);
+    if (last !== undefined && within && last.key === key && key.length > 0) {
+      console.info('[buddy] duplicate Live delegation dropped:', text);
+      this.delegationLog.push({ text, at: Date.now(), dropped: true, sinceLastMs: Math.round(heardAt - last.start) });
+      return last.reply;
+    }
+    this.delegationLog.push({ text, at: Date.now(), dropped: false, sinceLastMs: last !== undefined ? Math.round(heardAt - last.start) : null });
+    if (this.delegationLog.length > 40) this.delegationLog.shift();
+    const entry = { key, start: heardAt, end: 0, reply: Promise.resolve('') };
+    entry.reply = this.runTalkCommand(text).finally(() => {
+      entry.end = performance.now();
+    });
+    this.lastDelegation = entry;
+    return entry.reply;
+  }
+
+  /** Same validated pipeline as a typed or push-to-talk command. */
+  private async runTalkCommand(text: string): Promise<string> {
+    for (let i = 0; i < 40 && this.busy; i += 1) await new Promise((r) => window.setTimeout(r, 250));
+    const record = await this.handle(text, 'voice');
+    if (this.talkLive()) this.setOrb('talking');
+    if (record === null) return this.bubble?.text ?? 'Done.';
+    return record.reply;
+  }
+
+  /** Talk captions: update the bubble's text in place, keeping its chips (Undo stays reachable). */
+  private sayCaption(text: string, tag: string): void {
+    const b = this.bubble;
+    if (b === undefined) {
+      this.say(text, { tag, ms: 5000 });
+      return;
+    }
+    const clipped = text.length > 120 ? `...${text.slice(-117)}` : text;
+    b.text = clipped;
+    b.tag = tag;
+    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text: clipped });
+    b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: tag });
+    b.panel.getElementById<UIKit.Text>('buddy-tag-dot')?.setProperties({ backgroundColor: tag === 'YOU' ? '#ef9a84' : '#c9a6e0' });
+    const now = performance.now();
+    b.sticky = false;
+    b.until = Math.max(b.until === Infinity ? 0 : b.until, now + 5000 * BUDDY_SLOW);
   }
 
   // ------------------------------------------------------------ mic link
@@ -351,6 +555,13 @@ export class BuddySystem extends createSystem({
     if (spoken.length === 0 || this.busy) return null;
     this.markUsed();
     setWelcomeCollapsed(true);
+    // PR 8: a short "yes" / "skip" / "show it" answers the open duplicate
+    // question; anything else is a new command and the question lapses quietly.
+    if (this.pendingDup !== undefined) {
+      const kind = this.questionOpen() ? answerKind(spoken) : null;
+      if (kind !== null) return this.resolveDup(kind, spoken, source);
+      this.dropDup(this.questionOpen() ? 'superseded' : 'expired');
+    }
     const cards = this.cardList();
     const local = parseCommand(spoken, cards);
     if (local.kind === 'undo') {
@@ -394,6 +605,26 @@ export class BuddySystem extends createSystem({
     this.runs.push(record);
     if (this.runs.length > 30) this.runs.shift();
 
+    // PR 8: never add a card that is already on the board; ask instead.
+    const held: DupItem[] = [];
+    if (validated.actions.length > 0) {
+      const keep: BuddyAction[] = [];
+      for (const action of validated.actions) {
+        const match = action.type === 'add_card' ? findDuplicate(action.title, cards) : null;
+        if (action.type === 'add_card' && match !== null) {
+          held.push({ title: action.title, category: action.category, xp: action.xp, matchId: match.card.id, matchTitle: match.card.title });
+        } else keep.push(action);
+      }
+      validated = { ...validated, actions: keep };
+      if (held.length > 0) record.held = held.map((h) => ({ title: h.title, match: h.matchId }));
+    }
+    if (validated.actions.length === 0 && held.length > 0) {
+      this.busy = false;
+      this.setOrb('done', 1300);
+      record.reply = this.askDuplicates(held, '', this.tagFor(record.mode), 'buddy');
+      return record;
+    }
+
     if (validated.actions.length === 0) {
       const reply =
         aiReply ?? (local.kind === 'miss' ? local.reply : "Sorry, I can't do that yet. Try \"what's left today?\"");
@@ -417,8 +648,173 @@ export class BuddySystem extends createSystem({
     }
     record.log = result.log;
     const allOk = result.log.length > 0 && result.log.every((l) => l.ok) && result.confirm === undefined;
-    record.reply = aiReply !== null && allOk && result.offer === undefined ? aiReply : result.reply;
+    // Spatial results are grounded in the room (where it landed, where it is): the executor's line wins.
+    const spatial = validated.actions.some((a) => a.type === 'place_card' || a.type === 'arrange' || a.type === 'find' || a.type === 'focus_on');
+    record.reply = aiReply !== null && allOk && result.offer === undefined && !spatial && held.length === 0 ? aiReply : result.reply;
+    if (held.length > 0 && result.confirm !== undefined) {
+      // A delete is waiting on its Confirm chip: don't stack a second question on it.
+      record.reply = `${record.reply} Skipped ${held.map((h) => `"${quoteTitle(h.matchTitle)}"`).join(', ')}: already on your board.`;
+      this.logDup('skipped-confirm', held);
+    }
     await this.present(result, record.reply, this.tagFor(record.mode));
+    if (held.length > 0 && result.confirm === undefined) {
+      record.reply = this.askDuplicates(held, record.reply, this.tagFor(record.mode), 'buddy');
+    }
+    return record;
+  }
+
+  // ------------------------------------------------------------ duplicate check (PR 8)
+
+  private questionOpen(): boolean {
+    return this.pendingDup !== undefined && performance.now() <= this.pendingDup.expires;
+  }
+
+  private logDup(event: string, items: DupItem[]): void {
+    this.dupLog.push({ event, titles: items.map((i) => i.title), at: Date.now() });
+    if (this.dupLog.length > 40) this.dupLog.shift();
+  }
+
+  /** Category and spot of a card, e.g. "Today, on the left wall". */
+  private describeCard(id: string): string {
+    const entity = findQuestCard(id);
+    if (entity === undefined) return '';
+    const cat = entity.getValue(QuestCard, 'category') as string;
+    const label = getCategory(cat)?.label ?? 'Unsorted';
+    return entity.object3D == null ? label : `${label}, ${shortWhere(this.where(entity))}`;
+  }
+
+  private dupChips(count: number, withShow = true): Chip[] {
+    const chips: Chip[] = [
+      { label: 'Add anyway', kind: 'primary', run: () => void this.resolveDup('add', 'Add anyway', 'tap') },
+      { label: 'Skip', kind: 'plain', run: () => void this.resolveDup('skip', 'Skip', 'tap') },
+    ];
+    if (withShow) chips.push({ label: count === 1 ? 'Show it' : 'Show them', kind: 'plain', run: () => void this.resolveDup('show', 'Show it', 'tap') });
+    return chips;
+  }
+
+  /** Ask once about held-back adds; returns the full line (also what talk mode says). */
+  private askDuplicates(items: DupItem[], prefix: string, tag: string, via: PendingDup['via']): string {
+    this.pendingOffer = undefined;
+    let question: string;
+    if (items.length === 1) {
+      const where = this.describeCard(items[0].matchId);
+      question = `You already have "${quoteTitle(items[0].matchTitle)}"${where ? ` (${where})` : ''}. Add another one?`;
+    } else {
+      const names = items.slice(0, 3).map((i) => `"${quoteTitle(i.matchTitle)}"`).join(', ');
+      const more = items.length > 3 ? ` and ${items.length - 3} more` : '';
+      question = `${items.length} of these are already on your board: ${names}${more}. Add them anyway?`;
+    }
+    const line = prefix.length > 0 ? `${prefix} ${question}` : question;
+    const now = performance.now();
+    this.pendingDup = { items, text: line, askedAt: now, expires: now + this.dupTtl, via };
+    this.logDup('asked', items);
+    window.setTimeout(() => pulseCards([...new Set(items.map((i) => i.matchId))], 2400 * BUDDY_SLOW, ACK_COLOR), 200);
+    this.say(line, { tag, chips: this.dupChips(items.length), ms: this.dupTtl / BUDDY_SLOW });
+    return line;
+  }
+
+  /** A brain dump (quest-input.ts) added the fresh items and hands over the duplicates. */
+  private askDumpDuplicates(dump: DumpItem[], added: number): void {
+    const cards = this.cardList();
+    const items: DupItem[] = dump.map((d) => {
+      const match = findDuplicate(d.title, cards);
+      return { ...d, matchId: match?.card.id ?? '', matchTitle: match?.card.title ?? d.title };
+    });
+    this.markUsed();
+    this.setOrb('done', 1300);
+    const prefix = added > 0 ? `Added ${added} new.` : '';
+    const reply = this.askDuplicates(items, prefix, 'QUESTTY', 'dump');
+    this.runs.push({
+      text: '(brain dump)',
+      source: 'voice',
+      mode: 'local',
+      actions: [],
+      rejected: [],
+      reply,
+      log: [],
+      held: items.map((h) => ({ title: h.title, match: h.matchId })),
+      at: Date.now(),
+    });
+    if (this.runs.length > 30) this.runs.shift();
+  }
+
+  /** The question lapsed (timeout) or another command came in: drop it without a word. */
+  private dropDup(reason: 'expired' | 'superseded'): void {
+    const pending = this.pendingDup;
+    if (pending === undefined) return;
+    this.pendingDup = undefined;
+    this.logDup(reason, pending.items);
+    console.info(`[buddy] duplicate question ${reason}: treated as Skip`);
+    if (reason === 'expired' && this.bubble !== undefined && this.bubble.text === pending.text) this.hideBubble();
+  }
+
+  /** Add anyway / Skip / Show it, from a chip or a spoken or typed reply. */
+  private async resolveDup(kind: DupAnswer, text: string, source: 'voice' | 'tap'): Promise<RunRecord | null> {
+    const pending = this.pendingDup;
+    if (pending === undefined || this.busy) return null;
+    if (performance.now() > pending.expires) {
+      this.dropDup('expired');
+      return null;
+    }
+    const record: RunRecord = { text, source, mode: 'local', actions: [], rejected: [], reply: '', log: [], at: Date.now(), answer: kind };
+    this.runs.push(record);
+    if (this.runs.length > 30) this.runs.shift();
+    const one = pending.items.length === 1;
+    this.logDup(kind, pending.items);
+
+    if (kind === 'skip') {
+      this.pendingDup = undefined;
+      record.reply = one ? 'Okay, skipped it.' : 'Okay, skipped them.';
+      this.setOrb('done', 1200);
+      this.say(record.reply, { ms: 3000 });
+      return record;
+    }
+
+    if (kind === 'add') {
+      this.pendingDup = undefined;
+      const actions: BuddyAction[] = pending.items.map((i) => {
+        const category = (BUDDY_CATEGORIES as readonly string[]).includes(i.category ?? '') ? (i.category as BuddyCategory) : undefined;
+        return { type: 'add_card', title: i.title, ...(category ? { category } : {}), ...(i.xp !== undefined ? { xp: i.xp } : {}) };
+      });
+      record.actions = actions;
+      this.busy = true;
+      this.setOrb('thinking');
+      let result: ExecResult;
+      try {
+        result = await this.executor.run(actions);
+      } catch (error) {
+        console.warn('[buddy] add anyway failed', error);
+        this.busy = false;
+        record.reply = 'Something went wrong there.';
+        this.setOrb('error', 1800);
+        this.say(record.reply, { ms: 4500 });
+        return record;
+      }
+      record.log = result.log;
+      record.reply = result.reply;
+      await this.present(result, record.reply, 'QUESTTY');
+      return record;
+    }
+
+    // Show it: the find light line to the existing card(s); the question stays open.
+    const ids = [...new Set(pending.items.map((i) => i.matchId))].filter((id) => findQuestCard(id) !== undefined);
+    if (ids.length === 0) {
+      this.pendingDup = undefined;
+      record.reply = 'I can\'t find it anymore. Say "add" to make a new one.';
+      this.say(record.reply, { ms: 4000 });
+      return record;
+    }
+    const actions: BuddyAction[] = ids.slice(0, 6).map((id) => ({ type: 'find', card_id: id }));
+    record.actions = actions;
+    this.busy = true;
+    const result = await this.executor.run(actions);
+    record.log = result.log;
+    const ask = one ? 'Add another one?' : 'Add them anyway?';
+    record.reply = `${ids.length === 1 ? result.reply : `They're highlighted.`} ${ask}`;
+    await this.present(result, record.reply, 'QUESTTY');
+    const now = performance.now();
+    this.pendingDup = { ...pending, text: record.reply, expires: now + this.dupTtl };
+    this.say(record.reply, { tag: 'QUESTTY', chips: this.dupChips(pending.items.length, false), ms: this.dupTtl / BUDDY_SLOW });
     return record;
   }
 
@@ -549,13 +945,13 @@ export class BuddySystem extends createSystem({
 
   // ------------------------------------------------------------ cards
 
-  private async spawnCard(title: string, category?: string): Promise<Entity> {
+  private async spawnCard(title: string, category?: string, xp = 20): Promise<Entity> {
     const head = this.world.player.head;
     head.updateWorldMatrix(true, false);
     const position = head.getWorldPosition(new Vector3());
     const forward = head.getWorldDirection(new Vector3()).negate();
     const pose = nextFreeSlot(position, homeForward(forward), floatingCardPositions(this.queries.cards.entities));
-    return createQuestCard({ title, xp: 20, position: pose.position, quaternion: pose.quaternion, category });
+    return createQuestCard({ title, xp, position: pose.position, quaternion: pose.quaternion, category });
   }
 
   /**
@@ -586,19 +982,187 @@ export class BuddySystem extends createSystem({
     };
   }
 
-  private readonly glides = new Map<Entity, { from: Vector3; fromQ: Quaternion; to: Vector3; toQ: Quaternion; start: number }>();
+  private readonly glides = new Map<
+    Entity,
+    { from: Vector3; fromQ: Quaternion; fromS: number; to: Vector3; toQ: Quaternion; toS: number; start: number }
+  >();
 
-  private glide(entity: Entity, to: Vector3, toQ: Quaternion): void {
+  private glide(entity: Entity, to: Vector3, toQ: Quaternion, toS = FLOAT_CARD_SCALE): void {
     const object = entity.object3D;
     if (object == null) return;
     object.updateWorldMatrix(true, false);
     this.glides.set(entity, {
       from: object.getWorldPosition(new Vector3()),
       fromQ: object.getWorldQuaternion(new Quaternion()),
+      fromS: object.scale.x,
       to: to.clone(),
       toQ: toQ.clone(),
+      toS,
       start: performance.now(),
     });
+  }
+
+  // ------------------------------------------------------------ spatial tools (PR 7)
+
+  private eyeAndForward(): { eye: Vector3; forward: Vector3 } {
+    const head = this.world.player.head;
+    head.updateWorldMatrix(true, false);
+    const eye = head.getWorldPosition(new Vector3());
+    const forward = homeForward(head.getWorldDirection(new Vector3()).negate());
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-4) forward.set(0, 0, -1);
+    return { eye, forward: forward.normalize() };
+  }
+
+  /** The seated focus spot: ~0.52 m ahead, a little below the eyes, facing them. */
+  private focusSpot(offsetX = 0, offsetY = 0, extraDistance = 0): { p: Vector3; q: Quaternion } {
+    const { eye, forward } = this.eyeAndForward();
+    const right = new Vector3(-forward.z, 0, forward.x);
+    const shift = (FOCUS_PANEL_UNITS * FLOAT_CARD_SCALE + 0.015) / 2;
+    const p = eye
+      .clone()
+      .addScaledVector(forward, FOCUS_DISTANCE + extraDistance)
+      .addScaledVector(right, -shift + offsetX);
+    p.y = eye.y - FOCUS_DROP + offsetY;
+    const q = new Quaternion().setFromRotationMatrix(new Matrix4().lookAt(eye, p, new Vector3(0, 1, 0)));
+    return { p, q };
+  }
+
+  private poseOf(entity: Entity) {
+    const object = entity.object3D!;
+    object.updateWorldMatrix(true, false);
+    return {
+      position: object.getWorldPosition(new Vector3()),
+      quaternion: object.getWorldQuaternion(new Quaternion()),
+      scale: object.scale.x,
+      surfaceId: entity.getValue(QuestCard, 'surfaceId') as string,
+      zoneId: entity.getValue(QuestCard, 'zoneId') as string,
+    };
+  }
+
+  /** Put a card back exactly where a snapshot had it: re-pinned (lands flush) or floating. */
+  private restorePose(entity: Entity, snap: ReturnType<BuddySystem['poseOf']>): void {
+    if (!entity.active) return;
+    this.glides.delete(entity);
+    if (snap.surfaceId.length > 0 && snap.zoneId.length > 0 && surfaceInfo(snap.surfaceId) !== null) {
+      const kind = snap.zoneId as SurfaceKind;
+      const target: SnapTarget = {
+        surfaceId: snap.surfaceId,
+        kind,
+        label: kind[0].toUpperCase() + kind.slice(1),
+        position: snap.position,
+        quaternion: snap.quaternion,
+        scale: snap.scale,
+        via: 'ray',
+      };
+      pinQuestCard(entity, target);
+      return;
+    }
+    if ((entity.getValue(QuestCard, 'surfaceId') as string).length > 0) unpinQuestCard(entity);
+    this.glide(entity, snap.position, snap.quaternion, snap.scale);
+  }
+
+  private pinTo(entity: Entity, target: SnapTarget): boolean {
+    this.glides.delete(entity);
+    return pinQuestCard(entity, target);
+  }
+
+  private floatTo(entity: Entity, p: Vector3, q: Quaternion): void {
+    if ((entity.getValue(QuestCard, 'surfaceId') as string).length > 0) unpinQuestCard(entity);
+    this.glide(entity, p, q, FLOAT_CARD_SCALE);
+  }
+
+  private missReply(target: PlaceTarget, nearest: { target: PlaceTarget; where: string } | null, wanted: string): PlaceOutcome {
+    if (nearest === null) return { ok: false, reply: `I can't find ${wanted} in your room yet.` };
+    const short = nearest.where.replace(/^the wall /u, 'wall ').replace(/^your /u, '');
+    return {
+      ok: false,
+      reply: `I don't see ${wanted}. The closest is ${nearest.where}. Put it there?`,
+      offer: { label: `Use ${short}`, target: nearest.target },
+    };
+  }
+
+  private place(entity: Entity, target: PlaceTarget, refId?: string): PlaceOutcome {
+    if (entity.object3D == null) return { ok: false, reply: "I can't move that one right now." };
+    const id = entity.getValue(QuestCard, 'cardId') as string;
+    const snap = this.poseOf(entity);
+    const undo = () => this.restorePose(entity, snap);
+    if (target === 'here') {
+      const spot = this.focusSpot();
+      this.floatTo(entity, spot.p, spot.q);
+      return { ok: true, where: whereLabel('here'), undo };
+    }
+    if (target === 'next_to') {
+      const ref = refId !== undefined ? findQuestCard(refId) : undefined;
+      if (ref === undefined || ref.object3D == null) return { ok: false, reply: "I can't find the other card." };
+      const r = this.poseOf(ref);
+      const title = ref.getValue(QuestCard, 'title') as string;
+      const where = `next to "${title.length > 24 ? `${title.slice(0, 23)}...` : title}"`;
+      const across = new Vector3(1, 0, 0).applyQuaternion(r.quaternion);
+      if (r.surfaceId.length > 0 && surfaceInfo(r.surfaceId) !== null) {
+        const aim = r.position.clone().addScaledVector(across, (CARD_UNITS_W + FOCUS_PANEL_UNITS) * r.scale + 0.03);
+        const t = snapTargetOn(r.surfaceId, aim, id);
+        if (t === null) return { ok: false, reply: "That card's surface is gone." };
+        this.pinTo(entity, t);
+        return { ok: true, where, undo };
+      }
+      // Floating: beside it at the same height, on whichever side is free.
+      const step = CARD_UNITS_W * FLOAT_CARD_SCALE + 0.05;
+      const taken = this.cardList()
+        .filter((c) => c.id !== id && c.id !== refId)
+        .map((c) => findQuestCard(c.id)?.object3D?.getWorldPosition(new Vector3()))
+        .filter((v): v is Vector3 => v !== undefined);
+      const right = r.position.clone().addScaledVector(across, step);
+      const left = r.position.clone().addScaledVector(across, -step);
+      const clear = (p: Vector3) => taken.every((o) => o.distanceTo(p) > step * 0.8);
+      this.floatTo(entity, clear(right) || !clear(left) ? right : left, r.quaternion);
+      return { ok: true, where, undo };
+    }
+    const { eye, forward } = this.eyeAndForward();
+    const res = resolvePlace(target, spatialSurfaces(), eye, forward);
+    if (!res.ok) return this.missReply(target, res.nearest, res.wanted);
+    const t = snapTargetOn(res.surface.id, aimPoint(res.surface, eye), id);
+    if (t === null) return { ok: false, reply: `I lost track of ${res.where}. Try again in a moment.` };
+    this.pinTo(entity, t);
+    return { ok: true, where: res.where, undo };
+  }
+
+  private arrange(entities: Entity[], target: PlaceTarget): PlaceOutcome {
+    const snaps = entities.map((e) => this.poseOf(e));
+    const undo = () => entities.forEach((e, i) => this.restorePose(e, snaps[i]));
+    if (target === 'here') {
+      // Rows of up to four floating cards at the focus spot, facing the eyes.
+      const perRow = Math.min(4, entities.length);
+      const stepX = CARD_UNITS_W * FLOAT_CARD_SCALE + 0.03;
+      const stepY = CARD_UNITS_H * FLOAT_CARD_SCALE + 0.03;
+      entities.forEach((e, i) => {
+        const row = Math.floor(i / perRow);
+        const col = i % perRow;
+        const inRow = Math.min(perRow, entities.length - row * perRow);
+        const spot = this.focusSpot((col - (inRow - 1) / 2) * stepX, -row * stepY + 0.08, 0.22);
+        this.floatTo(e, spot.p, spot.q);
+      });
+      return { ok: true, where: whereLabel('here'), undo };
+    }
+    if (target === 'next_to') return { ok: false, reply: 'Line them up where? Try "on the desk".' };
+    const { eye, forward } = this.eyeAndForward();
+    const res = resolvePlace(target, spatialSurfaces(), eye, forward);
+    if (!res.ok) return this.missReply(target, res.nearest, res.wanted);
+    const ids = entities.map((e) => e.getValue(QuestCard, 'cardId') as string);
+    const targets = rowTargetsOn(res.surface.id, aimPoint(res.surface, eye), ids);
+    if (targets === null || targets.length !== entities.length) return { ok: false, reply: `I lost track of ${res.where}.` };
+    let count = 0;
+    entities.forEach((e, i) => {
+      if (this.pinTo(e, targets[i])) count += 1;
+    });
+    if (count === 0) return { ok: false, reply: `I couldn't move those cards to ${res.where}.` };
+    return { ok: true, where: res.where, undo, count };
+  }
+
+  private where(entity: Entity): string {
+    const pose = this.poseOf(entity);
+    const { eye, forward } = this.eyeAndForward();
+    return describeSpot(pose.position, pose.zoneId.length > 0 ? pose.zoneId : 'float', eye, forward);
   }
 
   private updateGlides(now: number): void {
@@ -611,7 +1175,7 @@ export class BuddySystem extends createSystem({
       const e = 1 - (1 - t) ** 3;
       const p = g.from.clone().lerp(g.to, e);
       const q = g.fromQ.clone().slerp(g.toQ, e);
-      setCardWorldPose(entity, p, q, FLOAT_CARD_SCALE);
+      setCardWorldPose(entity, p, q, g.fromS + (g.toS - g.fromS) * e);
       if (t >= 1) {
         this.glides.delete(entity);
         emitCardEvent('floated', entity);
@@ -760,10 +1324,12 @@ export class BuddySystem extends createSystem({
     // Pointed at with chips to press: hold it a little longer.
     if (b.hovered && b.chips.length > 0 && b.opacity > 0.5 && b.until - now < 1500 * BUDDY_SLOW) b.until = now + 1500 * BUDDY_SLOW;
     const want = collapsed && now < b.until ? 1 : 0;
-    const step = want > b.opacity ? 1000 / FADE_IN_MS : 1000 / FADE_OUT_MS;
     const dt = Math.min(0.1, (now - (this.lastBubbleAt || now)) / 1000);
     this.lastBubbleAt = now;
-    b.opacity = want > b.opacity ? Math.min(1, b.opacity + step * dt) : Math.max(0, b.opacity - step * dt);
+    // Ease toward the wanted opacity and stop there. (PR 6 treated "already
+    // there" as "fade out", so a fully shown bubble dipped by dt/FADE_OUT_MS
+    // every other frame and bounced back: the flicker under the orb.)
+    b.opacity = stepToward(b.opacity, want, dt, FADE_IN_MS, FADE_OUT_MS);
     const visible = b.opacity > 0.01;
     if (b.panel.visible !== visible) b.panel.visible = visible;
     if (!visible) return;
@@ -772,7 +1338,13 @@ export class BuddySystem extends createSystem({
       b.panel.getElementById('buddy-bubble')?.setProperties({ opacity: b.opacity } as never);
     }
     this.placeBubble(b, 1 - b.opacity);
+    if (import.meta.env.DEV) {
+      this.bubbleTrace.push([Math.round(now), +b.opacity.toFixed(3), collapsed ? 1 : 0, b.hovered ? 1 : 0]);
+      if (this.bubbleTrace.length > 4000) this.bubbleTrace.splice(0, 1000);
+    }
   }
+
+  private readonly bubbleTrace: number[][] = [];
 
   private lastBubbleAt = 0;
 
@@ -841,6 +1413,7 @@ export class BuddySystem extends createSystem({
         ? {
             visible: b.panel.visible,
             opacity: +b.opacity.toFixed(3),
+            hovered: b.hovered,
             text: b.text,
             tag: b.tag,
             chips: b.chips.map((c) => ({ label: c.label, kind: c.kind })),
@@ -853,6 +1426,16 @@ export class BuddySystem extends createSystem({
       runs: this.runs.map((r) => ({ ...r })),
       undoDepth: this.undoStack.length,
       offer: this.pendingOffer ? { label: this.pendingOffer.label, action: this.pendingOffer.action } : null,
+      duplicate: this.pendingDup
+        ? {
+            text: this.pendingDup.text,
+            via: this.pendingDup.via,
+            items: this.pendingDup.items.map((i) => ({ title: i.title, matchId: i.matchId, matchTitle: i.matchTitle })),
+            msLeft: Math.round(this.pendingDup.expires - performance.now()),
+          }
+        : null,
+      dupLog: [...this.dupLog],
+      delegations: [...this.delegationLog],
       busy: this.busy,
       used: this.used,
       head: this.head.toArray(),

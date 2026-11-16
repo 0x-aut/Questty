@@ -7,7 +7,7 @@
  * Pure (no IWSDK imports): the harness unit-tests it with esbuild.
  */
 import { inferCategory, stripTiming } from '../category-config.js';
-import type { BuddyCard, BuddyCategory } from './actions.js';
+import type { BuddyCard, BuddyCategory, PlaceTarget } from './actions.js';
 
 export type ParseResult =
   | { kind: 'command'; actions: Array<Record<string, unknown>>; reply?: string }
@@ -113,6 +113,39 @@ const CATEGORY_LABEL: Record<BuddyCategory | 'all', string> = {
 };
 export const categoryLabel = (c: BuddyCategory | 'all'): string => CATEGORY_LABEL[c];
 
+// ------------------------------------------------------------------ places (PR 7)
+
+/**
+ * A spoken place in the room to a spatial target: "the desk", "the wall on my
+ * left", "the door", "here" / "in front of me", "next to the gym card".
+ * Returns null when the words name no place (so "move gym to later" stays a
+ * category move).
+ */
+export function placeFromWords(text: string): { target: PlaceTarget; ref?: string } | null {
+  const t = ` ${text.toLowerCase().replace(/[.!?]+$/u, '').trim()} `;
+  const next = /\b(?:next to|beside|by|alongside)\s+(.+?)\s*$/u.exec(t.trim());
+  if (next !== null && !/^(the\s+)?(door|desk|table|wall|window)\b/u.test(next[1])) return { target: 'next_to', ref: next[1] };
+  const wall = /\bwalls?\b/u.test(t);
+  if (/\bleft\b/u.test(t) && (wall || /\b(on|to) (my|the) left\b|\bmy left\b|\bleft side\b/u.test(t))) return { target: 'wall_left' };
+  if (/\bright\b/u.test(t) && (wall || /\b(on|to) (my|the) right\b|\bmy right\b|\bright side\b/u.test(t))) return { target: 'wall_right' };
+  if (wall) return { target: 'wall_front' };
+  if (/\b(desk|table|coffee table|counter)\b/u.test(t)) return { target: 'desk' };
+  if (/\bdoor(way)?\b/u.test(t)) return { target: 'door' };
+  if (/\b(here|over here|in front of me|front of me|to me|my focus spot|focus spot|where i can see it|close(r)? to me)\b/u.test(t)) return { target: 'here' };
+  return null;
+}
+
+const PLACE_LABEL: Record<PlaceTarget, string> = {
+  desk: 'your desk',
+  wall_front: 'the wall in front of you',
+  wall_left: 'the wall on your left',
+  wall_right: 'the wall on your right',
+  door: 'the door',
+  here: 'right in front of you',
+  next_to: 'next to it',
+};
+export const placeLabel = (t: PlaceTarget): string => PLACE_LABEL[t];
+
 // ------------------------------------------------------------------ planning
 
 const MORNING = /\b(morning|breakfast|first thing|am)\b/iu;
@@ -149,7 +182,7 @@ export function planOrder(cards: readonly BuddyCard[]): string[] {
 // ------------------------------------------------------------------ routing
 
 const COMMAND_START =
-  /^(add|create|new|make|remind me|rename|retitle|change|call it|move|push|put|shift|send|bump|what|what's|whats|show|list|how many|start|begin|focus|do \d|pause|hold|resume|continue|unpause|keep going|extend|give me|end|stop|finish|mark|tick|check off|complete|done|i finished|i'm done|i am done|i did|delete|remove|trash|get rid|drop|plan|order|undo|yes|yeah|yep|sure|ok|okay|do it)\b/iu;
+  /^(add|create|new|make|remind me|rename|retitle|change|call it|move|push|put|shift|send|bump|what|what's|whats|show|list|how many|start|begin|focus|do \d|pause|hold|resume|continue|unpause|keep going|extend|give me|end|stop|finish|mark|tick|check off|complete|done|i finished|i'm done|i am done|i did|delete|remove|trash|get rid|drop|plan|order|undo|yes|yeah|yep|sure|ok|okay|do it|find|where|where's|wheres|locate|place|stick|pin|bring|hang|take|line up|line them|arrange|lay out|tidy|point)\b/iu;
 
 /**
  * One mic, two jobs: is this a buddy command, or a brain dump that should
@@ -206,6 +239,51 @@ export function parseCommand(input: string, cards: readonly BuddyCard[]): ParseR
     return { kind: 'command', actions: [{ type: 'plan_day', order }] };
   }
 
+  // ---- find (PR 7): "where's the gym card?", "find the pitch deck", "show me where laundry is"
+  const find =
+    /^(?:find|locate|point (?:me )?(?:to|at)|show me where|where(?:'s| is| are| did i put| did you put)?|wheres|which one is)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:is|are|went|card))?$/u.exec(lower);
+  if (find !== null && !/^(what|whats)\b/u.test(lower)) {
+    const target = card(find[1]);
+    if (target === null) return notFound(find[1]);
+    return { kind: 'command', actions: [{ type: 'find', card_id: target.id }] };
+  }
+
+  // ---- arrange (PR 7): "line up my today cards on the desk", "arrange everything on the left wall"
+  const arrange =
+    /^(?:line up|line|arrange|lay out|lay|tidy(?: up)?|organi[sz]e|put|move|stick|pin)\s+(?:up\s+)?(?:all\s+(?:of\s+)?)?(?:the\s+|my\s+)?(.*?)\b(cards|quests|tasks|everything|them all|them)\b(?:\s+up)?\s+(?:on|onto|along|across|to|against|over|in|(?=here\b))\s*(.+)$/u.exec(lower);
+  if (arrange !== null) {
+    const place = placeFromWords(arrange[3]);
+    if (place !== null && place.target !== 'next_to') {
+      const cat = categoryFromWords(arrange[1]);
+      const action: Record<string, unknown> = { type: 'arrange', target: place.target };
+      if (cat !== null) action.category = cat;
+      return { kind: 'command', actions: [action] };
+    }
+  }
+
+  // ---- place (PR 7): "move the gym card to the left wall", "put laundry on the desk", "bring the deck here"
+  const placeVerb = /^(?:move|put|place|stick|send|pin|bring|hang|take|drop|push)\s+(.+)$/u.exec(lower);
+  if (placeVerb !== null) {
+    const rest = placeVerb[1];
+    const split =
+      /^(.+?)\s+(?:on|onto|to|over to|up on|against|at|in|into)\s+(?:the\s+|my\s+)?((?:wall|desk|table|coffee table|door|left|right|focus|front).*)$/u.exec(rest) ??
+      /^(.+?)\s+((?:over\s+)?here|in front of me|to me|closer|next to .+|beside .+|alongside .+)$/u.exec(rest);
+    if (split !== null) {
+      const place = placeFromWords(split[2]);
+      if (place !== null) {
+        const target = card(split[1]);
+        if (target === null) return notFound(split[1]);
+        if (place.target === 'next_to') {
+          const ref = card(place.ref ?? '');
+          if (ref === null) return notFound(place.ref ?? '');
+          if (ref.id === target.id) return { kind: 'miss', reply: 'Next to which other card?' };
+          return { kind: 'command', actions: [{ type: 'place_card', card_id: target.id, target: 'next_to', ref_card_id: ref.id }] };
+        }
+        return { kind: 'command', actions: [{ type: 'place_card', card_id: target.id, target: place.target }] };
+      }
+    }
+  }
+
   // ---- questions: what's left today / later / before I leave
   const ask = /^(what's|whats|what is|what do i have|what have i got|show( me)?|list|how many)\b(.*)$/u.exec(lower);
   if (ask !== null) {
@@ -237,10 +315,13 @@ export function parseCommand(input: string, cards: readonly BuddyCard[]): ParseR
   const startC = /^(?:start|begin)\s+(?:the\s+)?(.+?)(?:\s+for\s+(.+?)\s*(?:min(?:ute)?s?|m)?)?$/u.exec(lower);
   let startRef: string | null = null;
   let startMin: number | null = null;
+  let startType: 'start_focus' | 'focus_on' = 'start_focus';
   if (startA !== null && parseMinutes(startA[2]) !== null) {
     startRef = startA[3];
     startMin = parseMinutes(startA[2]);
   } else if (startB !== null) {
+    // "focus on X": bring the card to the seated focus spot and start (PR 7).
+    startType = 'focus_on';
     startRef = startB[1];
     startMin = startB[2] !== undefined ? parseMinutes(startB[2]) : null;
   } else if (startC !== null && !/^(the )?(first|timer|focus)( one)?$/u.test(startC[1])) {
@@ -250,7 +331,7 @@ export function parseCommand(input: string, cards: readonly BuddyCard[]): ParseR
   if (startRef !== null) {
     const target = card(startRef);
     if (target === null) return notFound(startRef);
-    return { kind: 'command', actions: [{ type: 'start_focus', card_id: target.id, minutes: startMin ?? 25 }] };
+    return { kind: 'command', actions: [{ type: startType, card_id: target.id, minutes: startMin ?? 25 }] };
   }
 
   // ---- finish: "mark laundry done", "I finished the laundry", "laundry is done", "complete laundry"
@@ -291,7 +372,13 @@ export function parseCommand(input: string, cards: readonly BuddyCard[]): ParseR
     /^(?:move|push|put|shift|send|bump)\s+(.+?)\s+(later|today|tomorrow|tonight)$/u.exec(lower);
   if (move !== null) {
     const cat = categoryFromWords(move[2]);
-    if (cat === null) return { kind: 'miss', reply: 'Move it to Today, Later or Before I leave?' };
+    if (cat === null) {
+      // A place the room can't hold a card on ("the ceiling", "the floor", "the window").
+      if (/\b(ceiling|floor|roof|window|couch|sofa|bed|chair|shelf|lamp)\b/u.test(move[2])) {
+        return { kind: 'miss', reply: "Cards can't go there. Try a wall, the desk, the door, or here." };
+      }
+      return { kind: 'miss', reply: 'Move it to Today, Later or Before I leave?' };
+    }
     const target = card(move[1]);
     if (target === null) return notFound(move[1]);
     return { kind: 'command', actions: [{ type: 'set_category', card_id: target.id, category: cat }] };

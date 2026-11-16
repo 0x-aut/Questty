@@ -108,6 +108,14 @@ export class CardPersistenceSystem extends createSystem({
         if (!detail.restored || !records.has(id)) this.save(entity, null);
       } else if (type === 'grabbed') {
         this.anchors.delete(id); // stop following; the old handle is dropped on release
+      } else if (type === 'moving') {
+        // A buddy move (PR 7): the same, and free the live anchor now. The old
+        // persistent handle is dropped when the new anchor is made ('pinned')
+        // or the card is saved as floating ('floated').
+        const live = this.anchors.get(id);
+        this.anchors.delete(id);
+        this.pendingAnchors.delete(id);
+        live?.delete?.();
       } else if (type === 'pinned') {
         this.save(entity, detail.target?.surfaceId ?? null);
         // Wait for the flight to land before anchoring the final pose.

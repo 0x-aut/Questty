@@ -15,7 +15,20 @@ type VercelResponseLike = {
 // Kept under Vercel's 4.5 MB body limit: 30 s of Opus is roughly 150-250 KB.
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_AUDIO_BYTES = 3_000_000;
-const TRANSCRIBE_MODEL = 'gpt-4o-mini-transcribe';
+// gpt-transcribe is OpenAI's current file-transcription model (the 4o
+// transcribe models are deprecated, shutting down 2027-02-26). If the project
+// cannot use it (a 400/403/404 from the API), retry once with the older model.
+const TRANSCRIBE_MODEL = 'gpt-transcribe';
+const FALLBACK_TRANSCRIBE_MODEL = 'gpt-4o-mini-transcribe';
+const MODEL_RE = /^[\w.:-]{1,64}$/u;
+
+function readTranscribeModel(): string {
+  const runtime = globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  };
+  const model = runtime.process?.env?.OPENAI_TRANSCRIBE_MODEL;
+  return typeof model === 'string' && MODEL_RE.test(model) ? model : TRANSCRIBE_MODEL;
+}
 
 function readApiKey(): string | undefined {
   const runtime = globalThis as typeof globalThis & {
@@ -35,10 +48,7 @@ function extensionFor(mimeType: string): string {
   return 'webm';
 }
 
-export default async function handler(
-  request: VercelRequestLike,
-  response: VercelResponseLike,
-): Promise<void> {
+export default async function handler(request: VercelRequestLike, response: VercelResponseLike): Promise<void> {
   if (request.method === 'GET') {
     // Capability probe for the client: is server transcription configured?
     // Never reveals the key itself.
@@ -77,24 +87,41 @@ export default async function handler(
     return;
   }
 
-  const form = new FormData();
-  form.append('file', new Blob([bytes], { type: mimeType }), `brain-dump.${extensionFor(mimeType)}`);
-  form.append('model', TRANSCRIBE_MODEL);
-  form.append('response_format', 'json');
-  form.append(
-    'prompt',
-    'A person listing tasks and to-dos for their day, for example: email Sam, finish the deck, go to the gym.',
-  );
+  const buildForm = (model: string): FormData => {
+    const form = new FormData();
+    form.append('file', new Blob([bytes], { type: mimeType }), `brain-dump.${extensionFor(mimeType)}`);
+    form.append('model', model);
+    form.append('response_format', 'json');
+    form.append(
+      'prompt',
+      'A person listing tasks and to-dos for their day, for example: email Sam, finish the deck, go to the gym.',
+    );
+    return form;
+  };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const openAIResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
-      signal: controller.signal,
-    });
+    const post = (model: string) =>
+      fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: buildForm(model),
+        signal: controller.signal,
+      });
+    const model = readTranscribeModel();
+    let openAIResponse = await post(model);
+    if (!openAIResponse.ok && [400, 403, 404].includes(openAIResponse.status) && model !== FALLBACK_TRANSCRIBE_MODEL) {
+      console.error(
+        '[transcribe]',
+        model,
+        'returned',
+        openAIResponse.status,
+        '- retrying with',
+        FALLBACK_TRANSCRIBE_MODEL,
+      );
+      openAIResponse = await post(FALLBACK_TRANSCRIBE_MODEL);
+    }
     if (!openAIResponse.ok) {
       console.error('[transcribe] OpenAI returned', openAIResponse.status);
       response.status(502).json({ error: 'transcription-failed' });
@@ -104,9 +131,9 @@ export default async function handler(
     const text = typeof payload.text === 'string' ? payload.text.trim() : '';
     response.status(200).json({ text: Array.from(text).slice(0, 1_000).join('') });
   } catch {
-    response
-      .status(504)
-      .json({ error: controller.signal.aborted ? 'timeout' : 'transcription-failed' });
+    response.status(504).json({
+      error: controller.signal.aborted ? 'timeout' : 'transcription-failed',
+    });
   } finally {
     clearTimeout(timeout);
   }

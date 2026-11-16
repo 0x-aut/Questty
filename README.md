@@ -58,9 +58,27 @@ from the Vite dev server (reading `.env`), so voice works locally too.
 
 | Endpoint | Model | Used for |
 | --- | --- | --- |
-| `POST /api/transcribe` | `gpt-4o-mini-transcribe` | Speech to text for the mic button |
-| `GET /api/transcribe` | none | Tells the app whether server transcription is configured |
-| `POST /api/quests` | `gpt-4o-mini` | Turns the transcript into 3-5 quest cards, and the in-focus **Need a nudge** |
+| `POST /api/transcribe` | `gpt-transcribe` (falls back to `gpt-4o-mini-transcribe`) | Speech to text for the mic and push-to-talk |
+| `POST /api/quests` | `gpt-6-luna` (Responses API, strict JSON schema) | Turns the transcript into 3-5 quest cards, and the in-focus **Need a nudge** |
+| `POST /api/buddy` | `gpt-6-luna` (Responses API, strict JSON schema) | The buddy's commands: validated actions only (move, arrange, find, focus...) |
+| `POST /api/live` | `gpt-live-1` (WebRTC, client delegation) | Talk mode: exchanges the browser's SDP offer for an answer on the server |
+| `GET /api/*` | none | Tells the app whether that route is configured (else it falls back) |
+
+Optional server variables (all have defaults): `OPENAI_TEXT_MODEL`,
+`OPENAI_BUDDY_MODEL`, `OPENAI_QUESTS_MODEL`, `OPENAI_REASONING_EFFORT`
+(`none|low|medium|high`, default `low`), `OPENAI_TRANSCRIBE_MODEL`,
+`OPENAI_LIVE_MODEL`, `OPENAI_LIVE_VOICE` (default `marin`).
+
+**Vercel:** Project Settings -> Environment Variables -> add `OPENAI_API_KEY`
+(Production and Preview), then redeploy. The functions in `api/` run on
+Vercel's Node runtime; `api/_openai.ts` is a shared helper (the underscore keeps
+it from becoming a route) imported as `./_openai.js`, which resolves to the
+`.ts` file in Vite dev and to the compiled file on Vercel.
+
+**Cost guards:** a talk session ends after 60 s without speech or after 5
+minutes (gpt-live-1 is billed per minute of session). Without a key every
+feature still works offline: the local phrase parser runs buddy commands and
+the mic falls back to push-to-talk.
 
 ### Voice capture
 
