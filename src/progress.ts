@@ -1,10 +1,36 @@
+import { countDay, dayKey, isDayKey, type CountResult } from './streak.js';
+
 export type ProgressState = {
   version: 1;
   xp: number;
   level: number;
   streak: number;
   lastCompletedAt: number | null;
+  /** PR 9: local calendar day ('YYYY-MM-DD') the streak last counted. */
+  lastDay: string | null;
 };
+
+/** What the last completion did (PR 9: the flame flares, the card shows the bonus). */
+export type AwardEvent = {
+  progress: ProgressState;
+  base: number;
+  bonusXp: number;
+  streak: CountResult;
+  levelBefore: number;
+};
+
+const awardListeners = new Set<(event: AwardEvent) => void>();
+/** Listen for completions (quest or focus); returns an unsubscribe. */
+export function onAward(listener: (event: AwardEvent) => void): () => void {
+  awardListeners.add(listener);
+  return () => awardListeners.delete(listener);
+}
+const progressListeners = new Set<(progress: ProgressState) => void>();
+/** Listen for any saved change to the progress (award, undo, dev hook). */
+export function onProgress(listener: (progress: ProgressState) => void): () => void {
+  progressListeners.add(listener);
+  return () => progressListeners.delete(listener);
+}
 
 export const PROGRESS_STORAGE_KEY = 'questty.progress.v1';
 const XP_PER_LEVEL = 100;
@@ -15,6 +41,7 @@ const DEFAULT_PROGRESS: ProgressState = {
   level: 1,
   streak: 0,
   lastCompletedAt: null,
+  lastDay: null,
 };
 
 export function getProgress(): ProgressState {
@@ -38,6 +65,12 @@ export function getProgress(): ProgressState {
       level: Math.max(1, value.level as number),
       streak: Math.max(0, value.streak as number),
       lastCompletedAt: value.lastCompletedAt ?? null,
+      // Saves from before PR 9 have no lastDay: derive it from the last completion (local date).
+      lastDay: isDayKey(value.lastDay)
+        ? value.lastDay
+        : typeof value.lastCompletedAt === 'number'
+          ? dayKey(value.lastCompletedAt)
+          : null,
     };
   } catch {
     return { ...DEFAULT_PROGRESS };
@@ -51,32 +84,44 @@ export function saveProgress(progress: ProgressState): void {
   } catch {
     // Storage may be disabled or full; quest completion still succeeds in memory.
   }
+  for (const listener of progressListeners) listener(progress);
 }
 
+/**
+ * A quest or focus session was completed: XP, level and the daily streak
+ * (local calendar days, one grace day; see streak.ts). The first completion
+ * of a day that continues a streak earns a small bonus (5 XP per streak day
+ * beyond the first, max 25).
+ */
 export function awardXp(amount: number, now = Date.now()): ProgressState {
   const previous = getProgress();
   const earned = Number.isFinite(amount) ? Math.max(0, Math.floor(amount)) : 0;
-  const previousDay =
-    previous.lastCompletedAt === null
-      ? null
-      : Math.floor(previous.lastCompletedAt / 86_400_000);
-  const today = Math.floor(now / 86_400_000);
-  const streak =
-    previousDay === null
-      ? 1
-      : previousDay === today
-        ? previous.streak
-        : previousDay === today - 1
-          ? previous.streak + 1
-          : 1;
-  const xp = previous.xp + earned;
+  const streak = countDay({ streak: previous.streak, lastDay: previous.lastDay }, dayKey(now));
+  const xp = previous.xp + earned + streak.bonusXp;
   const next: ProgressState = {
     version: 1,
     xp,
     level: Math.floor(xp / XP_PER_LEVEL) + 1,
-    streak,
+    streak: streak.streak,
     lastCompletedAt: now,
+    lastDay: streak.lastDay,
   };
+  saveProgress(next);
+  const event: AwardEvent = { progress: next, base: earned, bonusXp: streak.bonusXp, streak, levelBefore: previous.level };
+  lastAward = event;
+  for (const listener of awardListeners) listener(event);
+  return next;
+}
+
+let lastAward: AwardEvent | null = null;
+/** The most recent completion this page saw (null before any). */
+export function getLastAward(): AwardEvent | null {
+  return lastAward;
+}
+
+/** Dev hook (PR 9): set the streak directly for tests and the demo video. */
+export function setStreakForDev(streak: number, lastDay: string | null): ProgressState {
+  const next: ProgressState = { ...getProgress(), streak: Math.max(0, Math.floor(streak)), lastDay };
   saveProgress(next);
   return next;
 }

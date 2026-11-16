@@ -184,6 +184,13 @@ export function spatialSurfaces(): SpatialSurface[] {
   return activeSystem?.spatial() ?? [];
 }
 
+export type SurfaceFrame = SpatialSurface & { u: Vector3; v: Vector3 };
+
+/** PR 9: every snap surface with its in-plane axes (u along width, v along height). */
+export function surfaceFrames(): SurfaceFrame[] {
+  return activeSystem?.spatialFrames() ?? [];
+}
+
 /**
  * Where a card would land on one surface near `point`: the same conforming,
  * no-overlap placement a hand drop uses (flush, inside the polygon, beside
@@ -300,6 +307,10 @@ export class SurfaceSystem extends createSystem({
       label = plane?.semanticLabel ?? label;
     }
     return { surfaceId: frame.id, kind: frame.kind, label, origin: frame.origin.clone(), quaternion };
+  }
+
+  spatialFrames(): SurfaceFrame[] {
+    return this.spatial().map((surface, i) => ({ ...surface, u: this.frames[i].u.clone(), v: this.frames[i].v.clone() }));
   }
 
   spatial(): SpatialSurface[] {

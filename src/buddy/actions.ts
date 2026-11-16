@@ -37,7 +37,9 @@ export type BuddyAction =
   | { type: 'place_card'; card_id: string; target: PlaceTarget; ref_card_id?: string }
   | { type: 'arrange'; target: PlaceTarget; category?: BuddyCategory; card_ids?: string[] }
   | { type: 'focus_on'; card_id: string; minutes: number }
-  | { type: 'find'; card_id: string };
+  | { type: 'find'; card_id: string }
+  /** PR 9: "what's my streak?" - the app answers from the saved streak. */
+  | { type: 'show_streak' };
 
 export type BuddyActionType = BuddyAction['type'];
 export const ACTION_TYPES: readonly BuddyActionType[] = [
@@ -54,6 +56,7 @@ export const ACTION_TYPES: readonly BuddyActionType[] = [
   'arrange',
   'focus_on',
   'find',
+  'show_streak',
 ];
 
 /** What the buddy (AI or parser) is told about each card: compact, no poses. */
@@ -209,6 +212,8 @@ export function validateAction(raw: unknown, cardIds: ReadonlySet<string>): Budd
       const id = card();
       return id === null ? 'unknown-card' : { type: 'find', card_id: id };
     }
+    case 'show_streak':
+      return { type: 'show_streak' };
     default:
       return 'unknown-type';
   }

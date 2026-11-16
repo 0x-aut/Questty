@@ -649,7 +649,7 @@ export class BuddySystem extends createSystem({
     record.log = result.log;
     const allOk = result.log.length > 0 && result.log.every((l) => l.ok) && result.confirm === undefined;
     // Spatial results are grounded in the room (where it landed, where it is): the executor's line wins.
-    const spatial = validated.actions.some((a) => a.type === 'place_card' || a.type === 'arrange' || a.type === 'find' || a.type === 'focus_on');
+    const spatial = validated.actions.some((a) => a.type === 'place_card' || a.type === 'arrange' || a.type === 'find' || a.type === 'focus_on' || a.type === 'show_streak');
     record.reply = aiReply !== null && allOk && result.offer === undefined && !spatial && held.length === 0 ? aiReply : result.reply;
     if (held.length > 0 && result.confirm !== undefined) {
       // A delete is waiting on its Confirm chip: don't stack a second question on it.
