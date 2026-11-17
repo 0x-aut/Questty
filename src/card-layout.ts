@@ -1,4 +1,5 @@
 import { Matrix4, Quaternion, Vector3 } from '@iwsdk/core';
+import { arcRadii, getSettings } from './settings.js';
 
 /** Scale of a floating card (UIKit units -> metres): about 0.23 m x 0.25 m. */
 export const FLOAT_CARD_SCALE = 0.09;
@@ -35,9 +36,10 @@ export function homeForward(fallback: Vector3): Vector3 {
 const STEP_DEG = 29;
 const ROWS: Array<{ drop: number; angles: number[] }> = [
   { drop: 0.3, angles: [0, -STEP_DEG, STEP_DEG, 2 * STEP_DEG] },
-  { drop: 0.58, angles: [-STEP_DEG / 2, STEP_DEG / 2, 1.5 * STEP_DEG, 2.5 * STEP_DEG] },
+  { drop: 0.63, angles: [-STEP_DEG / 2, STEP_DEG / 2, 1.5 * STEP_DEG, 2.5 * STEP_DEG] },
 ];
-const LAYER_RADII = [0.58, 0.72, 0.86];
+/** PR 10: seated mode pulls the arc in to arm's reach (settings.ts) and lifts the lower row. */
+const SEATED_DROPS = [0.22, 0.45];
 const SLOT_CLEARANCE = 0.14;
 
 const worldUp = new Vector3(0, 1, 0);
@@ -45,8 +47,9 @@ const lookMatrix = new Matrix4();
 
 /**
  * Every spawn slot, nearest first, for a head at `head` looking along the
- * horizontal `forward`. Cards sit 0.58-0.86 m away, 0.30-0.58 m below the
- * eyes, and turn to face the head.
+ * horizontal `forward`. Cards sit 0.58-0.86 m away, 0.30-0.63 m below the
+ * eyes (PR 11: the lower row 5 cm lower, so its top edge no longer hides
+ * behind the front row's bottom edge), and turn to face the head.
  */
 export function spawnSlots(head: Vector3, forward: Vector3): CardPose[] {
   const flat = forward.clone();
@@ -54,8 +57,11 @@ export function spawnSlots(head: Vector3, forward: Vector3): CardPose[] {
   if (flat.lengthSq() < 1e-4) flat.set(0, 0, -1);
   flat.normalize();
   const slots: CardPose[] = [];
-  for (const radius of LAYER_RADII) {
-    for (const row of ROWS) {
+  const radii = arcRadii();
+  const seated = getSettings().seated;
+  for (const radius of radii) {
+    for (const [rowIndex, row] of ROWS.entries()) {
+      const drop = seated ? SEATED_DROPS[rowIndex] : row.drop;
       for (const angle of row.angles) {
         const a = (angle * Math.PI) / 180;
         // Rotate `flat` about world up by -a (positive angle = to the right).
@@ -65,7 +71,7 @@ export function spawnSlots(head: Vector3, forward: Vector3): CardPose[] {
           flat.x * Math.sin(a) + flat.z * Math.cos(a),
         );
         const position = head.clone().addScaledVector(dir, radius);
-        position.y = head.y - row.drop - (radius - LAYER_RADII[0]) * 0.15;
+        position.y = head.y - drop - (radius - radii[0]) * 0.15;
         // Face the head: +Z of the card points at the eyes.
         lookMatrix.lookAt(head, position, worldUp);
         const quaternion = new Quaternion().setFromRotationMatrix(lookMatrix);

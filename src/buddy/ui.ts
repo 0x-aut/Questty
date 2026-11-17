@@ -14,6 +14,7 @@
  * The pipeline: transcript -> /api/buddy (AI, validated) or the offline
  * parser -> executor.ts. See README/PR 6 for the safety rules.
  */
+import { uiSafe } from '../ui-text.js';
 import {
   CanvasTexture,
   createSystem,
@@ -52,22 +53,30 @@ import {
   type DupAnswer,
 } from './dedupe.js';
 import type { DumpItem } from './bus.js';
-import { classify, parseCommand } from './parser.js';
+import { classify, parseCommand, wantsEveningReview } from './parser.js';
+import { startEveningReview } from '../review.js';
+import { attachBuddyVoice, detachBuddyVoice, playBuddyCue, primeAudio } from '../sfx.js';
+import { setBuddySoundSource } from '../spatial-audio.js';
 import { askBuddyApi, resetBuddyApiBackoff, type FocusInfo } from './client.js';
 import { BuddyExecutor, type ExecResult, type Offer, type PlaceOutcome, type UndoEntry } from './executor.js';
 import { aimPoint, describeSpot, resolvePlace, whereLabel } from './spatial.js';
 import type { PlaceTarget } from './actions.js';
 import { BuddyOrb, type OrbState } from './orb.js';
+import { isSettingsPanelShown } from '../settings-panel.js';
 import { BUDDY_SLOW, LightLines } from './light-line.js';
 import { setBuddyLink, setTalkToggle, startPushToTalk, type MicState } from './bus.js';
 import { TalkSession, talkSupported, type TalkState } from './talk.js';
+import { setAnnouncer } from '../announce.js';
+import { openDocumentView } from '../doc-view.js';
+import { getSettings } from '../settings.js';
 
 const USED_KEY = 'questty.buddy.v1';
 /** UIKit px -> metres at the home panel's scale (0.01 units/px x 0.1). */
 const PX_AT_PANEL = 0.001;
 const ORB_FILL = 0.84;
 const ORB_FORWARD = 0.012;
-const BUBBLE_GAP = 0.012;
+/** Gap under the collapsed pill (measured 1.2 cm before; the slide-in used to start 1.2 cm higher and touch the pill). */
+const BUBBLE_GAP = 0.016;
 const BUBBLE_SCALE = 0.1;
 const FADE_IN_MS = 220;
 const FADE_OUT_MS = 380;
@@ -208,6 +217,8 @@ export class BuddySystem extends createSystem({
     }
     this.orb = new BuddyOrb();
     this.orbEntity = this.world.createTransformEntity(this.orb.group, { parent: this.world.sceneEntity, persistent: true });
+    // PR 11: the buddy's voice and cue sound come from the orb.
+    setBuddySoundSource(this.orb.group);
     this.lines = new LightLines();
     this.world.createTransformEntity(this.lines.group, { parent: this.world.sceneEntity, persistent: true });
     this.executor = new BuddyExecutor({
@@ -219,8 +230,26 @@ export class BuddySystem extends createSystem({
       place: (entity, target, refId) => this.place(entity, target, refId),
       arrange: (entities, target) => this.arrange(entities, target),
       where: (entity) => this.where(entity),
+      openDocument: (request) => openDocumentView(request),
     });
     this.logOrb('idle');
+    // PR 10: other systems (return ritual, tier-up, physical finish) speak through the bubble.
+    setAnnouncer(
+      (text, options) => {
+        // The bubble lives under the pill: make sure it is there to be seen.
+        if (!isWelcomeCollapsed() && !getSettings().captions) setWelcomeCollapsed(true);
+        this.say(text, {
+          tag: options.tag ?? 'QUESTTY',
+          ms: options.ms ?? 4500,
+          chips: (options.chips ?? []).slice(0, 3).map((c) => ({ label: c.label, kind: c.kind ?? 'plain', run: c.run })),
+        });
+      },
+      (label, run) => {
+        this.undoStack.push({ label, run });
+        if (this.undoStack.length > 5) this.undoStack.shift();
+      },
+    );
+    this.cleanupFuncs.push(() => setAnnouncer(undefined));
 
     setBuddyLink({
       command: (text, source) => void this.handle(text, source),
@@ -362,7 +391,7 @@ export class BuddySystem extends createSystem({
     const group = this.orb.group;
     group.position.copy(this.orbPos);
     group.quaternion.copy(this.tmpQ);
-    group.visible = panel.visible !== false;
+    group.visible = panel.visible !== false && !isSettingsPanelShown();
     this.orb.update(now, this.orbRadius, this.world.player.head);
   }
 
@@ -395,9 +424,11 @@ export class BuddySystem extends createSystem({
     if (!this.liveOk || !talkSupported() || (typeof navigator !== 'undefined' && navigator.onLine === false)) return false;
     this.markUsed();
     setWelcomeCollapsed(true);
+    primeAudio(); // inside the pinch: the spatial voice path may start
     const session = new TalkSession({
+      voice: (stream) => attachBuddyVoice(stream),
       command: (text, heardAt) => this.talkCommand(text, heardAt),
-      caption: (who, text) => this.sayCaption(who === 'you' ? `"${text}"` : text, who === 'you' ? 'YOU' : 'QUESTTY  ·  TALKING'),
+      caption: (who, text) => this.sayCaption(who === 'you' ? `"${text}"` : text, who === 'you' ? 'YOU' : 'QUESTTY  -  TALKING'),
       state: (state, detail) => this.onTalkState(state, detail),
       levels: (out, inp) => {
         this.orb.setVoiceLevel(out);
@@ -415,8 +446,10 @@ export class BuddySystem extends createSystem({
       this.say('Connecting...', { tag: 'TALK', sticky: true });
     } else if (state === 'live') {
       this.setOrb('talking');
-      this.say("I'm here. Tell me what to move or start.", { tag: 'QUESTTY  ·  TALKING', ms: 5000 });
+      playBuddyCue('talk-live');
+      this.say("I'm here. Tell me what to move or start.", { tag: 'QUESTTY  -  TALKING', ms: 5000 });
     } else if (state === 'off') {
+      detachBuddyVoice();
       if (this.orb.state === 'talking' || this.orb.state === 'thinking') this.setOrb('idle');
       const why = detail === 'idle' ? 'Talk ended after a quiet minute.' : 'Talk ended.';
       this.say(why, { tag: 'QUESTTY', ms: 3000 });
@@ -476,8 +509,8 @@ export class BuddySystem extends createSystem({
     const clipped = text.length > 120 ? `...${text.slice(-117)}` : text;
     b.text = clipped;
     b.tag = tag;
-    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text: clipped });
-    b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: tag });
+    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text: uiSafe(clipped) });
+    b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: uiSafe(tag) });
     b.panel.getElementById<UIKit.Text>('buddy-tag-dot')?.setProperties({ backgroundColor: tag === 'YOU' ? '#ef9a84' : '#c9a6e0' });
     const now = performance.now();
     b.sticky = false;
@@ -572,6 +605,14 @@ export class BuddySystem extends createSystem({
       await this.acceptOffer();
       return null;
     }
+    // PR 11: the evening review runs on the device (no API call).
+    if (wantsEveningReview(spoken)) {
+      const ok = startEveningReview();
+      const rec: RunRecord = { text: spoken, source, mode: 'local', actions: [], rejected: [], reply: ok ? 'evening review' : 'review unavailable', log: [], at: Date.now() };
+      this.runs.push(rec);
+      if (!ok) this.say("I can't start the review right now.", { ms: 3000 });
+      return rec;
+    }
 
     this.busy = true;
     this.setOrb('thinking');
@@ -649,7 +690,7 @@ export class BuddySystem extends createSystem({
     record.log = result.log;
     const allOk = result.log.length > 0 && result.log.every((l) => l.ok) && result.confirm === undefined;
     // Spatial results are grounded in the room (where it landed, where it is): the executor's line wins.
-    const spatial = validated.actions.some((a) => a.type === 'place_card' || a.type === 'arrange' || a.type === 'find' || a.type === 'focus_on' || a.type === 'show_streak');
+    const spatial = validated.actions.some((a) => a.type === 'place_card' || a.type === 'arrange' || a.type === 'find' || a.type === 'focus_on' || a.type === 'show_streak' || a.type === 'open_document');
     record.reply = aiReply !== null && allOk && result.offer === undefined && !spatial && held.length === 0 ? aiReply : result.reply;
     if (held.length > 0 && result.confirm !== undefined) {
       // A delete is waiting on its Confirm chip: don't stack a second question on it.
@@ -1230,10 +1271,13 @@ export class BuddySystem extends createSystem({
     b.tag = tag;
     b.chips = chips.slice(0, 3);
     b.shownAt = performance.now();
-    b.until = sticky ? Infinity : b.shownAt + ms * BUDDY_SLOW;
+    // PR 10, captions always on: every line stays up longer (at least 9 s).
+    const shownMs = getSettings().captions ? Math.max(ms * 1.6, 9000) : ms;
+    b.until = sticky ? Infinity : b.shownAt + shownMs * BUDDY_SLOW;
+    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ fontSize: getSettings().largeText ? 25 : 18 } as never);
     b.sticky = sticky;
-    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text });
-    b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: tag });
+    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text: uiSafe(text) });
+    b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: uiSafe(tag) });
     const dot = tag.includes('OFFLINE') ? '#a9a191' : tag === 'LISTENING' ? '#ef9a84' : '#e0b85c';
     b.panel.getElementById<UIKit.Text>('buddy-tag-dot')?.setProperties({ backgroundColor: dot });
     b.panel.getElementById<UIKit.Text>('buddy-chips')?.setProperties({ display: b.chips.length > 0 ? 'flex' : 'none' });
@@ -1323,7 +1367,8 @@ export class BuddySystem extends createSystem({
     if (b === undefined) return;
     // Pointed at with chips to press: hold it a little longer.
     if (b.hovered && b.chips.length > 0 && b.opacity > 0.5 && b.until - now < 1500 * BUDDY_SLOW) b.until = now + 1500 * BUDDY_SLOW;
-    const want = collapsed && now < b.until ? 1 : 0;
+    // PR 10: with captions always on, the buddy's lines show even while the home panel is open.
+    const want = (collapsed || getSettings().captions) && now < b.until ? 1 : 0;
     const dt = Math.min(0.1, (now - (this.lastBubbleAt || now)) / 1000);
     this.lastBubbleAt = now;
     // Ease toward the wanted opacity and stop there. (PR 6 treated "already
@@ -1365,10 +1410,11 @@ export class BuddySystem extends createSystem({
     const right = new Vector3(1, 0, 0).applyQuaternion(this.tmpQ);
     const normal = new Vector3(0, 0, 1).applyQuaternion(this.tmpQ);
     // Top-left corner just under the pill's left edge (under the orb), so the
-    // bubble grows away from the card arc on the right.
+    // bubble grows away from the card arc on the right. It slides in from
+    // below, never up into the pill.
     const position = new Vector3(e[12], e[13], e[14])
       .addScaledVector(right, -pillW / 2 + 0.004)
-      .addScaledVector(up, -(pillH / 2 + BUBBLE_GAP) + slide * 0.012)
+      .addScaledVector(up, -(pillH / 2 + BUBBLE_GAP) - slide * 0.012)
       .addScaledVector(normal, 0.004);
     b.panel.position.copy(position);
     b.panel.quaternion.copy(this.tmpQ);
@@ -1416,6 +1462,7 @@ export class BuddySystem extends createSystem({
             hovered: b.hovered,
             text: b.text,
             tag: b.tag,
+            msLeft: Number.isFinite(b.until) ? Math.max(0, Math.round(b.until - performance.now())) : -1,
             chips: b.chips.map((c) => ({ label: c.label, kind: c.kind })),
             box,
           }

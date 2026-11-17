@@ -6,8 +6,10 @@
   Element ids used by code: voice-button, voice-orb, voice-ring,
   voice-button-label, voice-hint, quest-status(-text), quick-focus, quick-more,
   quick-list, template-*, session-status(-text), skip-break, progress-status,
-  panel-collapse, panel-full, panel-pill, xr-button, room-debug-toggle(-label),
+  panel-collapse, panel-settings (PR 10: opens the accessibility settings), panel-full, panel-pill, xr-button, room-debug-toggle(-label),
   pill-main, pill-counts, pill-count-<today|later|before-leave|custom>(-text) (PR 5),
+  xp-bar, xp-track, xp-fill, xp-label, pill-xp, pill-xp-track, pill-xp-fill, pill-xp-label (PR 11: the XP bar toward
+  the next level, animated by xp-bar-system.ts),
   pill-orb, pill-sub (PR 6: the AI buddy orb is drawn over voice-orb / pill-orb
   by buddy/orb.ts; these elements are its pinch targets and its dark well).
 -->
@@ -70,6 +72,21 @@
 
   .minimize:dark {
     background-color: #33353b;
+  }
+
+  .header-buttons {
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .settings-text {
+    color: #202226;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .settings-text:dark {
+    color: #d9dbe0;
   }
 
   .minimize-icon {
@@ -308,6 +325,66 @@
     font-size: 13px;
     font-weight: 700;
   }
+
+  .xp-row {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .xp-track {
+    width: 316px;
+    height: 12px;
+    border-radius: 6px;
+    background-color: #d9d6cc;
+    flex-direction: row;
+  }
+
+  .xp-track:dark {
+    background-color: #33353b;
+  }
+
+  .xp-fill {
+    width: 0%;
+    height: 12px;
+    border-radius: 6px;
+    background-color: #f5b80a;
+  }
+
+  .xp-label {
+    color: #55575d;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .xp-label:dark {
+    color: #c9ccd2;
+  }
+
+  .pill-xp {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .pill-xp-track {
+    width: 220px;
+    height: 9px;
+    border-radius: 5px;
+    background-color: #33353b;
+    flex-direction: row;
+  }
+
+  .pill-xp-fill {
+    width: 0%;
+    height: 9px;
+    border-radius: 5px;
+    background-color: #f5b80a;
+  }
+
+  .pill-xp-label {
+    color: #c9ccd2;
+    font-size: 11px;
+    font-weight: 700;
+  }
 </style>
 <Panel id="welcome-root" class="panel-root">
   <div id="panel-full" class="full">
@@ -316,9 +393,20 @@
         <span class="eyebrow">QUESTTY</span>
         <span id="progress-status" class="progress-status">Level 1 | 0 XP</span>
       </div>
-      <div id="panel-collapse" class="minimize">
-        <Minus class="minimize-icon"></Minus>
+      <div class="header-buttons">
+        <div id="panel-settings" class="minimize">
+          <span class="settings-text">Aa</span>
+        </div>
+        <div id="panel-collapse" class="minimize">
+          <Minus class="minimize-icon"></Minus>
+        </div>
       </div>
+    </div>
+    <div id="xp-bar" class="xp-row">
+      <div id="xp-track" class="xp-track">
+        <div id="xp-fill" class="xp-fill"></div>
+      </div>
+      <span id="xp-label" class="xp-label">Lv 1  |  0 / 100 XP</span>
     </div>
     <div id="voice-button" class="hero">
       <div id="voice-ring" class="ring">
@@ -379,6 +467,12 @@
         <span class="pill-title">Questty</span>
         <span id="pill-sub" class="pill-sub">Pinch the orb to talk</span>
       </div>
+    </div>
+    <div id="pill-xp" class="pill-xp">
+      <div id="pill-xp-track" class="pill-xp-track">
+        <div id="pill-xp-fill" class="pill-xp-fill"></div>
+      </div>
+      <span id="pill-xp-label" class="pill-xp-label">Lv 1  |  0 / 100 XP</span>
     </div>
     <div id="pill-counts" class="pill-counts" style="display: none">
       <div id="pill-count-today" class="count">

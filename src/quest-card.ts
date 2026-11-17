@@ -15,6 +15,7 @@ import {
   type Entity,
   type World,
 } from '@iwsdk/core';
+import { uiSafe } from './ui-text.js';
 import { QuestCard, QuestCardTween, QuestFocusAction } from './quest-component.js';
 import {
   requestCardCompletion,
@@ -30,10 +31,16 @@ import { normalizeCategory } from './category-config.js';
 import { DEFAULT_FOCUS_MIN, focusChoices, suggestedFocusMinutes } from './session.js';
 import { primeChime, type BlurLevel } from './focus-store.js';
 import { CARD_HIT_DEPTH, CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE } from './card-layout.js';
+import { setCardFade } from './card-decor.js';
+import { getSettings } from './settings.js';
+
+/** PR 10, reduced motion: completion tweens that fade in place instead of flying to the shelf. */
+const fadeTweens = new WeakSet<Entity>();
 import {
   type SnapTarget,
   flyCard,
   getDropTarget,
+  landingTarget,
   setCardWorldPose,
   setGrabMode,
 } from './surfaces.js';
@@ -117,6 +124,15 @@ export function notifyCardFocused(card: Entity): void {
   emitCard('focused', card);
 }
 
+let releaseInterceptor: ((card: Entity) => boolean) | undefined;
+/**
+ * PR 10: a hook asked first on every card release (physical-finish.ts: a
+ * flick). Returning true means it handled the card (no pin, no float).
+ */
+export function setReleaseInterceptor(fn: ((card: Entity) => boolean) | undefined): void {
+  releaseInterceptor = fn;
+}
+
 let focusActionMover: ((card: Entity) => void) | undefined;
 /** Re-place a card's focus panel after the card moved without a hand (anchor restore). */
 export function repositionFocusAction(card: Entity): void {
@@ -194,7 +210,7 @@ export function renameQuestCard(entity: Entity, title: string): boolean {
   entity.setValue(QuestCard, 'title', title);
   const panel = entity.object3D;
   if (panel instanceof UIKitMLAsset) {
-    panel.getElementById<UIKit.Text>('quest-title')?.setProperties({ text: title });
+    panel.getElementById<UIKit.Text>('quest-title')?.setProperties({ text: uiSafe(title) });
     panel.name = `Quest Card: ${title}`;
   }
   emitCard('renamed', entity);
@@ -231,7 +247,7 @@ export async function createQuestCard({
   const panel = await activeWorld.assets.instantiate<UIKitMLAsset>('quest-card');
   panel
     .requireElementById<UIKit.Text>('quest-title')
-    .setProperties({ text: title });
+    .setProperties({ text: uiSafe(title) });
   panel
     .requireElementById<UIKit.Text>('quest-xp')
     .setProperties({ text: `+${Math.round(xp)} XP` });
@@ -398,6 +414,7 @@ export class QuestCardSystem extends createSystem({
         startScale[1] + (targetScale[1] - startScale[1]) * eased,
         startScale[2] + (targetScale[2] - startScale[2]) * eased,
       );
+      if (fadeTweens.has(entity)) setCardFade(object, 1 - progress);
       if (progress >= 1) entity.dispose();
     }
   }
@@ -434,6 +451,7 @@ export class QuestCardSystem extends createSystem({
     if (object == null) return;
     const start = this.grabStarts.get(entity);
     this.grabStarts.delete(entity);
+    if (releaseInterceptor?.(entity) === true) return;
     if (start !== undefined && start.surfaceId.length > 0) {
       object.updateWorldMatrix(true, false);
       const moved = object.getWorldPosition(this.positionBuffer).distanceTo(start.position);
@@ -447,7 +465,7 @@ export class QuestCardSystem extends createSystem({
         return;
       }
     }
-    const target = getDropTarget(cardId);
+    const target = landingTarget(entity);
     if (target === null) {
       // Released in mid-air: stay exactly where it was let go, at floating size.
       object.updateWorldMatrix(true, false);
@@ -671,17 +689,42 @@ export function tweenQuestCardTo(
   if (object == null || entity.hasComponent(QuestCardTween)) return;
 
   emitCard('completed', entity);
+  const reduced = getSettings().reducedMotion;
   const targetPosition = worldPosition.clone();
   if (object.parent !== null) {
     object.parent.updateWorldMatrix(true, false);
     object.parent.worldToLocal(targetPosition);
   }
+  if (reduced) fadeTweens.add(entity);
   entity.setValue(QuestCard, 'zoneId', '');
   entity.addComponent(QuestCardTween, {
     startPosition: object.position.toArray(),
-    targetPosition: targetPosition.toArray(),
+    // Reduced motion (PR 10): it stays put and fades out.
+    targetPosition: reduced ? object.position.toArray() : targetPosition.toArray(),
     startScale: object.scale.toArray(),
-    targetScale: [0.02, 0.02, 0.02],
+    targetScale: reduced ? object.scale.toArray() : [0.02, 0.02, 0.02],
+    startedAt: performance.now(),
+    durationMs: reduced ? Math.min(durationMs, 600) : durationMs,
+  });
+}
+
+/**
+ * PR 10, physical finish: the card crumples where it is (a quick shrink while
+ * the paper ball grows in its place). Emits 'completed' (persistence drops
+ * it) and disposes the card at the end, like the shelf tween.
+ */
+export function crumpleQuestCard(entity: Entity, durationMs = 260): void {
+  const object = entity.object3D;
+  if (object == null || entity.hasComponent(QuestCardTween)) return;
+  emitCard('completed', entity);
+  entity.setValue(QuestCard, 'zoneId', '');
+  const reduced = getSettings().reducedMotion;
+  if (reduced) fadeTweens.add(entity);
+  entity.addComponent(QuestCardTween, {
+    startPosition: object.position.toArray(),
+    targetPosition: object.position.toArray(),
+    startScale: object.scale.toArray(),
+    targetScale: reduced ? object.scale.toArray() : [object.scale.x * 0.08, object.scale.y * 0.05, object.scale.z * 0.08],
     startedAt: performance.now(),
     durationMs,
   });

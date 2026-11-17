@@ -10,7 +10,6 @@ import projectOptions from 'virtual:iwsdk-project';
 import { PanelSystem } from './panel.js';
 import { configureQuestCards, QuestCardSystem } from './quest-card.js';
 import { QuestInputSystem } from './quest-input.js';
-import { RobotSystem } from './robot.js';
 import { RoomSystem } from './room.js';
 import { restoreSavedFocus, SessionSystem } from './session-runtime.js';
 import { SurfaceSystem } from './surfaces.js';
@@ -19,6 +18,13 @@ import { CoachSystem } from './coach.js';
 import { CategorySystem } from './categories.js';
 import { BuddySystem } from './buddy/ui.js';
 import { FlameSystem } from './flame.js';
+import { DocViewSystem } from './doc-view.js';
+import { RitualSystem } from './ritual.js';
+import { PhysicalFinishSystem } from './physical-finish.js';
+import { SettingsSystem } from './settings-panel.js';
+import { XpBarSystem } from './xp-bar-system.js';
+import { ReviewSystem } from './review.js';
+import { SpatialAudioSystem } from './spatial-audio.js';
 
 const sceneContainer = document.getElementById('scene-container');
 if (!(sceneContainer instanceof HTMLDivElement)) {
@@ -27,7 +33,6 @@ if (!(sceneContainer instanceof HTMLDivElement)) {
 
 const world = await World.create(sceneContainer, projectOptions);
 world.registerSystem(PanelSystem);
-world.registerSystem(RobotSystem);
 world.registerSystem(RoomSystem);
 world.registerSystem(SurfaceSystem);
 world.registerSystem(QuestCardSystem);
@@ -38,6 +43,15 @@ world.registerSystem(CoachSystem);
 world.registerSystem(CategorySystem);
 world.registerSystem(BuddySystem);
 world.registerSystem(FlameSystem);
+// PR 10: documents, the return ritual, physical finish, accessibility settings.
+world.registerSystem(DocViewSystem);
+world.registerSystem(RitualSystem);
+world.registerSystem(PhysicalFinishSystem);
+world.registerSystem(SettingsSystem);
+// PR 11: XP bar + award sounds, the evening review, the buddy's voice from the orb.
+world.registerSystem(XpBarSystem);
+world.registerSystem(ReviewSystem);
+world.registerSystem(SpatialAudioSystem);
 
 configureQuestCards(world);
 // The room starts empty for a new user: cards appear only after they speak or

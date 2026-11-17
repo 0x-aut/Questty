@@ -20,7 +20,26 @@ export type FocusPhase = {
 export type SessionState =
   | { phase: 'idle'; consecutiveSkips: number }
   | FocusPhase
-  | { phase: 'break'; questId: string; endsAt: number; consecutiveSkips: number };
+  | { phase: 'break'; questId: string; endsAt: number; consecutiveSkips: number; promptId?: BreakPromptId };
+
+/** PR 11: the enforced 20 s break rotates what it asks for. */
+export type BreakPromptId = 'far-point' | 'shoulders' | 'water';
+export type BreakPrompt = { id: BreakPromptId; status: string; buddy: string };
+export const BREAK_PROMPTS: readonly BreakPrompt[] = [
+  { id: 'far-point', status: 'Look at the farthest point you can see', buddy: 'Break time. Find the farthest point in the room and let your eyes rest on it.' },
+  { id: 'shoulders', status: 'Roll your shoulders back, slowly', buddy: 'Break time. Roll your shoulders back slowly, five times, and breathe out.' },
+  { id: 'water', status: 'Take a sip of water', buddy: 'Break time. Have a sip of water, then we go again.' },
+];
+
+/** The prompt after `lastId` (the first one when there was none or it is unknown). */
+export function nextBreakPrompt(lastId: string | null | undefined): BreakPrompt {
+  const i = BREAK_PROMPTS.findIndex((p) => p.id === lastId);
+  return BREAK_PROMPTS[(i + 1) % BREAK_PROMPTS.length];
+}
+
+export function breakPromptById(id: string | null | undefined): BreakPrompt {
+  return BREAK_PROMPTS.find((p) => p.id === id) ?? BREAK_PROMPTS[0];
+}
 
 export const IDLE_SESSION: SessionState = { phase: 'idle', consecutiveSkips: 0 };
 
@@ -102,14 +121,20 @@ export function advanceBreak(state: SessionState, now: number): SessionState {
   return IDLE_SESSION;
 }
 
-export function completeFocus(state: SessionState, now: number): SessionState {
+export function completeFocus(state: SessionState, now: number, promptId?: BreakPromptId): SessionState {
   if (state.phase !== 'focus') return state;
   return {
     phase: 'break',
     questId: state.questId,
     endsAt: now + BREAK_MS,
     consecutiveSkips: state.consecutiveSkips,
+    ...(promptId !== undefined ? { promptId } : {}),
   };
+}
+
+/** Can the current break be skipped? Never twice in a row: a skipped break makes the next one stick. */
+export function canSkipBreak(state: SessionState): boolean {
+  return state.phase === 'break' && state.consecutiveSkips === 0;
 }
 
 export function endFocusEarly(state: SessionState): SessionState {

@@ -12,10 +12,8 @@ import {
   QuestFocusAction,
   SnapSurface,
 } from './quest-component.js';
-import { Robot } from './robot-component.js';
 
 export default defineComponents([
-  Robot,
   QuestCard,
   QuestCardTween,
   QuestFocusAction,

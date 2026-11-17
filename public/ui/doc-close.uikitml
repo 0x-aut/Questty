@@ -1,0 +1,24 @@
+<!--
+  Document view close button (PR 10). Its own entity, beside the header, so
+  a pinch on it never grabs the document. Element ids: doc-close, doc-close-label.
+-->
+<style>
+  .close {
+    width: 112px;
+    height: 54px;
+    border-radius: 27px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0d787;
+    cursor: pointer;
+  }
+
+  .label {
+    color: #2a2210;
+    font-size: 21px;
+    font-weight: 700;
+  }
+</style>
+<div id="doc-close" class="close">
+  <span id="doc-close-label" class="label">Close</span>
+</div>

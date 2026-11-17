@@ -8,6 +8,7 @@
  */
 import { inferCategory, stripTiming } from '../category-config.js';
 import type { BuddyCard, BuddyCategory, PlaceTarget } from './actions.js';
+import { draftOutline, matchDoc, soundsLikeDoc } from '../documents.js';
 
 export type ParseResult =
   | { kind: 'command'; actions: Array<Record<string, unknown>>; reply?: string }
@@ -181,6 +182,9 @@ export function planOrder(cards: readonly BuddyCard[]): string[] {
 
 // ------------------------------------------------------------------ routing
 
+/** PR 10: "write an outline for my talk", "draft notes on the launch". */
+const WRITE_DOC = /^(?:write|draft|make|create|give me)\s+(?:me\s+)?(?:an?\s+|some\s+)?(outline|draft|notes|plan|summary)\s+(?:for|on|about|of)\s+(.+)$/iu;
+
 const COMMAND_START =
   /^(add|create|new|make|remind me|rename|retitle|change|call it|move|push|put|shift|send|bump|what|what's|whats|show|list|how many|start|begin|focus|do \d|pause|hold|resume|continue|unpause|keep going|extend|give me|end|stop|finish|mark|tick|check off|complete|done|i finished|i'm done|i am done|i did|delete|remove|trash|get rid|drop|plan|order|undo|yes|yeah|yep|sure|ok|okay|do it|find|where|where's|wheres|locate|place|stick|pin|bring|hang|take|line up|line them|arrange|lay out|tidy|point)\b/iu;
 
@@ -189,14 +193,25 @@ const COMMAND_START =
  * become cards? Commands start with a command verb or ask a question; a dump
  * is everything else (lists, "I need to...", a single thing to remember).
  */
+/** PR 11: "review my day", "evening review", "wrap up the day": the evening review, handled on the device. */
+export const REVIEW_RE = /\b(evening review|review (my|the|to)?\s*day|(day|daily) review|wrap (up )?(my|the) day|end of (the )?day review|roll (the rest|everything|it all) (over )?to tomorrow)\b/iu;
+export function wantsEveningReview(text: string): boolean {
+  return REVIEW_RE.test(normalize(text));
+}
+
 export function classify(text: string): 'command' | 'dump' {
   const t = normalize(text);
   if (t.length === 0) return 'dump';
+  if (REVIEW_RE.test(t) && t.split(' ').length <= 9) return 'command';
   // "I need to X, Y and Z" or a long list is a dump even if a verb sneaks in.
   const commas = (t.match(/,/gu) ?? []).length;
   if (/^(okay |so |um |uh )*(today |later |tomorrow )?(i (need|have|got|want|should|must) to|i've got to|gotta)\b/iu.test(t)) return 'dump';
   if (COMMAND_START.test(t) && commas < 2) return 'command';
   if (/\b(streak|my flame|the flame)\b/iu.test(t) && t.split(' ').length <= 9) return 'command';
+  // PR 10: "open my essay", "read the project brief", "write an outline for my talk".
+  const docVerb = /^(open|read|pull up|bring up|show me|show)\s+(.+)$/iu.exec(t);
+  if (docVerb !== null && commas < 2 && (soundsLikeDoc(docVerb[2]) || /^(open|read)\b/iu.test(t) && /\b(card|notes?)$/iu.test(docVerb[2]))) return 'command';
+  if (WRITE_DOC.test(t) && commas < 2) return 'command';
   if (/\b(plan my day|what's left|whats left|what is left|add \d+ min|add five min)\b/iu.test(t)) return 'command';
   return 'dump';
 }
@@ -205,7 +220,7 @@ function normalize(text: string): string {
   return text
     .replace(/[“”]/gu, '"')
     .replace(/’/gu, "'")
-    .replace(/^(hey|hi|ok|okay|so|um+|uh+|questty|buddy)[,\s]+/iu, '')
+    .replace(/^(?:(?:hey|hi|ok|okay|so|um+|uh+|questty|buddy)[,\s]+)+/iu, '')
     .replace(/^(can you|could you|please|would you)\s+/iu, '')
     .replace(/\s+please[.!?]*$/iu, '')
     .replace(/\s+/gu, ' ')
@@ -236,6 +251,31 @@ export function parseCommand(input: string, cards: readonly BuddyCard[]): ParseR
   // ---- streak (PR 9): "what's my streak?", "how's my flame doing", "how many days in a row"
   if (/\bstreak\b|\b(my|the) flame\b|\bdays? in a row\b/u.test(lower)) {
     return { kind: 'command', actions: [{ type: 'show_streak' }] };
+  }
+
+  // ---- documents (PR 10): "open my essay", "read the project brief", "open the notes on gym", "write an outline for my talk"
+  const write = WRITE_DOC.exec(lower);
+  if (write !== null) {
+    const topic = write[2].replace(/[.!?]+$/u, '').trim();
+    const draft = draftOutline(topic);
+    return { kind: 'command', actions: [{ type: 'open_document', title: draft.title, body: draft.body }] };
+  }
+  const openDoc = /^(open|read|pull up|bring up|show me|show)\s+(?:up\s+)?(.+)$/u.exec(lower);
+  if (openDoc !== null) {
+    const words = openDoc[2].replace(/\s+(?:for me|again|now)$/u, '');
+    const showing = openDoc[1].startsWith('show');
+    const doc = matchDoc(words);
+    const notesOf =
+      /^(?:the\s+|my\s+)?notes?\s+(?:on|for|about|from)\s+(?:the\s+|my\s+)?(.+?)(?:\s+card)?$/u.exec(words) ??
+      /^(?:the\s+|my\s+)?(.+?)\s+(?:card\s+)?notes?$/u.exec(words) ??
+      (showing ? null : /^(?:the\s+|my\s+)?(.+?)\s+card$/u.exec(words));
+    if (notesOf !== null) {
+      const target = card(notesOf[1]);
+      if (target !== null) return { kind: 'command', actions: [{ type: 'open_document', card_id: target.id }] };
+    }
+    if (doc !== null) return { kind: 'command', actions: [{ type: 'open_document', doc_id: doc.id }] };
+    if (notesOf !== null) return notFound(notesOf[1]);
+    if (soundsLikeDoc(words)) return { kind: 'miss', reply: `I couldn't find a document like "${cleanRef(words).slice(0, 30)}".` };
   }
 
   // ---- plan my day

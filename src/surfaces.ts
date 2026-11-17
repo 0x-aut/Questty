@@ -24,7 +24,10 @@ import {
 } from '@iwsdk/core';
 import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE } from './card-layout.js';
 import { QuestCard, QuestCardTween, SnapSurface } from './quest-component.js';
-import { syncCardDecor } from './card-decor.js';
+import { setCardFade, syncCardDecor } from './card-decor.js';
+import { getSettings } from './settings.js';
+/** PR 10: a pin with reduced motion is a 300 ms fade out + fade in, no flight. */
+const REDUCED_FADE_MS = 300;
 import { playTap } from './focus-store.js';
 
 /**
@@ -210,6 +213,27 @@ export function getDropTarget(cardId: string): SnapTarget | null {
   return activeSystem?.getPreview(cardId) ?? null;
 }
 
+/**
+ * The surface a card lands on when it is let go: the held preview, or, for a
+ * fast drop whose preview trails the hand by a frame, a near drop from where
+ * the card is now or where its last frame of motion carries it.
+ */
+export function landingTarget(card: Entity, handPoint?: Vector3): SnapTarget | null {
+  const cardId = card.getValue(QuestCard, 'cardId') as string;
+  const held = landingHints.get(cardId);
+  if (held !== undefined) {
+    landingHints.delete(cardId);
+    return held;
+  }
+  return getDropTarget(cardId) ?? activeSystem?.nearLanding(card, handPoint) ?? null;
+}
+
+const landingHints = new Map<string, SnapTarget>();
+/** Hand the release a landing already worked out (by the finish check, from the hand) for this card. */
+export function holdLanding(cardId: string, target: SnapTarget): void {
+  landingHints.set(cardId, target);
+}
+
 /** Animate a released card to its pinned pose. */
 export function flyCard(entity: Entity, target: SnapTarget): void {
   activeSystem?.fly(entity, target);
@@ -298,8 +322,9 @@ export class SurfaceSystem extends createSystem({
   private blockers: Blocker[] = [];
   private framesAt = -1;
   private readonly previews = new Map<string, SnapTarget | null>();
+  /** Each held card's centre one frame ago (for a fast drop's landing). */
+  private readonly heldCenters = new Map<string, Vector3>();
   private readonly flights = new Map<Entity, Flight>();
-  private readonly nearMode = new Map<Entity, boolean>();
   private readonly grabStarts = new Map<Entity, { at: number; dir: Vector3 }>();
   private virtualCreated = false;
   private fallbackTimer: number | undefined;
@@ -327,6 +352,11 @@ export class SurfaceSystem extends createSystem({
     if (!forceVirtual) for (const entity of this.queries.planes.entities) this.tagPlane(entity);
     this.queries.surfaces.subscribe('qualify', () => { this.framesAt = -1; });
     this.queries.surfaces.subscribe('disqualify', () => { this.framesAt = -1; });
+    // Card entities are reused once a card leaves the query: drop any per-card state with it.
+    this.queries.cards.subscribe('disqualify', (entity) => {
+      this.flights.delete(entity);
+      this.grabStarts.delete(entity);
+    });
 
     const onSessionStart = () => {
       window.clearTimeout(this.fallbackTimer);
@@ -412,6 +442,30 @@ export class SurfaceSystem extends createSystem({
     return this.previews.get(cardId) ?? null;
   }
 
+  /**
+   * Near drop only (no pinch-ray pick), from the card's pose now, one frame of
+   * its motion ahead and, for a card held in the hand (not by a pinch-ray),
+   * the hand itself: a held card trails a fast hand by a few frames.
+   */
+  nearLanding(card: Entity, handPoint?: Vector3): SnapTarget | null {
+    const object = card.object3D;
+    if (object == null) return null;
+    if (this.frames.length === 0) this.refreshFrames(true);
+    object.updateWorldMatrix(true, false);
+    const now = object.getWorldPosition(new Vector3());
+    const cardId = card.getValue(QuestCard, 'cardId') as string;
+    const last = this.heldCenters.get(cardId);
+    const ahead = last === undefined ? null : now.clone().add(now.clone().sub(last));
+    const band: NearBand = { wall: [0.06, NEAR_SNAP_DISTANCE], desk: [0.06, NEAR_SNAP_DISTANCE], door: [0.06, NEAR_SNAP_DISTANCE] };
+    const points = ahead === null ? [now] : [now, ahead];
+    if (handPoint !== undefined && !card.hasComponent(DistanceGrabbable)) points.push(handPoint);
+    for (const p of points) {
+      const hit = this.findHit(card, p, band);
+      if (hit !== null && hit.via === 'near') return this.placeOn(hit.frame, hit.point, cardId, 'near');
+    }
+    return null;
+  }
+
   describe() {
     this.refreshFrames(true);
     return this.frames.map((f) => ({
@@ -450,6 +504,7 @@ export class SurfaceSystem extends createSystem({
     for (const e of this.grabStarts.keys()) if (!e.active || !e.hasComponent(Grabbed)) this.grabStarts.delete(e);
     if (held.size === 0) {
       if (this.previews.size > 0) this.previews.clear();
+      if (this.heldCenters.size > 0) this.heldCenters.clear();
       if (externalPreview !== null) {
         this.refreshFrames(false, time);
         this.showPreview(externalPreview);
@@ -467,6 +522,9 @@ export class SurfaceSystem extends createSystem({
       const cardId = card.getValue(QuestCard, 'cardId') as string;
       const target = this.computeTarget(card);
       this.previews.set(cardId, target);
+      const c = this.heldCenters.get(cardId) ?? new Vector3();
+      card.object3D?.getWorldPosition(c);
+      this.heldCenters.set(cardId, c);
       if (shown === null && target !== null) shown = target;
     }
     this.showPreview(shown);
@@ -1171,12 +1229,13 @@ export class SurfaceSystem extends createSystem({
         const dz = Math.abs(local.z) * s;
         nearest = Math.min(nearest, Math.hypot(dx, dy, dz));
       }
-      const wasNear = this.nearMode.get(card);
-      const near = wasNear === true ? nearest < NEAR_EXIT : nearest < NEAR_ENTER;
-      if (near !== wasNear || !hasGrabbable(card)) {
-        setGrabMode(card, near ? 'near' : 'ray');
-        this.nearMode.set(card, near);
-      }
+      // Compare against the grab handle the card actually carries, not a cached flag: other code (the
+      // focus view, the physical finish, a reload) swaps or strips the handle too, and card entities are
+      // reused after one leaves the query, so the old cached per-entity flag left cards stuck on the wrong grab (pr10-b E5/E6).
+      const isNear = card.hasComponent(OneHandGrabbable);
+      const hasAny = isNear || card.hasComponent(DistanceGrabbable);
+      const near = hasAny && isNear ? nearest < NEAR_EXIT : nearest < NEAR_ENTER;
+      if (!hasAny || near !== isNear) setGrabMode(card, near ? 'near' : 'ray');
     }
   }
 
@@ -1321,6 +1380,27 @@ export class SurfaceSystem extends createSystem({
         continue;
       }
       const elapsed = now - f.startedAt;
+      if (getSettings().reducedMotion) {
+        // PR 10, reduced motion: no flight. Fade out where it was, appear on the surface, fade in.
+        const t = Math.min(1, elapsed / REDUCED_FADE_MS);
+        if (t < 0.4) {
+          setCardFade(object, 1 - t / 0.4);
+          continue;
+        }
+        setWorld(object, f.to, f.qTo);
+        object.scale.setScalar(f.sTo);
+        setCardFade(object, (t - 0.4) / 0.6);
+        if (f.normal !== null && !f.tapped) {
+          f.tapped = true;
+          playTap();
+          pulseHaptics(this.xrManager.getSession());
+        }
+        if (t >= 1) {
+          setCardFade(object, 1);
+          this.flights.delete(entity);
+        }
+        continue;
+      }
       // 1. Fly to just above the surface, already in its final orientation.
       const t = Math.min(1, elapsed / FLIGHT_MS);
       const k = 1 - (1 - t) ** 3;
@@ -1432,9 +1512,6 @@ export function setCardWorldPose(entity: Entity, position: Vector3, quaternion: 
   object.scale.setScalar(scale);
 }
 
-function hasGrabbable(card: Entity): boolean {
-  return card.hasComponent(OneHandGrabbable) || card.hasComponent(DistanceGrabbable);
-}
 
 /** Swap a card between direct (near) grab and pinch-ray (distance) grab. */
 export function setGrabMode(card: Entity, mode: 'near' | 'ray'): void {
