@@ -39,6 +39,7 @@ import {
   type SnapTarget,
   flyCard,
   getDropTarget,
+  landingTarget,
   setCardWorldPose,
   setGrabMode,
 } from './surfaces.js';
@@ -463,7 +464,7 @@ export class QuestCardSystem extends createSystem({
         return;
       }
     }
-    const target = getDropTarget(cardId);
+    const target = landingTarget(entity);
     if (target === null) {
       // Released in mid-air: stay exactly where it was let go, at floating size.
       object.updateWorldMatrix(true, false);
