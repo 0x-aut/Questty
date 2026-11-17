@@ -77,13 +77,15 @@ const LIGHT_LIFT = 0.024;
 
 // ---- light
 const LIGHT_INTENSITY = 0.09; // candela-ish at three's physical units (decay 2)
-const LIGHT_DISTANCE = 1.6;
+/** 0 = no hard cut-off (physical 1/d^2 falloff). three uses light.distance as the shadow far plane when set, so it stays 0. */
+const LIGHT_DISTANCE = 0;
 const SHADOW_MAP = 256;
 const SHADOW_FAR = 0.4;
 const NEAR_ENTER = 0.12;
 const NEAR_EXIT = 0.2;
 const SNAP_UP = 0.45; // a release this far above a desk (or 15 cm below) lands on it
 const SNAP_DOWN = 0.15;
+const CARD_CAST_RANGE = 0.5;
 const GAZE_COS = Math.cos((11 * Math.PI) / 180);
 
 const FLARE_RISE = 0.22;
@@ -94,6 +96,7 @@ const NO_DEPTH = new ShaderMaterial({
   vertexShader: 'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: 'void main(){ gl_FragColor = vec4(0.0); discard; }',
 });
+NO_DEPTH.name = 'questty-no-key-light-shadow';
 
 const NOISE_GLSL = /* glsl */ `
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -293,11 +296,23 @@ function buildLantern(): Lantern {
     40,
   );
   const brass = new MeshStandardMaterial({ color: 0xa47a42, metalness: 0.6, roughness: 0.36 });
-  const wax = new MeshStandardMaterial({ color: 0xf3e6cf, roughness: 0.7, metalness: 0, emissive: 0x6a3a10, emissiveIntensity: 0.25 });
+  const wax = new MeshStandardMaterial({ vertexColors: true, color: 0xf3e6cf, roughness: 0.7, metalness: 0, emissive: 0x6a3a10, emissiveIntensity: 0.25 });
   const candle = new CylinderGeometry(0.0155, 0.017, WICK_TOP - 0.016 - 0.004, 28, 1);
   candle.translate(0, 0.016 + (WICK_TOP - 0.02) / 2, 0);
   const wickGeo = new CylinderGeometry(0.0012, 0.0012, 0.006, 6);
   wickGeo.translate(0, WICK_TOP - 0.001, 0);
+  // Candle + wick in one mesh (vertex colours): cream wax, dark wick.
+  const paint = (g: BufferGeometry, c: number) => {
+    const col = new Color(c);
+    const n = g.getAttribute('position').count;
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i += 1) col.toArray(arr, i * 3);
+    g.setAttribute('color', new BufferAttribute(arr, 3));
+    return g.toNonIndexed();
+  };
+  const candleGeo = mergeGeometries([paint(candle, 0xffffff), paint(wickGeo, 0x2a1a10)]);
+  candle.dispose();
+  wickGeo.dispose();
 
   // Cage: posts from the rim up past the flame, a top ring, a little handle loop.
   const parts: BufferGeometry[] = [];
@@ -314,19 +329,17 @@ function buildLantern(): Lantern {
   const loop = new TorusGeometry(0.014, 0.0022, 6, 20, Math.PI);
   loop.translate(0, CAGE_TOP + 0.002, 0);
   parts.push(loop);
-  const cageGeo = mergeGeometries(parts.map((g) => g.toNonIndexed()));
+  // Dish + cage share the brass: one mesh, one draw (and one caster per shadow face).
+  const cageGeo = mergeGeometries([dish.toNonIndexed(), ...parts.map((g) => g.toNonIndexed())]);
   for (const g of parts) g.dispose();
-  const dishMesh = new Mesh(dish, brass);
+  dish.dispose();
   const cageMesh = new Mesh(cageGeo, brass);
-  const candleMesh = new Mesh(candle, wax);
-  const wickMesh = new Mesh(wickGeo, new MeshBasicMaterial({ color: 0x1a120c }));
-  const casters = [dishMesh, cageMesh, candleMesh];
-  for (const m of casters) {
-    m.castShadow = true;
-    m.receiveShadow = false;
-    m.customDepthMaterial = NO_DEPTH;
-  }
-  root.add(dishMesh, cageMesh, candleMesh, wickMesh);
+  const candleMesh = new Mesh(candleGeo, wax);
+  // Only the brass casts: the candle sits under the light, its shadow would hide beneath it.
+  cageMesh.castShadow = true;
+  cageMesh.customDepthMaterial = NO_DEPTH;
+  const casters = [cageMesh];
+  root.add(cageMesh, candleMesh);
 
   // Flame, glow, embers: a cylindrical billboard group sitting on the wick.
   const flame = new Group();
@@ -389,7 +402,8 @@ function buildLantern(): Lantern {
   // Grab target: a box around the lantern (invisible, raycast only).
   const hitbox = new Mesh(
     new BoxGeometry(0.11, CAGE_TOP + 0.03, 0.11),
-    new MeshBasicMaterial({ transparent: true, opacity: 0, colorWrite: false, depthWrite: false }),
+    // Never drawn (material.visible false skips the draw call); pointer rays still hit it.
+    new MeshBasicMaterial({ visible: false }),
   );
   hitbox.name = 'StreakFlameHitbox';
   hitbox.position.y = (CAGE_TOP + 0.03) / 2;
@@ -413,8 +427,8 @@ function buildLantern(): Lantern {
     glowMat,
     emberMat,
     casters,
-    materials: [brass, wax, wickMesh.material as Material, flameMat, glowMat, emberMat, tag.mesh.material as Material, label.mesh.material as Material, hitbox.material as Material],
-    geometries: [dish, cageGeo, candle, wickGeo, flameGeo, glowGeo, emberGeo, tag.mesh.geometry, label.mesh.geometry, hitbox.geometry],
+    materials: [brass, wax, flameMat, glowMat, emberMat, tag.mesh.material as Material, label.mesh.material as Material, hitbox.material as Material],
+    geometries: [cageGeo, candleGeo, flameGeo, glowGeo, emberGeo, tag.mesh.geometry, label.mesh.geometry, hitbox.geometry],
   };
 }
 
@@ -474,6 +488,14 @@ export class FlameSystem extends createSystem({
   private readonly targetEdge = new Color();
   private flareAt = -1;
   private flareAmount = 1;
+  private flareCount = 0;
+  private lastFrameAt = performance.now();
+  /** Dev only: a frozen animation clock (ms) for frame-exact captures; null = real time. */
+  private fixedClock: number | null = null;
+
+  private clock(): number {
+    return this.fixedClock ?? performance.now();
+  }
   private placed: 'none' | 'surface' | 'fallback' | 'saved' = 'none';
   private surfaceId = '';
   private userPlaced = false;
@@ -496,6 +518,8 @@ export class FlameSystem extends createSystem({
   private readonly tmpQ = new Quaternion();
   private readonly handPoints = Array.from({ length: 6 }, () => new Vector3());
   private readonly casterCards = new WeakSet<Object3D>();
+  private readonly cardCasters = new Map<Entity, Mesh>();
+  private castingCards = 0;
   private flickerValue = 1;
   private updateMs = 0;
 
@@ -609,7 +633,8 @@ export class FlameSystem extends createSystem({
 
   /** The completion flare: a quick rise, brighter light, a burst of embers. */
   flare(amount = 1): void {
-    this.flareAt = performance.now();
+    this.flareCount += 1;
+    this.flareAt = this.clock();
     this.flareAmount = amount;
   }
 
@@ -887,9 +912,32 @@ export class FlameSystem extends createSystem({
     const hitbox = object.getObjectByName('QuestCardHitbox') as Mesh | undefined;
     if (hitbox === undefined) return;
     this.casterCards.add(object);
-    hitbox.castShadow = true;
     hitbox.customDepthMaterial = NO_DEPTH;
-    this.shadowDirty();
+    this.cardCasters.set(card, hitbox);
+    this.updateCardCasters();
+  }
+
+  /**
+   * A card casts only while it is within reach of the flame (its shadow can
+   * land on the desk); far cards are skipped in every shadow pass.
+   */
+  private updateCardCasters(): void {
+    const root = this.lantern.root;
+    let count = 0;
+    for (const [card, hitbox] of this.cardCasters) {
+      if (!card.active || card.object3D == null) {
+        this.cardCasters.delete(card);
+        continue;
+      }
+      card.object3D.getWorldPosition(this.tmpB);
+      const cast = root.visible && this.tmpB.distanceTo(root.position) < CARD_CAST_RANGE;
+      if (cast !== hitbox.castShadow) {
+        hitbox.castShadow = cast;
+        this.shadowDirty();
+      }
+      if (cast) count += 1;
+    }
+    this.castingCards = count;
   }
 
   private shadowDirty(): void {
@@ -900,7 +948,7 @@ export class FlameSystem extends createSystem({
 
   update(): void {
     const t0 = performance.now();
-    const now = t0;
+    const now = this.clock();
     this.frame += 1;
     if (now - this.lastViewCheck > 30_000) {
       // Day rollover while the app stays open.
@@ -920,13 +968,16 @@ export class FlameSystem extends createSystem({
     } else if (this.wasHeld) this.onRelease();
     this.wasHeld = held;
     if (!held && this.frame % 3 === 0) this.updateGrabMode();
+    if (this.frame % 15 === 0) this.updateCardCasters();
 
-    // Colour and size ease toward the tier / streak.
-    const k = 0.06;
+    // Colour and size ease toward the tier / streak (time-based: same feel at any frame rate).
+    const dt = Math.min(0.5, Math.max(0, (now - this.lastFrameAt) / 1000));
+    this.lastFrameAt = now;
+    const k = 1 - Math.exp(-dt / 0.35);
     this.core.lerp(this.targetCore, k);
     this.body.lerp(this.targetBody, k);
     this.edge.lerp(this.targetEdge, k);
-    this.scale += (this.targetScale - this.scale) * 0.08;
+    this.scale += (this.targetScale - this.scale) * (1 - Math.exp(-dt / 0.3));
 
     const time = now / 1000;
     const ember = this.view.status === 'ember';
@@ -966,7 +1017,7 @@ export class FlameSystem extends createSystem({
     const pm = this.poolMat.uniforms;
     pm.uCenter.value.copy(root.position);
     pm.uColor.value.copy(this.body).lerp(this.core, 0.2);
-    pm.uIntensity.value = (ember ? 0.12 : 0.3) * flicker * (1 + 1.2 * env);
+    pm.uIntensity.value = (ember ? 0.16 : 0.45) * flicker * (1 + 1.2 * env);
     pm.uRadius.value = 0.26 + 0.08 * s;
     if (this.catcherUniforms !== undefined) {
       this.catcherUniforms.uFlame.value.copy(root.position);
@@ -985,7 +1036,7 @@ export class FlameSystem extends createSystem({
     const to = this.tmpA.copy(root.position).add(this.tmpB.set(0, 0.09, 0)).sub(this.head).normalize();
     const gazing = this.headDir.dot(to) > GAZE_COS;
     const want = held || gazing || this.flareAt >= 0 ? 1 : 0;
-    this.labelAlpha += (want - this.labelAlpha) * 0.12;
+    this.labelAlpha += (want - this.labelAlpha) * (1 - Math.exp(-dt / 0.2));
     const lm = L.label.material as MeshBasicMaterial;
     lm.opacity = this.labelAlpha;
     L.label.visible = this.labelAlpha > 0.02;
@@ -1030,7 +1081,9 @@ export class FlameSystem extends createSystem({
         grabMode: this.nearMode ? 'near' : 'ray',
         label: { text: this.labelText, alpha: this.labelAlpha },
         flaring: this.flareAt >= 0,
+        flares: this.flareCount,
         shadowRenders: this.shadowRenders,
+        castingCards: this.castingCards,
         updateMs: this.updateMs,
         flicker: this.flickerValue,
       };
@@ -1099,6 +1152,14 @@ export class FlameSystem extends createSystem({
         hideFlame,
         tiers: () => STREAK_TIERS.map((t) => ({ id: t.id, from: t.from, body: hex(t.body) })),
         forgetPlacement: () => localStorage.removeItem(STORAGE_KEY),
+        /** Freeze the flame's animation clock at `ms` (null: real time again) for smooth frame-by-frame video. */
+        setClock: (ms: number | null) => {
+          if (ms === null) {
+            this.fixedClock = null;
+            this.lastFrameAt = performance.now();
+          } else this.fixedClock = ms;
+          return ms;
+        },
       },
     };
   }
