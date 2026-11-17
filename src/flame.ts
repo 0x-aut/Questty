@@ -13,6 +13,16 @@
  * shadows onto a ShadowMaterial catcher laid on the detected desk, so the
  * shadow shows over passthrough.
  *
+ * Wall mounting: pinched (directly or by pinch-ray) and let go within a
+ * hand-span of a wall or door, or with the pinch-ray pointing at one, it
+ * mounts there the way cards pin (same pick, same snap preview): upright on
+ * a small wooden ledge 5.5 cm out from the wall, nudged clear of the cards
+ * already there. The light then hangs in front of the flame so its shadow
+ * falls on the wall, the catcher + pool move onto a 90 cm square of the wall
+ * around it, and its footprint on the wall is an obstacle cards keep clear
+ * of. Desks work as before. The placement (desk / wall + the wall's plane)
+ * is saved and re-mounted once the wall is detected after a reload.
+ *
  * Cost: 3 flame layers, glow, sparks and the badge are 1 draw each, plus the
  * desk catcher and light pool. The point light's cube shadow map is 256 px a
  * face and is re-rendered only when something can have moved (a grab, a
@@ -21,6 +31,7 @@
  */
 import {
   AdditiveBlending,
+  MeshStandardMaterial,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
@@ -49,7 +60,16 @@ import {
   type Object3D,
 } from '@iwsdk/core';
 import { QuestCard, QuestCardTween } from './quest-component.js';
-import { setSurfaceObstacle, surfaceFrames, type SurfaceFrame } from './surfaces.js';
+import {
+  freeSpotOn,
+  setExternalPreview,
+  setSurfaceObstacle,
+  surfaceFrames,
+  surfaceHitFor,
+  type NearBand,
+  type SnapTarget,
+  type SurfaceFrame,
+} from './surfaces.js';
 import { getProgress, onAward, onProgress, setStreakForDev, type AwardEvent } from './progress.js';
 import {
   dayKey,
@@ -82,6 +102,22 @@ const NEAR_ENTER = 0.12;
 const NEAR_EXIT = 0.2;
 const SNAP_UP = 0.45; // a release this far above a desk (or 15 cm below) lands on it
 const SNAP_DOWN = 0.15;
+
+// ---- wall mount (a little wooden ledge; the flame stands on it, upright)
+const WALL_OFF = 0.055; // flame axis to the wall (the flame's widest radius at the top tier is 4.5 cm)
+const LEDGE_W = 0.13;
+const LEDGE_D = 0.1; // wall to the ledge's front edge
+const LEDGE_T = 0.014;
+/** The point light sits this far in front of the flame's axis on a wall, so the flame throws its shadow back onto the wall. */
+const WALL_LIGHT_Z = 0.075;
+/** Wall footprint kept free of cards, around the base on the wall: half-width, below, above (the ledge, the badge plaque, the tallest flame and its label, plus air). */
+const WALL_HALF_W = LEDGE_W / 2 + 0.02;
+const WALL_DOWN = LEDGE_T + 0.03 + 0.02;
+const WALL_UP = 0.144 + 0.07 + 0.02;
+const WALL_CARD_GAP = 0.03;
+/** Same near-drop feel as cards on walls and doors (6 cm behind to 22 cm in front); desks only by pinch-ray here (the desk band below is checked first). */
+const WALL_BAND: NearBand = { wall: [0.06, 0.22], door: [0.06, 0.22], desk: null };
+const WALL_KINDS = new Set(['wall', 'door']);
 const CARD_CAST_RANGE = 0.5;
 const GAZE_COS = Math.cos((11 * Math.PI) / 180);
 
@@ -260,6 +296,8 @@ type Lantern = {
   labelCtx: CanvasRenderingContext2D;
   labelTex: CanvasTexture;
   hitbox: Mesh;
+  /** The little wall ledge (shown only while mounted on a wall). */
+  ledge: Mesh;
   glowMat: ShaderMaterial;
   emberMat: ShaderMaterial;
   casters: Mesh[];
@@ -376,6 +414,18 @@ function buildLantern(): Lantern {
   hitbox.name = 'StreakFlameHitbox';
   hitbox.position.y = (FLAME_H + 0.02) / 2;
   root.add(hitbox);
+
+  // Wall ledge: a small wooden shelf from the wall to just past the flame
+  // (root +Z is the wall normal while mounted). It casts no shadow: the light
+  // hangs in front of the flame, so its shadow would be a long hard wedge
+  // down the wall; the flame's own shadow is the one that matters.
+  const ledgeGeo = new BoxGeometry(LEDGE_W, LEDGE_T, LEDGE_D);
+  const ledgeMat = new MeshStandardMaterial({ color: 0x9a6438, roughness: 0.75, metalness: 0 });
+  const ledge = new Mesh(ledgeGeo, ledgeMat);
+  ledge.name = 'Streak Flame Ledge';
+  ledge.position.set(0, -LEDGE_T / 2, -WALL_OFF + LEDGE_D / 2);
+  ledge.visible = false;
+  root.add(ledge);
   // Only the hitbox takes pointer rays. The rest must not: the sparks are Points
   // (three's default ray threshold is 1 m), and the visuals would snag rays meant for cards.
   root.traverse((o) => {
@@ -398,11 +448,12 @@ function buildLantern(): Lantern {
     labelCtx: label.ctx,
     labelTex: label.tex,
     hitbox,
+    ledge,
     glowMat,
     emberMat,
     casters,
-    materials: [...layerMats, glowMat, emberMat, tag.mesh.material as Material, label.mesh.material as Material, hitbox.material as Material],
-    geometries: [...geos, glowGeo, emberGeo, tag.mesh.geometry, label.mesh.geometry, hitbox.geometry],
+    materials: [...layerMats, glowMat, emberMat, tag.mesh.material as Material, label.mesh.material as Material, hitbox.material as Material, ledgeMat],
+    geometries: [...geos, glowGeo, emberGeo, tag.mesh.geometry, label.mesh.geometry, hitbox.geometry, ledgeGeo],
   };
 }
 
@@ -418,15 +469,26 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 
 const hex = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 
-type Saved = { p: [number, number, number]; yaw: number; surface: boolean; userPlaced: boolean };
+type Vec3 = [number, number, number];
+/**
+ * Saved placement. `mount` (PR 9 wall mounting; older saves have none and
+ * mean a desk or a float): on a wall, `wall.p` is the flame's base on the
+ * wall plane and `wall.n` the wall's normal into the room, so the flame
+ * finds the same wall again after a reload (room plane ids are not stable).
+ */
+type Saved = { p: Vec3; yaw: number; surface: boolean; userPlaced: boolean; mount?: 'desk' | 'wall' | 'float'; wall?: { p: Vec3; n: Vec3 } };
+
+const isVec3 = (v: unknown): v is Vec3 => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
 
 function loadSaved(): Saved | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === null) return null;
     const v = JSON.parse(raw) as Saved;
-    if (!Array.isArray(v.p) || v.p.length !== 3 || !v.p.every(Number.isFinite) || !Number.isFinite(v.yaw)) return null;
-    return { p: v.p, yaw: v.yaw, surface: v.surface === true, userPlaced: v.userPlaced === true };
+    if (!isVec3(v.p) || !Number.isFinite(v.yaw)) return null;
+    const wall = v.mount === 'wall' && v.wall !== undefined && isVec3(v.wall.p) && isVec3(v.wall.n) ? { p: v.wall.p, n: v.wall.n } : undefined;
+    const mount = wall !== undefined ? 'wall' : v.mount === 'float' ? 'float' : v.surface === true ? 'desk' : undefined;
+    return { p: v.p, yaw: v.yaw, surface: v.surface === true, userPlaced: v.userPlaced === true, mount, wall };
   } catch {
     return null;
   }
@@ -481,6 +543,18 @@ export class FlameSystem extends createSystem({
   }
   private placed: 'none' | 'surface' | 'fallback' | 'saved' = 'none';
   private surfaceId = '';
+  /** Where it stands: a desk (or the fallback patch), a wall/door ledge, or in the air. */
+  private mount: 'desk' | 'wall' | 'float' = 'desk';
+  /** On a wall: the flame's base on the wall plane, the wall's normal and in-plane up. */
+  private readonly wallPoint = new Vector3();
+  private readonly wallNormal = new Vector3(0, 0, 1);
+  private readonly wallUp = new Vector3(0, 1, 0);
+  private wallKind = 'wall';
+  /** A saved wall placement waiting for its wall to be detected after a reload. */
+  private pendingWall: { p: Vector3; n: Vector3 } | null = null;
+  private preview: SnapTarget | null = null;
+  private heldTarget: { kind: 'desk' | 'wall'; surface: SurfaceFrame; point: Vector3 } | null = null;
+  private previewKind = '';
   private userPlaced = false;
   private nearMode = false;
   private wasHeld = false;
@@ -740,7 +814,99 @@ export class FlameSystem extends createSystem({
     const pos = this.tmpB.copy(d.center).addScaledVector(d.u, pu).addScaledVector(d.v, pv).addScaledVector(d.normal, 0.0005);
     this.lantern.root.position.copy(pos);
     this.surfaceId = d.id;
+    this.setMount('desk');
     this.layDesk(d);
+  }
+
+  /**
+   * Visual mode: on a wall the ledge shows and the light moves in front of the
+   * flame (root space, along the wall normal) so the shadow lands on the wall
+   * behind it; on a desk (or carried) the light is back above and behind the
+   * tip in the billboard, as before.
+   */
+  private setMount(mount: 'desk' | 'wall' | 'float'): void {
+    this.mount = mount;
+    const L = this.lantern;
+    const onWall = mount === 'wall';
+    L.ledge.visible = onWall;
+    if (onWall && L.light.parent !== L.root) L.root.add(L.light);
+    if (!onWall && L.light.parent !== L.flame) {
+      L.flame.add(L.light);
+      L.light.position.set(0, FLAME_H + 0.022, -0.028);
+    }
+    if (!onWall) this.pendingWall = null;
+    this.shadowDirty();
+  }
+
+  /** The wall/door frame whose plane holds `p` (within 10 cm) and faces along `n`, if detected. */
+  private wallAt(p: Vector3, n: Vector3): SurfaceFrame | null {
+    let best: SurfaceFrame | null = null;
+    let bestOff = Infinity;
+    for (const f of surfaceFrames()) {
+      if (!WALL_KINDS.has(f.kind) || f.normal.dot(n) < 0.9) continue;
+      const rel = this.tmpA.copy(p).sub(f.center);
+      const off = Math.abs(rel.dot(f.normal));
+      if (off > 0.1) continue;
+      if (Math.abs(rel.dot(f.u)) > f.width / 2 + 0.05 || Math.abs(rel.dot(f.v)) > f.height / 2 + 0.05) continue;
+      if (off < bestOff) {
+        best = f;
+        bestOff = off;
+      }
+    }
+    return best;
+  }
+
+  /** Where on wall `f` the flame would go for a drop at `point`: inside the wall, clear of its cards. */
+  private wallSpot(f: SurfaceFrame, point: Vector3, nudge: boolean): Vector3 {
+    const onPlane = point.clone().addScaledVector(f.normal, -this.tmpA.copy(point).sub(f.center).dot(f.normal));
+    if (!nudge) return onPlane;
+    return freeSpotOn(f.id, onPlane, WALL_HALF_W, WALL_DOWN, WALL_UP, WALL_CARD_GAP) ?? onPlane;
+  }
+
+  /**
+   * Mount the flame on wall/door `f` at `point`: base on a little ledge,
+   * WALL_OFF out from the wall, upright (tip to world up), the root's +Z
+   * along the wall normal. The shadow catcher and light pool move onto the
+   * wall around it.
+   */
+  private mountOn(f: SurfaceFrame, point: Vector3, nudge = true): void {
+    const spot = this.wallSpot(f, point, nudge);
+    const n = f.normal;
+    const root = this.lantern.root;
+    root.position.copy(spot).addScaledVector(n, WALL_OFF);
+    root.quaternion.setFromAxisAngle(this.tmpA.set(0, 1, 0), Math.atan2(n.x, n.z));
+    this.wallPoint.copy(spot);
+    this.wallNormal.copy(n);
+    this.wallUp.set(0, 1, 0).addScaledVector(n, -n.y).normalize();
+    this.wallKind = f.kind;
+    this.surfaceId = f.id;
+    this.setMount('wall');
+    this.pendingWall = null;
+    this.layWall(f, spot);
+  }
+
+  /** Catcher + pool on the wall: a square around the flame (90 cm), clipped to the wall's rectangle. */
+  private layWall(f: SurfaceFrame, spot: Vector3): void {
+    const half = 0.45;
+    const rel = this.tmpA.copy(spot).sub(f.center);
+    const pu = rel.dot(f.u);
+    const pv = rel.dot(f.v);
+    // The flame body sits above its base: centre the square a little higher, along the wall's up.
+    const upU = this.wallUp.dot(f.u) * 0.08;
+    const upV = this.wallUp.dot(f.v) * 0.08;
+    const u0 = Math.max(-f.width / 2, pu + upU - half);
+    const u1 = Math.min(f.width / 2, pu + upU + half);
+    const v0 = Math.max(-f.height / 2, pv + upV - half);
+    const v1 = Math.min(f.height / 2, pv + upV + half);
+    const g = this.deskGroup;
+    g.position.copy(f.center).addScaledVector(f.u, (u0 + u1) / 2).addScaledVector(f.v, (v0 + v1) / 2).addScaledVector(f.normal, 0.0012);
+    const zAxis = new Vector3().copy(f.u).cross(f.normal);
+    const basis = new Matrix4().makeBasis(f.u, f.normal, zAxis);
+    g.quaternion.setFromRotationMatrix(basis);
+    // Local z runs along u x n (= +-v): its extent is the v span either way.
+    g.scale.set(Math.max(0.05, u1 - u0), 1, Math.max(0.05, v1 - v0));
+    g.visible = true;
+    this.shadowDirty();
   }
 
   /** Lay the catcher + pool over the whole desk rectangle. */
@@ -785,8 +951,32 @@ export class FlameSystem extends createSystem({
       this.userPlaced = true;
       root.visible = true;
       this.placed = 'saved';
+      if (saved.wall !== undefined) {
+        // Shown on its ledge right away; the catcher follows once the wall is detected.
+        this.wallPoint.fromArray(saved.wall.p);
+        this.wallNormal.fromArray(saved.wall.n);
+        this.wallUp.set(0, 1, 0).addScaledVector(this.wallNormal, -this.wallNormal.y).normalize();
+        this.setMount('wall');
+        this.pendingWall = { p: this.wallPoint.clone(), n: this.wallNormal.clone() };
+      } else if (saved.mount === 'float') {
+        this.setMount('float');
+      }
     }
     if (this.placed === 'saved') {
+      if (this.frame % 10 !== 1) return;
+      if (this.pendingWall !== null) {
+        // Re-mount a saved wall flame once its wall is detected (same plane, same facing).
+        const f = this.wallAt(this.pendingWall.p, this.pendingWall.n);
+        if (f !== null) {
+          this.mountOn(f, this.pendingWall.p, false);
+          this.placed = 'surface';
+        }
+        return;
+      }
+      if (this.mount === 'float') {
+        this.placed = 'surface';
+        return;
+      }
       // Re-seat a saved lantern on the desk under it once the desk is detected.
       const d = this.deskUnder(root.position);
       if (d !== null) {
@@ -843,7 +1033,14 @@ export class FlameSystem extends createSystem({
     try {
       const r = this.lantern.root;
       const yaw = 2 * Math.atan2(r.quaternion.y, r.quaternion.w);
-      const saved: Saved = { p: [r.position.x, r.position.y, r.position.z], yaw, surface: this.surfaceId !== '', userPlaced: this.userPlaced };
+      const saved: Saved = {
+        p: [r.position.x, r.position.y, r.position.z],
+        yaw,
+        surface: this.surfaceId !== '',
+        userPlaced: this.userPlaced,
+        mount: this.mount,
+        ...(this.mount === 'wall' ? { wall: { p: this.wallPoint.toArray() as Vec3, n: this.wallNormal.toArray() as Vec3 } } : {}),
+      };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     } catch {
       // storage off: the lantern is placed fresh next time
@@ -887,19 +1084,95 @@ export class FlameSystem extends createSystem({
     }
   }
 
-  private onRelease(): void {
+  /**
+   * Where a release right now would put the flame. A desk under it (the same
+   * band as before: up to 45 cm above, 15 cm below) wins; then a wall or door
+   * it is held within a hand-span of (the cards' near-drop band), or the
+   * surface the pinch-ray points at (walls, doors and desks, after the same
+   * hold-and-swing guard cards use). Null: it floats.
+   */
+  private dropTarget(): { kind: 'desk' | 'wall'; surface: SurfaceFrame; point: Vector3 } | null {
     const root = this.lantern.root;
-    this.userPlaced = true;
+    // Asked first even when a desk wins, so the pinch-ray's hold-and-swing guard starts at the grab.
+    // The flame's middle, not its base, is what is held near the wall.
+    const mid = this.tmpB.copy(root.position).add(this.tmpA.set(0, 0.06, 0));
+    const hit = this.entity === undefined ? null : surfaceHitFor(this.entity, mid, WALL_BAND);
     const d = this.deskUnder(root.position);
-    if (d !== null) {
-      this.standOn(d, root.position);
-      this.placed = 'surface';
+    if (d !== null) return { kind: 'desk', surface: d, point: root.position.clone() };
+    if (hit === null) return null;
+    if (hit.surface.kind === 'desk') return { kind: 'desk', surface: hit.surface, point: hit.point };
+    // The base goes ~6 cm below the point the flame's middle was held at.
+    const point = hit.point.clone().addScaledVector(this.tmpA.set(0, 1, 0).addScaledVector(hit.surface.normal, -hit.surface.normal.y).normalize(), -0.06);
+    return { kind: 'wall', surface: hit.surface, point };
+  }
+
+  private onGrab(): void {
+    // Lifted off its ledge (or desk): the ledge stays behind, the light rides with the flame.
+    if (this.mount === 'wall') this.setMount('float');
+    this.mount = 'float';
+  }
+
+  private onRelease(): void {
+    this.userPlaced = true;
+    // A pinch-ray pick needs the holding hand, which is gone by now: fall back to the last pick while held (what the preview showed).
+    const target = this.dropTarget() ?? this.heldTarget;
+    this.heldTarget = null;
+    this.updatePreview(null);
+    if (target?.kind === 'desk') {
+      this.standOn(target.surface, target.point);
+      this.faceHead();
+    } else if (target?.kind === 'wall') {
+      this.mountOn(target.surface, target.point);
     } else {
-      this.placed = 'surface'; // floating where it was let go; the old desk keeps its catcher
+      this.setMount('float'); // floating where it was let go; the old surface keeps its catcher
       this.surfaceId = '';
     }
+    this.placed = 'surface';
     this.save();
     this.flare(0.35);
+  }
+
+  /** The same snap preview cards show (outlines, a ghost, "Release to ..."), sized to the flame. */
+  private updatePreview(target: ReturnType<FlameSystem['dropTarget']>): void {
+    if (target === null) {
+      if (this.preview !== null) setExternalPreview(null);
+      this.preview = null;
+      this.previewKind = '';
+      return;
+    }
+    const s = target.surface;
+    const zAxis = s.normal.clone();
+    this.world.player.head.getWorldPosition(this.head);
+    let position: Vector3;
+    let yAxis: Vector3;
+    if (target.kind === 'wall') {
+      const spot = this.wallSpot(s, target.point, true);
+      yAxis = new Vector3(0, 1, 0).addScaledVector(zAxis, -zAxis.y).normalize();
+      position = spot.addScaledVector(yAxis, 0.07).addScaledVector(zAxis, 0.004);
+    } else {
+      // Ghost lies on the desk, squared to the user.
+      const toHead = this.tmpA.copy(this.head).sub(target.point);
+      toHead.addScaledVector(zAxis, -toHead.dot(zAxis));
+      yAxis = toHead.lengthSq() > 1e-6 ? toHead.normalize().negate() : s.v.clone();
+      const rel = this.tmpB.copy(target.point).sub(s.center);
+      position = target.point.clone().addScaledVector(zAxis, 0.004 - rel.dot(zAxis));
+    }
+    const xAxis = new Vector3().crossVectors(yAxis, zAxis).normalize();
+    const quaternion = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(xAxis, yAxis, zAxis));
+    const label = s.kind === 'door' ? 'Door' : s.kind === 'desk' ? 'Desk' : 'Wall';
+    this.preview = {
+      surfaceId: s.id,
+      kind: s.kind,
+      label,
+      position,
+      quaternion,
+      // A small ghost near the flame's size, a little bigger far away so its label stays readable.
+      scale: Math.max(0.05, Math.min(0.1, this.head.distanceTo(position) * 0.028)),
+      via: 'near',
+      verb: target.kind === 'wall' ? 'mount on' : 'stand on',
+    };
+    this.previewKind = target.kind;
+    setExternalPreview(this.preview);
   }
 
   // ------------------------------------------------------------ shadows
@@ -963,12 +1236,21 @@ export class FlameSystem extends createSystem({
     if (!root.visible) return;
 
     const held = this.entity?.hasComponent(Grabbed) === true;
-    // Cards placed on the desk (hand drop, buddy, rows) keep clear of the lantern's footprint.
-    setSurfaceObstacle('lantern', held ? null : root.position, FOOTPRINT_R);
+    // Cards placed on the desk or the wall (hand drop, buddy, rows) keep clear of the flame's footprint.
+    if (held) setSurfaceObstacle('lantern', null);
+    else if (this.mount === 'wall') {
+      const c = this.tmpB.copy(this.wallPoint).addScaledVector(this.wallUp, (WALL_UP - WALL_DOWN) / 2);
+      setSurfaceObstacle('lantern', c, WALL_HALF_W, (WALL_UP + WALL_DOWN) / 2);
+    } else setSurfaceObstacle('lantern', root.position, FOOTPRINT_R);
     if (held) {
+      if (!this.wasHeld) this.onGrab();
       // Upright while carried: keep only the yaw.
       const yaw = 2 * Math.atan2(root.quaternion.y, root.quaternion.w);
       root.quaternion.setFromAxisAngle(this.tmpA.set(0, 1, 0), yaw);
+      if (this.frame % 2 === 0) {
+        this.heldTarget = this.dropTarget();
+        this.updatePreview(this.heldTarget);
+      }
     } else if (this.wasHeld) this.onRelease();
     this.wasHeld = held;
     if (!held && this.frame % 3 === 0) this.updateGrabMode();
@@ -1034,15 +1316,21 @@ export class FlameSystem extends createSystem({
     light.color.copy(this.body).lerp(this.core, 0.25);
     light.intensity = LIGHT_INTENSITY * (0.4 + 0.6 * Math.min(1.3, s)) * flicker * (ember ? 0.4 : 1) * (1 + 1.6 * env);
 
+    // On a wall the light hangs in front of the flame's middle (root +Z is the wall normal).
+    const onWall = this.mount === 'wall';
+    // Low and in front: the flame's shadow rises up the wall behind it, a candle's shadow.
+    if (onWall) light.position.set(0, FLAME_H * s * 0.3, WALL_LIGHT_Z);
+    // The pool and the shadow fade centre on the base (desk) or the flame's middle on the wall.
+    const glowAt = onWall ? this.tmpB.copy(this.wallPoint).addScaledVector(this.wallUp, FLAME_H * s * 0.45) : this.tmpB.copy(root.position);
     // Desk pool follows the lantern.
     this.pool.visible = this.poolEnabled && this.lightEnabled;
     const pm = this.poolMat.uniforms;
-    pm.uCenter.value.copy(root.position);
+    pm.uCenter.value.copy(glowAt);
     pm.uColor.value.copy(this.body).lerp(this.core, 0.2);
     pm.uIntensity.value = (ember ? 0.16 : 0.45) * flicker * (1 + 1.2 * env);
     pm.uRadius.value = 0.26 + 0.08 * s;
     if (this.catcherUniforms !== undefined) {
-      this.catcherUniforms.uFlame.value.copy(root.position);
+      this.catcherUniforms.uFlame.value.copy(glowAt);
       this.catcherUniforms.uFade.value = (ember ? 0.2 : 0.3) + 0.1 * Math.min(1.3, s);
     }
 
@@ -1055,10 +1343,16 @@ export class FlameSystem extends createSystem({
     L.label.rotation.y = yawRel;
     L.label.position.y = FLAME_H * s + 0.045;
     // The badge stands in front of the flame's base, toward the user, leaning back a touch.
-    const front = FLAME_R * s + 0.01;
-    L.tag.position.set(Math.sin(yawRel) * front, BADGE_H * 0.5 + 0.002, Math.cos(yawRel) * front);
-    L.tag.rotation.set(0, yawRel, 0);
-    L.tag.rotateX(-0.2);
+    if (onWall) {
+      // On a wall the badge is a plaque on the ledge's front edge, facing out.
+      L.tag.position.set(0, -LEDGE_T * 0.6, LEDGE_D - WALL_OFF + 0.002);
+      L.tag.rotation.set(0, 0, 0);
+    } else {
+      const front = FLAME_R * s + 0.01;
+      L.tag.position.set(Math.sin(yawRel) * front, BADGE_H * 0.5 + 0.002, Math.cos(yawRel) * front);
+      L.tag.rotation.set(0, yawRel, 0);
+      L.tag.rotateX(-0.2);
+    }
 
     // Label on gaze (or while held).
     this.headDir.set(0, 0, -1).applyQuaternion(this.world.player.head.getWorldQuaternion(this.tmpQ));
@@ -1108,6 +1402,31 @@ export class FlameSystem extends createSystem({
           light: { on: this.lightEnabled && this.lantern.light.visible, intensity: this.lantern.light.intensity, castShadow: this.lantern.light.castShadow, mapSize: this.lantern.light.shadow.mapSize.x, color: `#${this.lantern.light.color.getHexString()}` },
           pool: this.pool.visible,
           catcher: { visible: this.deskGroup.visible, scale: this.deskGroup.scale.toArray(), position: this.deskGroup.position.toArray() },
+          mount: this.mount,
+          ledge: this.lantern.ledge.visible,
+          pendingWall: this.pendingWall !== null,
+          preview: this.preview === null ? null : { kind: this.previewKind, surfaceId: this.preview.surfaceId, label: this.preview.label, position: this.preview.position.toArray() },
+          wall: this.mount !== 'wall' ? null : (() => {
+            const n = this.wallNormal;
+            const flameUp = new Vector3(0, 1, 0).transformDirection(this.lantern.flame.matrixWorld);
+            const catcherN = new Vector3(0, 1, 0).applyQuaternion(this.deskGroup.quaternion);
+            const lightW = this.lantern.light.getWorldPosition(new Vector3());
+            const ledgeBack = this.lantern.ledge.localToWorld(new Vector3(0, LEDGE_T / 2, -LEDGE_D / 2));
+            return {
+              kind: this.wallKind,
+              base: this.wallPoint.toArray(),
+              normal: n.toArray(),
+              axisOffM: r.position.clone().sub(this.wallPoint).dot(n),
+              ledgeBackGapM: ledgeBack.sub(this.wallPoint).dot(n),
+              baseHeightM: r.position.y - this.wallPoint.y,
+              flameUpY: flameUp.y,
+              catcherNormalDot: catcherN.dot(n),
+              catcherOffM: this.deskGroup.position.clone().sub(this.wallPoint).dot(n),
+              catcherSize: [this.deskGroup.scale.x, this.deskGroup.scale.z],
+              lightOffM: lightW.sub(this.wallPoint).dot(n),
+              footprint: { halfW: WALL_HALF_W, down: WALL_DOWN, up: WALL_UP },
+            };
+          })(),
           held: this.entity?.hasComponent(Grabbed) === true,
           grabMode: this.nearMode ? 'near' : 'ray',
           label: { text: this.labelText, alpha: this.labelAlpha },
@@ -1152,6 +1471,21 @@ export class FlameSystem extends createSystem({
           const v = p.clone().project(view as import('@iwsdk/core').Camera);
           return [((v.x + 1) / 2) * canvas.clientWidth, ((1 - v.y) / 2) * canvas.clientHeight];
         };
+        if (this.mount === 'wall') {
+          // On a wall: rings on the wall plane around the flame's middle (where its shadow lands).
+          const c = this.wallPoint.clone().addScaledVector(this.wallUp, FLAME_H * this.scale * 0.5);
+          const side = new Vector3().crossVectors(this.wallUp, this.wallNormal).normalize();
+          return {
+            base: project(c.clone()),
+            top: project(r.position.clone().add(new Vector3(0, FLAME_H * this.scale, 0))),
+            ring: [0.08, 0.15, 0.25].map((rad) =>
+              Array.from({ length: 12 }, (_, i) => {
+                const a = (i / 12) * Math.PI * 2;
+                return project(c.clone().addScaledVector(side, Math.cos(a) * rad).addScaledVector(this.wallUp, Math.sin(a) * rad));
+              }),
+            ),
+          };
+        }
         return {
           base: project(r.position.clone()),
           top: project(r.position.clone().add(new Vector3(0, FLAME_H * this.scale, 0))),

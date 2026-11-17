@@ -232,6 +232,15 @@ height). Its candle flame **is your daily streak**.
   a candle's would and stays within ~40 cm of the flame.
 - **Pinch it** (ray or direct) to carry it anywhere; let go over a desk and it
   stands flush on it. Where you put it is remembered.
+- **Mount it on a wall** the way you pin cards: let go within a hand-span of a
+  wall or door, or with the pinch-ray pointing at one (the same snap preview
+  shows, "Release to mount on Wall"). It stands upright on a small wooden
+  ledge 5.5 cm out from the wall, nudged clear of cards already there, its
+  number on a plaque on the ledge. The light then hangs in front of the flame
+  so its shadow falls on the wall behind it (the catcher and pool move onto a
+  90 cm square of that wall), and cards pinned to that wall keep clear of it.
+  It comes back on the same wall after a reload; pinch it back onto the desk
+  any time.
 - Ask the buddy **"what's my streak?"** (works offline too).
 
 Cost on Quest: the lantern, flame, glow, embers, catcher and pool are a handful

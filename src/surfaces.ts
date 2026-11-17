@@ -56,6 +56,8 @@ export type SnapTarget = {
   via: 'near' | 'ray';
   /** True when no free spot was left and the card overlaps another one. */
   crowded?: boolean;
+  /** Preview wording ('pin to' for cards; the flame says 'mount on' / 'stand on'). */
+  verb?: string;
 };
 
 type Frame = {
@@ -116,17 +118,24 @@ const MIN_RAY_SWING = (4 * Math.PI) / 180;
 const LABEL: Record<SurfaceKind, string> = { wall: 'Wall', desk: 'Desk', door: 'Door' };
 
 let activeSystem: SurfaceSystem | undefined;
+/** Dev only: why the last non-card surface pick (the flame's) found nothing, or which surface it hit. */
+let devHitWhy = '';
 let nextSurfaceId = 1;
 
 /** Map a WebXR plane semantic label (Quest or IWER) to a snap surface kind. */
 /**
  * Things standing on a surface that a pinned card must not cover (PR 9: the
- * streak lantern). Keyed by owner; a circle of radius `r` around `p` (world).
+ * streak flame, on a desk or a wall). Keyed by owner; a box around `p`
+ * (world) of half-size `r` across and `rUp` along the card's up there.
  */
-const obstacles = new Map<string, { p: Vector3; r: number }>();
+const obstacles = new Map<string, { p: Vector3; r: number; rUp: number }>();
 
-/** Register (or with `p` null, clear) an obstacle cards are placed around. */
-export function setSurfaceObstacle(id: string, p: Vector3 | null, r = 0): void {
+/**
+ * Register (or with `p` null, clear) an obstacle cards are placed around.
+ * `r` is its half-size across; `rUp` (default `r`) its half-size along the
+ * card's up on that surface (a wall-mounted flame is taller than it is wide).
+ */
+export function setSurfaceObstacle(id: string, p: Vector3 | null, r = 0, rUp = r): void {
   if (p === null) {
     obstacles.delete(id);
     return;
@@ -135,7 +144,47 @@ export function setSurfaceObstacle(id: string, p: Vector3 | null, r = 0): void {
   if (o !== undefined) {
     o.p.copy(p);
     o.r = r;
-  } else obstacles.set(id, { p: p.clone(), r });
+    o.rUp = rUp;
+  } else obstacles.set(id, { p: p.clone(), r, rUp });
+}
+
+/** Where a held object (PR 9: the streak flame) would land: a surface, a point on its plane, near drop or pinch-ray. */
+export type SurfaceHit = { surface: SurfaceFrame; point: Vector3; via: 'near' | 'ray' };
+
+/**
+ * Near-drop band per surface kind: how far below / above (along the normal)
+ * the object may be. `null`: that kind is picked only by the pinch-ray; a
+ * kind left out is never picked.
+ */
+export type NearBand = Partial<Record<SurfaceKind, [number, number] | null>>;
+
+/**
+ * The same surface pick a held card uses (near drop first, then the surface
+ * the holding hand's pinch-ray points at, after the same hold-and-swing
+ * guard, stopped by floors and couches), for any grabbed entity at `center`.
+ * Null: it would float.
+ */
+export function surfaceHitFor(entity: Entity, center: Vector3, band: NearBand): SurfaceHit | null {
+  return activeSystem?.hitFor(entity, center, band) ?? null;
+}
+
+/**
+ * Show the snap preview (surface outlines, a ghost and its label) for a held
+ * object that is not a card. Null hides it. Card previews take precedence.
+ */
+export function setExternalPreview(target: SnapTarget | null): void {
+  externalPreview = target;
+}
+let externalPreview: SnapTarget | null = null;
+
+/**
+ * A spot on a wall/door near `point` where a box (half-width `halfW`,
+ * `down` below and `up` above the spot, along the wall's up) is inside the
+ * surface and clear of the pinned cards there (and their focus panels) by
+ * `gap`. Returns the spot on the plane, or null when the surface is gone.
+ */
+export function freeSpotOn(surfaceId: string, point: Vector3, halfW: number, down: number, up: number, gap: number): Vector3 | null {
+  return activeSystem?.freeSpot(surfaceId, point, halfW, down, up, gap) ?? null;
 }
 
 export function surfaceKindForLabel(
@@ -294,6 +343,7 @@ export class SurfaceSystem extends createSystem({
         listSurfaces,
         getDropTarget,
         pinnedFit: () => this.pinnedFit(),
+        hitWhy: () => devHitWhy,
       };
     }
     this.cleanupFuncs.push(() => {
@@ -397,9 +447,14 @@ export class SurfaceSystem extends createSystem({
     syncCardDecor(this.queries.cards.entities);
     this.updateGrabModes();
     const held = this.queries.held.entities;
-    for (const card of this.grabStarts.keys()) if (!held.has(card)) this.grabStarts.delete(card);
+    for (const e of this.grabStarts.keys()) if (!e.active || !e.hasComponent(Grabbed)) this.grabStarts.delete(e);
     if (held.size === 0) {
       if (this.previews.size > 0) this.previews.clear();
+      if (externalPreview !== null) {
+        this.refreshFrames(false, time);
+        this.showPreview(externalPreview);
+        return;
+      }
       this.setPreviewVisible(false);
       this.updateGlow();
       if (time - this.framesAt > 1) this.refreshFrames(true, time);
@@ -565,13 +620,49 @@ export class SurfaceSystem extends createSystem({
     object.updateWorldMatrix(true, false);
     const center = object.getWorldPosition(new Vector3());
     const cardId = card.getValue(QuestCard, 'cardId') as string;
+    const hit = this.findHit(card, center, null);
+    return hit === null ? null : this.placeOn(hit.frame, hit.point, cardId, hit.via);
+  }
 
-    // 1. Near drop: the card itself is within a hand-span of a surface.
+  hitFor(entity: Entity, center: Vector3, band: NearBand): SurfaceHit | null {
+    if (this.frames.length === 0) this.refreshFrames(true);
+    const hit = this.findHit(entity, center, band);
+    if (hit === null) return null;
+    const f = hit.frame;
+    return {
+      surface: {
+        id: f.id,
+        kind: f.kind,
+        label: this.frameInfo(f).label,
+        center: f.origin.clone().addScaledVector(f.u, f.cx).addScaledVector(f.v, f.cz),
+        normal: f.normal.clone(),
+        width: f.width,
+        height: f.height,
+        u: f.u.clone(),
+        v: f.v.clone(),
+      },
+      point: hit.point,
+      via: hit.via,
+    };
+  }
+
+  /**
+   * The surface a held entity would land on. 1. Near drop: the entity is
+   * within a hand-span of a surface (cards: 6 cm behind to 22 cm in front;
+   * `band` overrides it per kind and leaves out kinds it does not name).
+   * 2. Pinch-ray grab: the surface the holding hand points at.
+   */
+  private findHit(entity: Entity, center: Vector3, band: NearBand | null): { frame: Frame; point: Vector3; via: 'near' | 'ray' } | null {
+    if (this.frames.length === 0) return null;
+    const frames = band === null ? this.frames : this.frames.filter((f) => band[f.kind] !== undefined);
     let best: { frame: Frame; point: Vector3; distance: number } | null = null;
-    for (const frame of this.frames) {
+    for (const frame of frames) {
+      const range = band === null ? [0.06, NEAR_SNAP_DISTANCE] : band[frame.kind];
+      if (range == null) continue;
+      const [below, above] = range;
       const toCard = this.tmpA.copy(center).sub(frame.origin);
       const d = toCard.dot(frame.normal);
-      if (d < -0.06 || d > NEAR_SNAP_DISTANCE) continue;
+      if (d < -below || d > above) continue;
       const pu = toCard.dot(frame.u) - frame.cx;
       const pv = toCard.dot(frame.v) - frame.cz;
       if (Math.abs(pu) > frame.width / 2 + BOUNDS_MARGIN || Math.abs(pv) > frame.height / 2 + BOUNDS_MARGIN) continue;
@@ -580,26 +671,30 @@ export class SurfaceSystem extends createSystem({
         best = { frame, point: center.clone().addScaledVector(frame.normal, -d), distance };
       }
     }
-    if (best !== null) return this.placeOn(best.frame, best.point, cardId, 'near');
+    if (best !== null) return { frame: best.frame, point: best.point, via: 'near' };
 
     // 2. Pinch-ray (distance) grab: snap to the surface the hand points at.
-    if (!card.hasComponent(DistanceGrabbable)) return null;
-    const hand = this.world.getSystem(GrabSystem)?.getHolderHand(card);
-    if (hand == null) return null;
+    const why = (w: string | (() => string)) => {
+      if (import.meta.env.DEV && band !== null) devHitWhy = typeof w === 'string' ? w : w();
+      return null;
+    };
+    if (!entity.hasComponent(DistanceGrabbable)) return why('no-distance-grab');
+    const hand = this.world.getSystem(GrabSystem)?.getHolderHand(entity);
+    if (hand == null) return why('no-holder-hand');
     const raySpace = this.world.player.raySpaces[hand];
     raySpace.updateWorldMatrix(true, false);
     const origin = raySpace.getWorldPosition(new Vector3());
     const dir = new Vector3(0, 0, -1).applyQuaternion(raySpace.getWorldQuaternion(this.tmpQ)).normalize();
     // A quick pinch on a card (a tap) must not fling it to the wall behind it:
     // the ray has to be held a moment and swung a few degrees first.
-    let start = this.grabStarts.get(card);
+    let start = this.grabStarts.get(entity);
     if (start === undefined) {
       start = { at: performance.now(), dir: dir.clone() };
-      this.grabStarts.set(card, start);
+      this.grabStarts.set(entity, start);
     }
-    if (performance.now() - start.at < MIN_RAY_HOLD_MS || start.dir.angleTo(dir) < MIN_RAY_SWING) return null;
+    if (performance.now() - start.at < MIN_RAY_HOLD_MS || start.dir.angleTo(dir) < MIN_RAY_SWING) return why(() => `guard ${(performance.now() - start.at).toFixed(0)}ms ${((start.dir.angleTo(dir) * 180) / Math.PI).toFixed(1)}deg`);
     let hit: { frame: Frame; point: Vector3; t: number } | null = null;
-    for (const frame of this.frames) {
+    for (const frame of frames) {
       const t = rayPlane(origin, dir, frame.origin, frame.normal);
       if (t === null || t > RAY_MAX || (hit !== null && t >= hit.t)) continue;
       const p = origin.clone().addScaledVector(dir, t);
@@ -607,14 +702,88 @@ export class SurfaceSystem extends createSystem({
       if (Math.abs(rel.dot(frame.u) - frame.cx) > frame.width / 2 + 0.02 || Math.abs(rel.dot(frame.v) - frame.cz) > frame.height / 2 + 0.02) continue;
       hit = { frame, point: p, t };
     }
-    if (hit === null) return null;
+    if (hit === null) return why(() => `no-surface o=${origin.toArray().map((x) => x.toFixed(2))} d=${dir.toArray().map((x) => x.toFixed(2))} n=${frames.length}`);
     for (const b of this.blockers) {
       const t = rayPlane(origin, dir, b.origin, b.normal);
       if (t === null || t >= hit.t - 0.02) continue;
       const rel = this.tmpB.copy(origin).addScaledVector(dir, t).sub(b.origin);
-      if (Math.abs(rel.dot(b.u)) <= b.width / 2 && Math.abs(rel.dot(b.v)) <= b.height / 2) return null;
+      if (Math.abs(rel.dot(b.u)) <= b.width / 2 && Math.abs(rel.dot(b.v)) <= b.height / 2) return why('blocked');
     }
-    return this.placeOn(hit.frame, hit.point, cardId, 'ray');
+    why(() => `ray ${hit!.frame.id}`);
+    return { frame: hit.frame, point: hit.point, via: 'ray' };
+  }
+
+  /** Pinned cards on `frame` (and their focus panels) as boxes in the card grid's coordinates. */
+  private cardBoxes(frame: Frame, right: Vector3, up: Vector3, skip: (cardId: string) => boolean): Array<{ a: number; b: number; w: number; h: number }> {
+    const out: Array<{ a: number; b: number; w: number; h: number }> = [];
+    for (const other of this.queries.cards.entities) {
+      if (skip(other.getValue(QuestCard, 'cardId') as string)) continue;
+      if (other.hasComponent(QuestCardTween)) continue;
+      const o = other.object3D;
+      if (o == null) continue;
+      if (other.getValue(QuestCard, 'surfaceId') !== frame.id && !this.liesOn(o, frame)) continue;
+      const flight = this.flights.get(other);
+      const op = flight ? flight.to.clone() : o.getWorldPosition(new Vector3());
+      const os = flight ? flight.sTo : o.scale.x;
+      const r = op.sub(frame.origin);
+      out.push({
+        a: r.dot(right) + (FOCUS_PANEL_UNITS * os + 0.015) / 2,
+        b: r.dot(up),
+        w: (CARD_UNITS_W + FOCUS_PANEL_UNITS) * os + 0.015,
+        h: CARD_UNITS_H * os,
+      });
+    }
+    return out;
+  }
+
+  freeSpot(surfaceId: string, point: Vector3, halfW: number, down: number, up: number, gap: number): Vector3 | null {
+    if (this.frames.length === 0) this.refreshFrames(true);
+    const frame = this.frames.find((f) => f.id === surfaceId);
+    if (frame === undefined) return null;
+    this.world.player.head.getWorldPosition(this.head);
+    const { xAxis, yAxis } = this.cardAxes(frame);
+    const boxes = this.cardBoxes(frame, xAxis, yAxis, () => false);
+    const ru = xAxis.dot(frame.u);
+    const rv = xAxis.dot(frame.v);
+    const uu = yAxis.dot(frame.u);
+    const uv = yAxis.dot(frame.v);
+    const halfA = Math.abs(ru) * frame.width / 2 + Math.abs(rv) * frame.height / 2 - EDGE_INSET;
+    const halfB = Math.abs(uu) * frame.width / 2 + Math.abs(uv) * frame.height / 2 - EDGE_INSET;
+    const cA = frame.cx * ru + frame.cz * rv;
+    const cB = frame.cx * uu + frame.cz * uv;
+    const clampA = (x: number) => (halfA <= halfW ? cA : Math.max(cA - halfA + halfW, Math.min(cA + halfA - halfW, x)));
+    const clampB = (x: number) => (2 * halfB <= down + up ? cB : Math.max(cB - halfB + down, Math.min(cB + halfB - up, x)));
+    const rel = this.tmpB.copy(point).sub(frame.origin);
+    const a0 = clampA(rel.dot(xAxis));
+    const b0 = clampB(rel.dot(yAxis));
+    const midOff = (up - down) / 2;
+    const hh = (up + down) / 2;
+    const free = (a: number, b: number) =>
+      boxes.every((o) => Math.abs(o.a - a) >= (o.w / 2 + halfW + gap) - 1e-4 || Math.abs(o.b - (b + midOff)) >= (o.h / 2 + hh + gap) - 1e-4);
+    let a = a0;
+    let b = b0;
+    if (!free(a, b)) {
+      let found: [number, number] | null = null;
+      let bestScore = Infinity;
+      const step = 0.04;
+      for (let ring = 1; ring <= 40 && found === null; ring += 1) {
+        for (let i = -ring; i <= ring; i += 1) {
+          for (let j = -ring; j <= ring; j += 1) {
+            if (Math.max(Math.abs(i), Math.abs(j)) !== ring) continue;
+            const ca = clampA(a0 + i * step);
+            const cb = clampB(b0 + j * step);
+            if (!free(ca, cb)) continue;
+            const score = (ca - a0) ** 2 + (cb - b0) ** 2;
+            if (score < bestScore) {
+              bestScore = score;
+              found = [ca, cb];
+            }
+          }
+        }
+      }
+      if (found !== null) [a, b] = found;
+    }
+    return frame.origin.clone().addScaledVector(xAxis, a).addScaledVector(yAxis, b);
   }
 
   private liesOn(object: NonNullable<Entity['object3D']>, frame: Frame): boolean {
@@ -707,27 +876,9 @@ export class SurfaceSystem extends createSystem({
     let a = clampA(rel.dot(gridRight));
     let b = clampB(rel.dot(gridUp));
 
-    // Other cards already on this surface, in the same coordinates.
-    const others: Array<{ a: number; b: number; w: number; h: number }> = [];
-    for (const other of this.queries.cards.entities) {
-      if (other.getValue(QuestCard, 'cardId') === cardId) continue;
-      if (other.hasComponent(QuestCardTween)) continue;
-      const o = other.object3D;
-      if (o == null) continue;
-      // Same surface id, or (restored cards whose plane got a new id) lying on this frame.
-      if (other.getValue(QuestCard, 'surfaceId') !== frame.id && !this.liesOn(o, frame)) continue;
-      const flight = this.flights.get(other);
-      const op = flight ? flight.to.clone() : o.getWorldPosition(new Vector3());
-      const os = flight ? flight.sTo : o.scale.x;
-      const r = op.sub(frame.origin);
-      others.push({
-        // A pinned card carries its focus panel on its right: reserve that space too.
-        a: r.dot(gridRight) + (FOCUS_PANEL_UNITS * os + 0.015) / 2,
-        b: r.dot(gridUp),
-        w: (CARD_UNITS_W + FOCUS_PANEL_UNITS) * os + 0.015,
-        h: CARD_UNITS_H * os,
-      });
-    }
+    // Other cards already on this surface (same surface id, or restored cards
+    // lying on this frame), in the same coordinates, each with its focus panel on its right.
+    const others = this.cardBoxes(frame, gridRight, gridUp, (id) => id === cardId);
     this.addObstacles(frame, gridRight, gridUp, others);
     const fw = w + panelExtra;
     const free = (ca: number, cb: number) =>
@@ -798,12 +949,12 @@ export class SurfaceSystem extends createSystem({
 
   /** Obstacles standing on `frame` (the lantern), as square boxes in the card grid's coordinates. */
   private addObstacles(frame: Frame, right: Vector3, up: Vector3, out: Array<{ a: number; b: number; w: number; h: number }>): void {
-    for (const { p, r } of obstacles.values()) {
+    for (const { p, r, rUp } of obstacles.values()) {
       const rel = new Vector3().copy(p).sub(frame.origin);
       const off = rel.dot(frame.normal);
       if (off < -0.03 || off > 0.08) continue;
-      if (!insideFrame(frame, rel.dot(frame.u), rel.dot(frame.v), r)) continue;
-      out.push({ a: rel.dot(right), b: rel.dot(up), w: 2 * r, h: 2 * r });
+      if (!insideFrame(frame, rel.dot(frame.u), rel.dot(frame.v), Math.max(r, rUp))) continue;
+      out.push({ a: rel.dot(right), b: rel.dot(up), w: 2 * r, h: 2 * rUp });
     }
   }
 
@@ -865,24 +1016,7 @@ export class SurfaceSystem extends createSystem({
 
     // Other cards on this surface (not the ones being lined up).
     const mine = new Set(cardIds);
-    const others: Array<{ a: number; b: number; w: number; h: number }> = [];
-    for (const other of this.queries.cards.entities) {
-      if (mine.has(other.getValue(QuestCard, 'cardId') as string)) continue;
-      if (other.hasComponent(QuestCardTween)) continue;
-      const o = other.object3D;
-      if (o == null) continue;
-      if (other.getValue(QuestCard, 'surfaceId') !== frame.id && !this.liesOn(o, frame)) continue;
-      const flight = this.flights.get(other);
-      const op = flight ? flight.to.clone() : o.getWorldPosition(new Vector3());
-      const os = flight ? flight.sTo : o.scale.x;
-      const r = op.sub(frame.origin);
-      others.push({
-        a: r.dot(xAxis) + (FOCUS_PANEL_UNITS * os + 0.015) / 2,
-        b: r.dot(yAxis),
-        w: (CARD_UNITS_W + FOCUS_PANEL_UNITS) * os + 0.015,
-        h: CARD_UNITS_H * os,
-      });
-    }
+    const others = this.cardBoxes(frame, xAxis, yAxis, (id) => mine.has(id));
     this.addObstacles(frame, xAxis, yAxis, others);
     const toLocal = (ca: number, cb: number) => ({ x: ca * ru + cb * uu, z: ca * rv + cb * uv });
     const rel = this.tmpB.copy(point).sub(frame.origin);
@@ -1126,7 +1260,7 @@ export class SurfaceSystem extends createSystem({
     this.ghost.position.copy(target.position);
     this.ghost.quaternion.copy(target.quaternion);
     this.ghost.scale.setScalar(target.scale);
-    const text = `Release to pin to ${target.label}`;
+    const text = `Release to ${target.verb ?? 'pin to'} ${target.label}`;
     if (text !== this.ghostLabelText && this.ghostLabelCtx !== null) {
       const c = this.ghostLabelCtx;
       c.clearRect(0, 0, 512, 96);
