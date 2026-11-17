@@ -119,6 +119,25 @@ let activeSystem: SurfaceSystem | undefined;
 let nextSurfaceId = 1;
 
 /** Map a WebXR plane semantic label (Quest or IWER) to a snap surface kind. */
+/**
+ * Things standing on a surface that a pinned card must not cover (PR 9: the
+ * streak lantern). Keyed by owner; a circle of radius `r` around `p` (world).
+ */
+const obstacles = new Map<string, { p: Vector3; r: number }>();
+
+/** Register (or with `p` null, clear) an obstacle cards are placed around. */
+export function setSurfaceObstacle(id: string, p: Vector3 | null, r = 0): void {
+  if (p === null) {
+    obstacles.delete(id);
+    return;
+  }
+  const o = obstacles.get(id);
+  if (o !== undefined) {
+    o.p.copy(p);
+    o.r = r;
+  } else obstacles.set(id, { p: p.clone(), r });
+}
+
 export function surfaceKindForLabel(
   label: string | undefined,
   orientation: 'horizontal' | 'vertical',
@@ -709,6 +728,7 @@ export class SurfaceSystem extends createSystem({
         h: CARD_UNITS_H * os,
       });
     }
+    this.addObstacles(frame, gridRight, gridUp, others);
     const fw = w + panelExtra;
     const free = (ca: number, cb: number) =>
       others.every(
@@ -774,6 +794,17 @@ export class SurfaceSystem extends createSystem({
     this.m.makeBasis(xAxis, yAxis, zAxis);
     const quaternion = new Quaternion().setFromRotationMatrix(this.m);
     return { surfaceId: frame.id, kind: frame.kind, label: LABEL[frame.kind], position, quaternion, scale, via, crowded };
+  }
+
+  /** Obstacles standing on `frame` (the lantern), as square boxes in the card grid's coordinates. */
+  private addObstacles(frame: Frame, right: Vector3, up: Vector3, out: Array<{ a: number; b: number; w: number; h: number }>): void {
+    for (const { p, r } of obstacles.values()) {
+      const rel = new Vector3().copy(p).sub(frame.origin);
+      const off = rel.dot(frame.normal);
+      if (off < -0.03 || off > 0.08) continue;
+      if (!insideFrame(frame, rel.dot(frame.u), rel.dot(frame.v), r)) continue;
+      out.push({ a: rel.dot(right), b: rel.dot(up), w: 2 * r, h: 2 * r });
+    }
   }
 
   /** Card axes on a frame (+Z the surface normal, +Y the text's up), like placeOn. */
@@ -852,6 +883,7 @@ export class SurfaceSystem extends createSystem({
         h: CARD_UNITS_H * os,
       });
     }
+    this.addObstacles(frame, xAxis, yAxis, others);
     const toLocal = (ca: number, cb: number) => ({ x: ca * ru + cb * uu, z: ca * rv + cb * uv });
     const rel = this.tmpB.copy(point).sub(frame.origin);
     const aimA = rel.dot(xAxis);

@@ -50,7 +50,7 @@ import {
 } from '@iwsdk/core';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { QuestCard, QuestCardTween } from './quest-component.js';
-import { surfaceFrames, type SurfaceFrame } from './surfaces.js';
+import { setSurfaceObstacle, surfaceFrames, type SurfaceFrame } from './surfaces.js';
 import { getProgress, onAward, onProgress, setStreakForDev, type AwardEvent } from './progress.js';
 import {
   dayKey,
@@ -67,6 +67,7 @@ const DAY_MS = 86_400_000;
 
 // ---- lantern geometry (metres)
 const BASE_R = 0.045;
+const FOOTPRINT_R = 0.07; // lantern base + glass + a little air, kept free of pinned cards
 const WICK_TOP = 0.056;
 const CAGE_R = 0.04;
 const CAGE_TOP = 0.165;
@@ -968,6 +969,8 @@ export class FlameSystem extends createSystem({
     if (!root.visible) return;
 
     const held = this.entity?.hasComponent(Grabbed) === true;
+    // Cards placed on the desk (hand drop, buddy, rows) keep clear of the lantern's footprint.
+    setSurfaceObstacle('lantern', held ? null : root.position, FOOTPRINT_R);
     if (held) {
       // Upright while carried: keep only the yaw.
       const yaw = 2 * Math.atan2(root.quaternion.y, root.quaternion.w);
