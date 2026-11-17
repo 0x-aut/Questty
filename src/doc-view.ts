@@ -850,48 +850,51 @@ export class DocViewSystem extends createSystem({}) {
   }
 
   private installDevHooks(): void {
-    const w = window as unknown as { __questty?: Record<string, unknown> };
-    w.__questty = {
-      ...w.__questty,
-      doc: {
-        state: () => ({
-          open: this.doc === null ? null : { id: this.doc.id, title: this.doc.title, source: this.doc.source },
-          scroll: Math.round(this.scroll),
-          maxScroll: this.maxScroll(),
-          contentPx: this.contentPx,
-          canvasPx: this.canvasPx,
-          viewPx: VIEW_PX,
-          dragging: this.drag?.kind ?? null,
-          dragHand: this.drag?.hand ?? null,
-          dragV: this.drag === null ? null : [this.drag.startV, this.drag.lastV],
-          velocity: Math.round(this.velocity),
-          held: this.held,
-          grabMode: this.nearMode ? 'near' : 'ray',
-          mount: this.mount,
-          center: this.center.toArray(),
-          normal: new Vector3(0, 0, 1).applyQuaternion(this.quat).toArray(),
-          shellOpacity: this.shellOpacity,
-          pageVisible: this.page.visible,
-          header: this.header?.position.toArray() ?? null,
-          close: this.closePanel?.position.toArray() ?? null,
-          saved: loadDocView(),
-          log: [...this.log],
-          anisotropy: this.texture.anisotropy,
-        }),
-        open: (request: DocRequest) => this.open(request),
-        close: () => this.close(),
-        draft: (topic: string) => draftOutline(topic),
-        setScroll: (px: number) => {
-          this.scroll = Math.max(0, Math.min(this.maxScroll(), px));
-          this.persistScroll();
+    // The whole body sits under the DEV check so production builds drop it.
+    if (import.meta.env.DEV) {
+      const w = window as unknown as { __questty?: Record<string, unknown> };
+      w.__questty = {
+        ...w.__questty,
+        doc: {
+          state: () => ({
+            open: this.doc === null ? null : { id: this.doc.id, title: this.doc.title, source: this.doc.source },
+            scroll: Math.round(this.scroll),
+            maxScroll: this.maxScroll(),
+            contentPx: this.contentPx,
+            canvasPx: this.canvasPx,
+            viewPx: VIEW_PX,
+            dragging: this.drag?.kind ?? null,
+            dragHand: this.drag?.hand ?? null,
+            dragV: this.drag === null ? null : [this.drag.startV, this.drag.lastV],
+            velocity: Math.round(this.velocity),
+            held: this.held,
+            grabMode: this.nearMode ? 'near' : 'ray',
+            mount: this.mount,
+            center: this.center.toArray(),
+            normal: new Vector3(0, 0, 1).applyQuaternion(this.quat).toArray(),
+            shellOpacity: this.shellOpacity,
+            pageVisible: this.page.visible,
+            header: this.header?.position.toArray() ?? null,
+            close: this.closePanel?.position.toArray() ?? null,
+            saved: loadDocView(),
+            log: [...this.log],
+            anisotropy: this.texture.anisotropy,
+          }),
+          open: (request: DocRequest) => this.open(request),
+          close: () => this.close(),
+          draft: (topic: string) => draftOutline(topic),
+          setScroll: (px: number) => {
+            this.scroll = Math.max(0, Math.min(this.maxScroll(), px));
+            this.persistScroll();
+          },
+          pagePoint: (u: number, v: number) => {
+            // World point on the page at (u, v) in -0.5..0.5 of its width/height.
+            const p = new Vector3(u * VIEW_W, v * VIEW_H, 0).applyQuaternion(this.quat).add(this.center);
+            return p.toArray();
+          },
         },
-        pagePoint: (u: number, v: number) => {
-          // World point on the page at (u, v) in -0.5..0.5 of its width/height.
-          const p = new Vector3(u * VIEW_W, v * VIEW_H, 0).applyQuaternion(this.quat).add(this.center);
-          return p.toArray();
-        },
-      },
-    };
+      };
+    }
   }
 }
 
