@@ -20,6 +20,9 @@ import { setCardWorldPose } from '../surfaces.js';
 import { suggestedFocusMinutes, DEFAULT_FOCUS_MIN } from '../session.js';
 import { MAX_ARRANGE, needsConfirm, type BuddyAction, type BuddyCard, type BuddyCategory, type PlaceTarget } from './actions.js';
 import { categoryLabel } from './parser.js';
+import { getProgress } from '../progress.js';
+import { dayKey, streakLine, viewStreak } from '../streak.js';
+import { pingFlame } from '../flame.js';
 
 export type UndoEntry = { label: string; run: () => Promise<string[]> };
 export type Offer = { label: string; action: BuddyAction };
@@ -195,6 +198,12 @@ export class BuddyExecutor {
             setCardCategory(action.card_id, before, 'api');
             return [action.card_id];
           });
+          log(true);
+          break;
+        }
+        case 'show_streak': {
+          replies.push(streakLine(viewStreak(getProgress(), dayKey(Date.now()))));
+          pingFlame();
           log(true);
           break;
         }

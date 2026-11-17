@@ -196,6 +196,7 @@ export function classify(text: string): 'command' | 'dump' {
   const commas = (t.match(/,/gu) ?? []).length;
   if (/^(okay |so |um |uh )*(today |later |tomorrow )?(i (need|have|got|want|should|must) to|i've got to|gotta)\b/iu.test(t)) return 'dump';
   if (COMMAND_START.test(t) && commas < 2) return 'command';
+  if (/\b(streak|my flame|the flame)\b/iu.test(t) && t.split(' ').length <= 9) return 'command';
   if (/\b(plan my day|what's left|whats left|what is left|add \d+ min|add five min)\b/iu.test(t)) return 'command';
   return 'dump';
 }
@@ -231,6 +232,11 @@ export function parseCommand(input: string, cards: readonly BuddyCard[]): ParseR
 
   if (/^undo\b|^take that back\b/u.test(lower)) return { kind: 'undo' };
   if (/^(yes|yeah|yep|sure|ok|okay|do it|go|start it|start the first one|let's go)$/u.test(lower)) return { kind: 'accept' };
+
+  // ---- streak (PR 9): "what's my streak?", "how's my flame doing", "how many days in a row"
+  if (/\bstreak\b|\b(my|the) flame\b|\bdays? in a row\b/u.test(lower)) {
+    return { kind: 'command', actions: [{ type: 'show_streak' }] };
+  }
 
   // ---- plan my day
   if (/\b(plan|order|organi[sz]e) (my|the|out my)? ?day\b|^what should i do first\b|^plan\b/u.test(lower)) {

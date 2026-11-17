@@ -53,7 +53,8 @@ import {
   startFocus,
   type SessionState,
 } from './session.js';
-import { awardXp, getProgress, revokeXp, type ProgressState } from './progress.js';
+import { awardXp, getLastAward, getProgress, onProgress, revokeXp, type ProgressState } from './progress.js';
+import { dayKey, viewStreak } from './streak.js';
 import { syncRoomGrowth } from './room-growth.js';
 import {
   BLUR_LEVELS,
@@ -144,6 +145,12 @@ function createTimerDisk(): TimerDisk {
   };
 }
 
+/** " +10 streak" when the last completion earned a streak bonus (PR 9). */
+function bonusNote(): string {
+  const bonus = getLastAward()?.bonusXp ?? 0;
+  return bonus > 0 ? ` +${bonus} streak` : '';
+}
+
 export class SessionSystem extends createSystem({}) {
   private state: SessionState = IDLE_SESSION;
   private activeCard: Entity | undefined;
@@ -188,6 +195,13 @@ export class SessionSystem extends createSystem({}) {
     this.progressStatus = panel?.getElementById<UIKit.Text>('progress-status') ?? undefined;
     this.updateProgressStatus();
     void syncRoomGrowth(this.world, this.progress.level);
+    // The dev streak hook (PR 9) and other saves keep the panel line current.
+    this.cleanupFuncs.push(
+      onProgress((progress) => {
+        this.progress = progress;
+        this.updateProgressStatus();
+      }),
+    );
     setFocusStarter((entity, minutes) => this.beginFocus(entity, minutes));
     setCardCompleter((entity) => this.finishFocus(entity, 'manual'));
     setCardNudger((entity) => void this.requestNudge(entity));
@@ -426,7 +440,7 @@ export class SessionSystem extends createSystem({}) {
     this.updateProgressStatus();
     void syncRoomGrowth(this.world, this.progress.level);
     playChime();
-    setQuestCardState(entity, `Completed - +${xp} XP`);
+    setQuestCardState(entity, `Completed - +${xp} XP${bonusNote()}`);
     setCardActionMode(entity.getValue(QuestCard, 'cardId') as string, 'hidden');
     tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
     return xp;
@@ -457,7 +471,7 @@ export class SessionSystem extends createSystem({}) {
     clearFocusTimer();
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
     const prefix = reason === 'away' ? 'Finished while you were away' : 'Completed';
-    setQuestCardState(entity, `${prefix} - +${xp} XP`);
+    setQuestCardState(entity, `${prefix} - +${xp} XP${bonusNote()}`);
     setCardActionMode(cardId, 'hidden');
     tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
     this.activeCard = undefined;
@@ -853,10 +867,11 @@ export class SessionSystem extends createSystem({}) {
   }
 
   private updateProgressStatus(): void {
+    const streak = viewStreak(this.progress, dayKey(Date.now())).streak;
     this.progressStatus?.setProperties({
       text:
-        this.progress.streak > 1
-          ? `Level ${this.progress.level} | ${this.progress.xp} XP | ${this.progress.streak} day streak`
+        streak > 1
+          ? `Level ${this.progress.level} | ${this.progress.xp} XP | ${streak} day streak`
           : `Level ${this.progress.level} | ${this.progress.xp} XP`,
     });
   }

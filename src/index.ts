@@ -18,6 +18,7 @@ import { CardPersistenceSystem, restoreSavedCards } from './persistence.js';
 import { CoachSystem } from './coach.js';
 import { CategorySystem } from './categories.js';
 import { BuddySystem } from './buddy/ui.js';
+import { FlameSystem } from './flame.js';
 
 const sceneContainer = document.getElementById('scene-container');
 if (!(sceneContainer instanceof HTMLDivElement)) {
@@ -36,6 +37,7 @@ world.registerSystem(CardPersistenceSystem);
 world.registerSystem(CoachSystem);
 world.registerSystem(CategorySystem);
 world.registerSystem(BuddySystem);
+world.registerSystem(FlameSystem);
 
 configureQuestCards(world);
 // The room starts empty for a new user: cards appear only after they speak or

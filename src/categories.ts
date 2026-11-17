@@ -16,6 +16,7 @@
  * The category list itself is in category-config.ts.
  */
 import {
+  Box3,
   CanvasTexture,
   createSystem,
   Grabbed,
@@ -246,6 +247,8 @@ export class CategorySystem extends createSystem({
   private pickerPending = false;
   private pickerCardId: string | null = null;
   private pickerOpenedAt = 0;
+  /** How far the open picker is raised to clear a desk card (null: not measured yet for this open). */
+  private pickerLift: number | null = null;
   private pickerSlots: Array<CategoryId | null> = [];
   private pickerCloseTimer: number | undefined;
   private toast?: { entity: Entity; panel: UIKitMLAsset };
@@ -586,6 +589,7 @@ export class CategorySystem extends createSystem({
     window.clearTimeout(this.pickerCloseTimer);
     this.pickerCardId = cardId;
     this.pickerOpenedAt = performance.now();
+    this.pickerLift = null;
     this.placePicker(card);
     panel.visible = true;
   }
@@ -638,6 +642,18 @@ export class CategorySystem extends createSystem({
     position.addScaledVector(this.right, -((CARD_UNITS_W / 2) * s * 0.55 + (PICKER_W / 2) * scale * 0.35));
     panel.position.copy(position);
     panel.scale.setScalar(scale);
+    // A card lying on a desk: keep the whole picker above the card. Its lower rows used to dip
+    // below the desk top, behind the card's own hitbox, where a pinch-ray could not reach them
+    // (UIKit draws over everything, so it looked fine). Seen once the lantern moved desk cards.
+    // Measured once per open (the picker is re-placed every frame), then reused.
+    if (this.normal.y > 0.7) {
+      if (this.pickerLift === null) {
+        panel.updateWorldMatrix(true, true);
+        const minY = new Box3().setFromObject(panel).min.y;
+        if (Number.isFinite(minY)) this.pickerLift = Math.max(0, this.p.y + 0.012 - minY);
+      }
+      panel.position.y += this.pickerLift ?? 0;
+    }
   }
 
   // ------------------------------------------------------------ highlight

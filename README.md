@@ -196,3 +196,57 @@ Surfaces come from WebXR plane detection: on a Quest in passthrough, your real
 room's `wall`, `table` and `door` planes. Without plane detection, a small
 virtual room is used instead. Scene nodes can also be tagged with the
 `SnapSurface` component.
+
+## Streak flame
+
+A small brass lantern stands on your desk (the detected `table`/`desk` plane
+nearest you, in front of you; with no desk it stands in front of you at desk
+height). Its candle flame **is your daily streak**.
+
+- **A day counts** when you complete at least one quest or one focus session
+  that day, by your local calendar date (midnight where you are, DST-safe).
+- **Miss a day** and the flame drops to a low ember for one grace day: finish
+  something that day and the streak carries on. Miss the grace day too and it
+  resets. A fresh user sees a small pilot flame ("Light it").
+- **It grows** a little with the streak (about 0.9x on day 1 to 1.25x from day
+  30, clamped so it stays desk-sized) and **changes colour by tier**:
+
+  | Streak     | Tier    | Flame                 |
+  |------------|---------|-----------------------|
+  | 0          | Pilot   | small, dim orange     |
+  | 1-2 days   | Ember   | warm orange           |
+  | 3-6 days   | Gold    | yellow-gold           |
+  | 7-13 days  | Blue    | blue-white            |
+  | 14-29 days | Violet  | violet                |
+  | 30+ days   | Emerald | emerald green         |
+
+- The number is engraved on a brass tag on the dish, and a label ("7-day streak -
+  Blue") appears when you look at the lantern or hold it.
+- **Every completion flares it** (a quick rise, brighter light, a burst of
+  embers) with the usual chime. The first completion of a day that continues a
+  streak earns a small bonus: +5 XP per streak day beyond the first, max +25.
+- **It really lights your desk**: a flickering point light at the flame casts
+  shadows (256 px cube map) from the lantern's posts and nearby cards onto a
+  shadow-catcher laid over the detected desk, so the shadow shows over
+  passthrough, plus a soft warm light pool. The shadow fades with distance like
+  a candle's would and stays within ~40 cm of the flame.
+- **Pinch it** (ray or direct) to carry it anywhere; let go over a desk and it
+  stands flush on it. Where you put it is remembered.
+- **Mount it on a wall** the way you pin cards: let go within a hand-span of a
+  wall or door, or with the pinch-ray pointing at one (the same snap preview
+  shows, "Release to mount on Wall"). It stands upright on a small wooden
+  ledge 5.5 cm out from the wall, nudged clear of cards already there, its
+  number on a plaque on the ledge. The light then hangs in front of the flame
+  so its shadow falls on the wall behind it (the catcher and pool move onto a
+  90 cm square of that wall), and cards pinned to that wall keep clear of it.
+  It comes back on the same wall after a reload; pinch it back onto the desk
+  any time.
+- Ask the buddy **"what's my streak?"** (works offline too).
+
+Cost on Quest: the lantern, flame, glow, embers, catcher and pool are a handful
+of draws; the point light's shadow is re-rendered only while something moves
+(otherwise at ~15 Hz). Saved in `localStorage` under `questty.progress.v1`
+(with the streak's `lastDay`) and `questty.flame.v1` (where you put it).
+
+Dev only: `window.__questty.flame` (`state()`, `setStreak(n, 'lit'|'waiting'|'ember'|'out')`,
+`flare()`, `lightOn(on, pool)`, `renderStats()`, ...).
