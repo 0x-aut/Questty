@@ -75,7 +75,8 @@ const USED_KEY = 'questty.buddy.v1';
 const PX_AT_PANEL = 0.001;
 const ORB_FILL = 0.84;
 const ORB_FORWARD = 0.012;
-const BUBBLE_GAP = 0.012;
+/** Gap under the collapsed pill (measured 1.2 cm before; the slide-in used to start 1.2 cm higher and touch the pill). */
+const BUBBLE_GAP = 0.016;
 const BUBBLE_SCALE = 0.1;
 const FADE_IN_MS = 220;
 const FADE_OUT_MS = 380;
@@ -1409,10 +1410,11 @@ export class BuddySystem extends createSystem({
     const right = new Vector3(1, 0, 0).applyQuaternion(this.tmpQ);
     const normal = new Vector3(0, 0, 1).applyQuaternion(this.tmpQ);
     // Top-left corner just under the pill's left edge (under the orb), so the
-    // bubble grows away from the card arc on the right.
+    // bubble grows away from the card arc on the right. It slides in from
+    // below, never up into the pill.
     const position = new Vector3(e[12], e[13], e[14])
       .addScaledVector(right, -pillW / 2 + 0.004)
-      .addScaledVector(up, -(pillH / 2 + BUBBLE_GAP) + slide * 0.012)
+      .addScaledVector(up, -(pillH / 2 + BUBBLE_GAP) - slide * 0.012)
       .addScaledVector(normal, 0.004);
     b.panel.position.copy(position);
     b.panel.quaternion.copy(this.tmpQ);
