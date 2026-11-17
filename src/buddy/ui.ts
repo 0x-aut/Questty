@@ -61,6 +61,7 @@ import { BuddyExecutor, type ExecResult, type Offer, type PlaceOutcome, type Und
 import { aimPoint, describeSpot, resolvePlace, whereLabel } from './spatial.js';
 import type { PlaceTarget } from './actions.js';
 import { BuddyOrb, type OrbState } from './orb.js';
+import { isSettingsPanelShown } from '../settings-panel.js';
 import { BUDDY_SLOW, LightLines } from './light-line.js';
 import { setBuddyLink, setTalkToggle, startPushToTalk, type MicState } from './bus.js';
 import { TalkSession, talkSupported, type TalkState } from './talk.js';
@@ -388,7 +389,7 @@ export class BuddySystem extends createSystem({
     const group = this.orb.group;
     group.position.copy(this.orbPos);
     group.quaternion.copy(this.tmpQ);
-    group.visible = panel.visible !== false;
+    group.visible = panel.visible !== false && !isSettingsPanelShown();
     this.orb.update(now, this.orbRadius, this.world.player.head);
   }
 

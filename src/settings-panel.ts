@@ -28,10 +28,16 @@ import { announce, announceLog } from './announce.js';
 import { hourLabel, nextReviewHour } from './review-logic.js';
 import { reviewHour, setReviewHour } from './review-store.js';
 
-const SCALE = 0.1;
-const ANGLE_DEG = -20; // to the user's left, between the home panel and the middle
-const DISTANCE = 0.62;
-const DROP = 0.28;
+/**
+ * PR 11: in the home panel's sector (the card arc keeps -40..-70 deg clear for it), nearer than any card
+ * (seated arc starts at 0.48 m) and drawn smaller (9 rows). It used to sit at -28 deg / 0.62 m, among the
+ * floating cards: with seated mode the new cards opened right around it, and a pinch meant for a card could
+ * land on the panel (see pr10-b E6).
+ */
+const SCALE = 0.065;
+const ANGLE_DEG = -50;
+const DISTANCE = 0.44;
+const DROP = 0.2;
 const ID: Record<SettingKey, string> = {
   seated: 'seated',
   largeText: 'large-text',
@@ -57,6 +63,15 @@ export function styleCard(card: Entity): void {
   const root = panel.getElementById<UIKit.Text>('quest-card-root');
   if (hc) root?.setProperties({ backgroundColor: '#000000', backgroundOpacity: 1, borderColor: '#ffffff', borderWidth: 3 } as never);
   else root?.setProperties({ backgroundColor: undefined, borderColor: undefined, borderWidth: 0 } as never);
+}
+
+let settingsPanelShown = false;
+/**
+ * Is the settings panel up? The buddy orb hides while it is: the panel sits in the home panel's sector, in
+ * front of the hero, and the orb (transparent, drawn after UIKit) would otherwise glow through it.
+ */
+export function isSettingsPanelShown(): boolean {
+  return settingsPanelShown;
 }
 
 export class SettingsSystem extends createSystem({
@@ -138,6 +153,7 @@ export class SettingsSystem extends createSystem({
       this.refreshRows();
     }
     panel.visible = want;
+    settingsPanelShown = want;
     if (!want) panel.position.set(0, -50, 0); // out of every pointer's way while hidden
   }
 

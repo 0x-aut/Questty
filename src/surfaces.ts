@@ -325,7 +325,6 @@ export class SurfaceSystem extends createSystem({
   /** Each held card's centre one frame ago (for a fast drop's landing). */
   private readonly heldCenters = new Map<string, Vector3>();
   private readonly flights = new Map<Entity, Flight>();
-  private readonly nearMode = new Map<Entity, boolean>();
   private readonly grabStarts = new Map<Entity, { at: number; dir: Vector3 }>();
   private virtualCreated = false;
   private fallbackTimer: number | undefined;
@@ -353,6 +352,11 @@ export class SurfaceSystem extends createSystem({
     if (!forceVirtual) for (const entity of this.queries.planes.entities) this.tagPlane(entity);
     this.queries.surfaces.subscribe('qualify', () => { this.framesAt = -1; });
     this.queries.surfaces.subscribe('disqualify', () => { this.framesAt = -1; });
+    // Card entities are reused once a card leaves the query: drop any per-card state with it.
+    this.queries.cards.subscribe('disqualify', (entity) => {
+      this.flights.delete(entity);
+      this.grabStarts.delete(entity);
+    });
 
     const onSessionStart = () => {
       window.clearTimeout(this.fallbackTimer);
@@ -1225,12 +1229,13 @@ export class SurfaceSystem extends createSystem({
         const dz = Math.abs(local.z) * s;
         nearest = Math.min(nearest, Math.hypot(dx, dy, dz));
       }
-      const wasNear = this.nearMode.get(card);
-      const near = wasNear === true ? nearest < NEAR_EXIT : nearest < NEAR_ENTER;
-      if (near !== wasNear || !hasGrabbable(card)) {
-        setGrabMode(card, near ? 'near' : 'ray');
-        this.nearMode.set(card, near);
-      }
+      // Compare against the grab handle the card actually carries, not a cached flag: other code (the
+      // focus view, the physical finish, a reload) swaps or strips the handle too, and card entities are
+      // reused after one leaves the query, so the old cached per-entity flag left cards stuck on the wrong grab (pr10-b E5/E6).
+      const isNear = card.hasComponent(OneHandGrabbable);
+      const hasAny = isNear || card.hasComponent(DistanceGrabbable);
+      const near = hasAny && isNear ? nearest < NEAR_EXIT : nearest < NEAR_ENTER;
+      if (!hasAny || near !== isNear) setGrabMode(card, near ? 'near' : 'ray');
     }
   }
 
@@ -1507,9 +1512,6 @@ export function setCardWorldPose(entity: Entity, position: Vector3, quaternion: 
   object.scale.setScalar(scale);
 }
 
-function hasGrabbable(card: Entity): boolean {
-  return card.hasComponent(OneHandGrabbable) || card.hasComponent(DistanceGrabbable);
-}
 
 /** Swap a card between direct (near) grab and pinch-ray (distance) grab. */
 export function setGrabMode(card: Entity, mode: 'near' | 'ray'): void {

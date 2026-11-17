@@ -87,11 +87,14 @@ export class ReviewSystem extends createSystem({
     this.timer = window.setInterval(() => this.check(), CHECK_MS);
     const xr = this.world.renderer.xr;
     const onStart = () => {
+      // The return ritual (2.5 s after the session starts) promotes due cards itself and says so; this
+      // catches the rest (no ritual: same day, or an empty room) once it would have started.
       window.setTimeout(() => {
+        if (isRitualRunning()) return;
         const moved = promoteDueCards();
         if (moved.length > 0) this.log('promoted', moved.join(','));
-      }, 1500);
-      window.setTimeout(() => this.check(), 6000);
+      }, 6000);
+      window.setTimeout(() => this.check(), 6500);
     };
     xr.addEventListener('sessionstart', onStart);
     this.cleanupFuncs.push(

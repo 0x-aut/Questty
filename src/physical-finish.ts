@@ -237,7 +237,10 @@ export class PhysicalFinishSystem extends createSystem({
       const list = this.samples[hand];
       const last = list[list.length - 1];
       if (last === undefined || now - last.t > 1) list.push({ t: now, p: [this.tmpA.x, this.tmpA.y, this.tmpA.z] });
-      while (list.length > 0 && now - list[0].t > SAMPLE_KEEP_MS) list.shift();
+      // Keep the newest sample even when a frame took longer than the window (software GL, a stall):
+      // a release after a still hold then still has two points (where the hand was, where it let go)
+      // and reads as "slow", instead of an empty window ("few-samples").
+      while (list.length > 1 && now - list[0].t > SAMPLE_KEEP_MS) list.shift();
     }
     this.readCurl();
   }

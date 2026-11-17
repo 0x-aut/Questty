@@ -18,8 +18,19 @@ import { getSettings } from './settings.js';
 const FILL = '#f5b80a';
 const FILL_FLASH = '#fff4c2';
 const LEVEL_UP_LABEL_MS = 2200;
+/** A full bar is held this long before it empties into the new level. */
+const FULL_HOLD_MS = 350;
+/**
+ * Dev-only slow motion for the emulator harness and video (?xpSlow=4 makes the fill 4x slower; software GL
+ * draws only a few frames a second).
+ */
+const SLOW = (() => {
+  if (!import.meta.env.DEV) return 1;
+  const raw = Number(new URLSearchParams(window.location.search).get('xpSlow'));
+  return Number.isFinite(raw) && raw >= 1 ? raw : 1;
+})();
 
-type Anim = { segment: BarSegment; startedAt: number; ms: number };
+type Anim = { segment: BarSegment; startedAt: number; ms: number; reset: boolean };
 
 export class XpBarSystem extends createSystem({}) {
   private fills: UIKit.Text[] = [];
@@ -33,6 +44,8 @@ export class XpBarSystem extends createSystem({}) {
   private flashUntil = 0;
   private flashing = false;
   private labelHoldUntil = 0;
+  /** Dev: the widths actually written while animating (frame by frame). */
+  private readonly frames: Array<{ t: number; w: number; level: number }> = [];
   private readonly history: Array<{ at: number; from: number; to: number; segments: BarSegment[]; sound: string | null; levelUp: boolean }> = [];
 
   init(): void {
@@ -78,7 +91,11 @@ export class XpBarSystem extends createSystem({}) {
             label: this.labels[0]?.properties?.peek?.()?.text ?? null,
             pillLabel: this.labels[1]?.properties?.peek?.()?.text ?? null,
             history: this.history.map((h) => ({ ...h, segments: h.segments.map((s) => ({ ...s })) })),
+            frames: this.frames.map((f) => ({ ...f })),
           }),
+          clearFrames: () => {
+            this.frames.length = 0;
+          },
         },
         sfx: {
           log: () => soundLog(),
@@ -139,19 +156,21 @@ export class XpBarSystem extends createSystem({}) {
       if (performance.now() >= this.labelHoldUntil) this.writeLabel(barLabel(xpBarView(this.targetXp)));
       return;
     }
+    const now = performance.now();
     if (segment.level > this.shownLevel) {
-      // Crossed into a new level: the bar empties and the level-up moment shows.
+      // Crossed into a new level: the full bar flashes for a moment, then empties and fills the new level.
       this.levelUpMoment(segment.level);
-      this.shown = 0;
+      this.anim = { segment: { ...segment, from: 0 }, startedAt: now + FULL_HOLD_MS * SLOW, ms: segmentMs({ ...segment, from: 0 }) * SLOW, reset: true };
+      return;
     }
     this.shownLevel = segment.level;
-    const from = segment.level === this.shownLevel ? this.shown : segment.from;
-    this.anim = { segment: { ...segment, from }, startedAt: performance.now(), ms: segmentMs({ ...segment, from }) };
+    const from = this.shown;
+    this.anim = { segment: { ...segment, from }, startedAt: now, ms: segmentMs({ ...segment, from }) * SLOW, reset: false };
   }
 
   private levelUpMoment(level: number): void {
-    this.flashUntil = performance.now() + 900;
-    this.labelHoldUntil = performance.now() + LEVEL_UP_LABEL_MS;
+    this.flashUntil = performance.now() + 900 * SLOW;
+    this.labelHoldUntil = performance.now() + LEVEL_UP_LABEL_MS * SLOW;
     this.writeLabel(`LEVEL UP!  Level ${level}`);
   }
 
@@ -166,7 +185,13 @@ export class XpBarSystem extends createSystem({}) {
       if (this.anim === null) this.writeLabel(barLabel(xpBarView(this.targetXp)));
     }
     const a = this.anim;
-    if (a === null) return;
+    if (a === null || now < a.startedAt) return;
+    if (a.reset) {
+      a.reset = false;
+      this.shownLevel = a.segment.level;
+      this.shown = 0;
+      this.write(true);
+    }
     const t = Math.min(1, (now - a.startedAt) / a.ms);
     this.shown = a.segment.from + (a.segment.to - a.segment.from) * easeOut(t);
     this.write(false);
@@ -183,6 +208,10 @@ export class XpBarSystem extends createSystem({}) {
     if (!force && pct === this.lastWritten) return;
     this.lastWritten = pct;
     for (const f of this.fills) f.setProperties({ width: `${pct}%` } as never);
+    if (import.meta.env.DEV) {
+      this.frames.push({ t: Math.round(performance.now()), w: pct, level: this.shownLevel });
+      if (this.frames.length > 400) this.frames.shift();
+    }
   }
 
   private writeLabel(text: string): void {

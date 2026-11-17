@@ -4,13 +4,14 @@
   settings-root, settings-close, set-<seated|large-text|high-contrast|reduced-motion|one-handed|captions>,
   set-<key>-pill, set-<key>-state, set-<key>-label. 1 px = 1 mm at its scale (0.1).
   PR 11: set-calm-scene, set-mute-sounds (booleans) and set-review-hour (cycles the evening review hour);
-  two columns (settings-rows) so nine rows stay within a comfortable height.
+  PR 11 also moves the panel into the home panel's sector (left, nearer than the card arc) and draws it
+  smaller, so it never sits in front of or among the floating cards.
 -->
 <style>
   .root {
     flex-direction: column;
     gap: 8px;
-    width: 744px;
+    width: 380px;
     padding-top: 14px;
     padding-bottom: 16px;
     padding-left: 16px;
@@ -52,13 +53,11 @@
   }
 
   .rows {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-direction: column;
+    gap: 7px;
   }
 
   .row {
-    width: 352px;
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
@@ -110,86 +109,86 @@
     </div>
   </div>
   <div id="settings-rows" class="rows">
-  <div id="set-seated" class="row">
-    <div class="row-text">
-      <span id="set-seated-label" class="row-label">Seated mode</span>
-      <span class="row-hint">Keep everything within arm's reach</span>
+    <div id="set-seated" class="row">
+      <div class="row-text">
+        <span id="set-seated-label" class="row-label">Seated mode</span>
+        <span class="row-hint">Keep everything within arm's reach</span>
+      </div>
+      <div id="set-seated-pill" class="pill">
+        <span id="set-seated-state" class="pill-text">Off</span>
+      </div>
     </div>
-    <div id="set-seated-pill" class="pill">
-      <span id="set-seated-state" class="pill-text">Off</span>
+    <div id="set-large-text" class="row">
+      <div class="row-text">
+        <span id="set-large-text-label" class="row-label">Larger text</span>
+        <span class="row-hint">Cards, documents and captions</span>
+      </div>
+      <div id="set-large-text-pill" class="pill">
+        <span id="set-large-text-state" class="pill-text">Off</span>
+      </div>
     </div>
-  </div>
-  <div id="set-large-text" class="row">
-    <div class="row-text">
-      <span id="set-large-text-label" class="row-label">Larger text</span>
-      <span class="row-hint">Cards, documents and captions</span>
+    <div id="set-high-contrast" class="row">
+      <div class="row-text">
+        <span id="set-high-contrast-label" class="row-label">High-contrast cards</span>
+        <span class="row-hint">Black cards, white text, bright edge</span>
+      </div>
+      <div id="set-high-contrast-pill" class="pill">
+        <span id="set-high-contrast-state" class="pill-text">Off</span>
+      </div>
     </div>
-    <div id="set-large-text-pill" class="pill">
-      <span id="set-large-text-state" class="pill-text">Off</span>
+    <div id="set-reduced-motion" class="row">
+      <div class="row-text">
+        <span id="set-reduced-motion-label" class="row-label">Reduced motion</span>
+        <span class="row-hint">No bounce or sparkle; moves fade</span>
+      </div>
+      <div id="set-reduced-motion-pill" class="pill">
+        <span id="set-reduced-motion-state" class="pill-text">Off</span>
+      </div>
     </div>
-  </div>
-  <div id="set-high-contrast" class="row">
-    <div class="row-text">
-      <span id="set-high-contrast-label" class="row-label">High-contrast cards</span>
-      <span class="row-hint">Black cards, white text, bright edge</span>
+    <div id="set-one-handed" class="row">
+      <div class="row-text">
+        <span id="set-one-handed-label" class="row-label">One-handed mode</span>
+        <span class="row-hint">No two-hand gestures</span>
+      </div>
+      <div id="set-one-handed-pill" class="pill">
+        <span id="set-one-handed-state" class="pill-text">Off</span>
+      </div>
     </div>
-    <div id="set-high-contrast-pill" class="pill">
-      <span id="set-high-contrast-state" class="pill-text">Off</span>
+    <div id="set-captions" class="row">
+      <div class="row-text">
+        <span id="set-captions-label" class="row-label">Captions always on</span>
+        <span class="row-hint">Buddy speech stays on screen</span>
+      </div>
+      <div id="set-captions-pill" class="pill">
+        <span id="set-captions-state" class="pill-text">Off</span>
+      </div>
     </div>
-  </div>
-  <div id="set-reduced-motion" class="row">
-    <div class="row-text">
-      <span id="set-reduced-motion-label" class="row-label">Reduced motion</span>
-      <span class="row-hint">No bounce or sparkle; moves fade</span>
+    <div id="set-calm-scene" class="row">
+      <div class="row-text">
+        <span id="set-calm-scene-label" class="row-label">Calm scene in focus</span>
+        <span class="row-hint">Off: frosted glass only</span>
+      </div>
+      <div id="set-calm-scene-pill" class="pill">
+        <span id="set-calm-scene-state" class="pill-text">On</span>
+      </div>
     </div>
-    <div id="set-reduced-motion-pill" class="pill">
-      <span id="set-reduced-motion-state" class="pill-text">Off</span>
+    <div id="set-mute-sounds" class="row">
+      <div class="row-text">
+        <span id="set-mute-sounds-label" class="row-label">Mute sound effects</span>
+        <span class="row-hint">Chime, level-up, buddy cue</span>
+      </div>
+      <div id="set-mute-sounds-pill" class="pill">
+        <span id="set-mute-sounds-state" class="pill-text">Off</span>
+      </div>
     </div>
-  </div>
-  <div id="set-one-handed" class="row">
-    <div class="row-text">
-      <span id="set-one-handed-label" class="row-label">One-handed mode</span>
-      <span class="row-hint">No two-hand gestures</span>
+    <div id="set-review-hour" class="row">
+      <div class="row-text">
+        <span id="set-review-hour-label" class="row-label">Evening review</span>
+        <span class="row-hint">Pinch to change the hour</span>
+      </div>
+      <div id="set-review-hour-pill" class="pill">
+        <span id="set-review-hour-state" class="pill-text">6 pm</span>
+      </div>
     </div>
-    <div id="set-one-handed-pill" class="pill">
-      <span id="set-one-handed-state" class="pill-text">Off</span>
-    </div>
-  </div>
-  <div id="set-captions" class="row">
-    <div class="row-text">
-      <span id="set-captions-label" class="row-label">Captions always on</span>
-      <span class="row-hint">Buddy speech stays on screen</span>
-    </div>
-    <div id="set-captions-pill" class="pill">
-      <span id="set-captions-state" class="pill-text">Off</span>
-    </div>
-  </div>
-  <div id="set-calm-scene" class="row">
-    <div class="row-text">
-      <span id="set-calm-scene-label" class="row-label">Calm scene in focus</span>
-      <span class="row-hint">Off: frosted glass only</span>
-    </div>
-    <div id="set-calm-scene-pill" class="pill">
-      <span id="set-calm-scene-state" class="pill-text">On</span>
-    </div>
-  </div>
-  <div id="set-mute-sounds" class="row">
-    <div class="row-text">
-      <span id="set-mute-sounds-label" class="row-label">Mute sound effects</span>
-      <span class="row-hint">Chime, level-up, buddy cue</span>
-    </div>
-    <div id="set-mute-sounds-pill" class="pill">
-      <span id="set-mute-sounds-state" class="pill-text">Off</span>
-    </div>
-  </div>
-  <div id="set-review-hour" class="row">
-    <div class="row-text">
-      <span id="set-review-hour-label" class="row-label">Evening review</span>
-      <span class="row-hint">Pinch to change the hour</span>
-    </div>
-    <div id="set-review-hour-pill" class="pill">
-      <span id="set-review-hour-state" class="pill-text">6 pm</span>
-    </div>
-  </div>
   </div>
 </div>

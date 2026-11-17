@@ -62,7 +62,6 @@ import { playBuddyCue } from './sfx.js';
 import { getSettings, onSettings } from './settings.js';
 import { awardXp, getLastAward, getProgress, onProgress, revokeXp, type ProgressState } from './progress.js';
 import { dayKey, viewStreak } from './streak.js';
-import { syncRoomGrowth } from './room-growth.js';
 import {
   BLUR_LEVELS,
   clearFocusTimer,
@@ -207,7 +206,6 @@ export class SessionSystem extends createSystem({}) {
     this.skipButton = panel?.getElementById<UIKit.Text>('skip-break') ?? undefined;
     this.progressStatus = panel?.getElementById<UIKit.Text>('progress-status') ?? undefined;
     this.updateProgressStatus();
-    void syncRoomGrowth(this.world, this.progress.level);
     // The dev streak hook (PR 9) and other saves keep the panel line current.
     this.cleanupFuncs.push(
       onProgress((progress) => {
@@ -473,7 +471,6 @@ export class SessionSystem extends createSystem({}) {
     void this.loadTrophyShelf();
     this.progress = awardXp(xp);
     this.updateProgressStatus();
-    void syncRoomGrowth(this.world, this.progress.level);
     // The award's sound (chime, or the level-up fanfare instead) plays from XpBarSystem's onAward.
     setQuestCardState(entity, `Completed - +${xp} XP${bonusNote()}`);
     setCardActionMode(entity.getValue(QuestCard, 'cardId') as string, 'hidden');
@@ -502,7 +499,6 @@ export class SessionSystem extends createSystem({}) {
     const progress = awardXp(xp);
     this.progress = progress;
     this.updateProgressStatus();
-    void syncRoomGrowth(this.world, progress.level);
     // The award's sound (chime, or the level-up fanfare instead) plays from XpBarSystem's onAward.
     clearFocusTimer();
     const cardId = entity.getValue(QuestCard, 'cardId') as string;

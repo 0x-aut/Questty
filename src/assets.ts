@@ -8,10 +8,6 @@
 import { AssetType, defineAssets } from '@iwsdk/core';
 import { createFocusDome } from './scene-assets/focus-dome.scene-asset.js';
 import {
-  createGallerySet,
-  createSideboardSet,
-} from './scene-assets/decor.scene-asset.js';
-import {
   createGraphiteCube,
   createGraphiteGem,
   createGraphiteKnot,
@@ -38,8 +34,6 @@ export default defineAssets({
   'graphite-gem': createGraphiteGem(),
   'graphite-knot': createGraphiteKnot(),
   'graphite-ring': createGraphiteRing(),
-  'gallery-set': createGallerySet(),
-  'sideboard-set': createSideboardSet(),
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
   'quest-card': uikitml('quest-card.uikitml', 'Quest Card'),
   'focus-action': uikitml('focus-action.uikitml', 'Focus Action'),
