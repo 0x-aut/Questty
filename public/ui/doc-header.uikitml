@@ -1,0 +1,61 @@
+<!--
+  Document view header (PR 10): the handle of the reading panel. Pinch it
+  (ray or direct) to carry the document; let go near a wall, desk or door to
+  pin it there. Element ids: doc-header, doc-grip, doc-title, doc-hint.
+  1 px = 1 mm at the view's scale (0.1).
+-->
+<style>
+  .bar {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    width: 500px;
+    height: 54px;
+    padding-left: 18px;
+    padding-right: 18px;
+    border-radius: 20px;
+    background-color: #24262b;
+    border-width: 1px;
+    border-color: #3b3e45;
+  }
+
+  .grip {
+    flex-direction: row;
+    gap: 5px;
+  }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 4px;
+    background-color: #8d929c;
+  }
+
+  .text {
+    flex-direction: column;
+    flex-grow: 1;
+    gap: 1px;
+  }
+
+  .title {
+    color: #f6f2e9;
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  .hint {
+    color: #aeb3bc;
+    font-size: 13px;
+  }
+</style>
+<div id="doc-header" class="bar">
+  <div id="doc-grip" class="grip">
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+  </div>
+  <div class="text">
+    <span id="doc-title" class="title">Document</span>
+    <span id="doc-hint" class="hint">Pinch here to move - pinch the page and drag to scroll</span>
+  </div>
+</div>

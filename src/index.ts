@@ -19,6 +19,10 @@ import { CoachSystem } from './coach.js';
 import { CategorySystem } from './categories.js';
 import { BuddySystem } from './buddy/ui.js';
 import { FlameSystem } from './flame.js';
+import { DocViewSystem } from './doc-view.js';
+import { RitualSystem } from './ritual.js';
+import { PhysicalFinishSystem } from './physical-finish.js';
+import { SettingsSystem } from './settings-panel.js';
 
 const sceneContainer = document.getElementById('scene-container');
 if (!(sceneContainer instanceof HTMLDivElement)) {
@@ -38,6 +42,11 @@ world.registerSystem(CoachSystem);
 world.registerSystem(CategorySystem);
 world.registerSystem(BuddySystem);
 world.registerSystem(FlameSystem);
+// PR 10: documents, the return ritual, physical finish, accessibility settings.
+world.registerSystem(DocViewSystem);
+world.registerSystem(RitualSystem);
+world.registerSystem(PhysicalFinishSystem);
+world.registerSystem(SettingsSystem);
 
 configureQuestCards(world);
 // The room starts empty for a new user: cards appear only after they speak or

@@ -6,7 +6,7 @@
   Element ids used by code: voice-button, voice-orb, voice-ring,
   voice-button-label, voice-hint, quest-status(-text), quick-focus, quick-more,
   quick-list, template-*, session-status(-text), skip-break, progress-status,
-  panel-collapse, panel-full, panel-pill, xr-button, room-debug-toggle(-label),
+  panel-collapse, panel-settings (PR 10: opens the accessibility settings), panel-full, panel-pill, xr-button, room-debug-toggle(-label),
   pill-main, pill-counts, pill-count-<today|later|before-leave|custom>(-text) (PR 5),
   pill-orb, pill-sub (PR 6: the AI buddy orb is drawn over voice-orb / pill-orb
   by buddy/orb.ts; these elements are its pinch targets and its dark well).
@@ -70,6 +70,21 @@
 
   .minimize:dark {
     background-color: #33353b;
+  }
+
+  .header-buttons {
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .settings-text {
+    color: #202226;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .settings-text:dark {
+    color: #d9dbe0;
   }
 
   .minimize-icon {
@@ -316,8 +331,13 @@
         <span class="eyebrow">QUESTTY</span>
         <span id="progress-status" class="progress-status">Level 1 | 0 XP</span>
       </div>
-      <div id="panel-collapse" class="minimize">
-        <Minus class="minimize-icon"></Minus>
+      <div class="header-buttons">
+        <div id="panel-settings" class="minimize">
+          <span class="settings-text">Aa</span>
+        </div>
+        <div id="panel-collapse" class="minimize">
+          <Minus class="minimize-icon"></Minus>
+        </div>
       </div>
     </div>
     <div id="voice-button" class="hero">

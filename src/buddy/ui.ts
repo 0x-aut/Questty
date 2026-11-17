@@ -61,6 +61,9 @@ import { BuddyOrb, type OrbState } from './orb.js';
 import { BUDDY_SLOW, LightLines } from './light-line.js';
 import { setBuddyLink, setTalkToggle, startPushToTalk, type MicState } from './bus.js';
 import { TalkSession, talkSupported, type TalkState } from './talk.js';
+import { setAnnouncer } from '../announce.js';
+import { openDocumentView } from '../doc-view.js';
+import { getSettings } from '../settings.js';
 
 const USED_KEY = 'questty.buddy.v1';
 /** UIKit px -> metres at the home panel's scale (0.01 units/px x 0.1). */
@@ -219,8 +222,26 @@ export class BuddySystem extends createSystem({
       place: (entity, target, refId) => this.place(entity, target, refId),
       arrange: (entities, target) => this.arrange(entities, target),
       where: (entity) => this.where(entity),
+      openDocument: (request) => openDocumentView(request),
     });
     this.logOrb('idle');
+    // PR 10: other systems (return ritual, tier-up, physical finish) speak through the bubble.
+    setAnnouncer(
+      (text, options) => {
+        // The bubble lives under the pill: make sure it is there to be seen.
+        if (!isWelcomeCollapsed() && !getSettings().captions) setWelcomeCollapsed(true);
+        this.say(text, {
+          tag: options.tag ?? 'QUESTTY',
+          ms: options.ms ?? 4500,
+          chips: (options.chips ?? []).slice(0, 3).map((c) => ({ label: c.label, kind: c.kind ?? 'plain', run: c.run })),
+        });
+      },
+      (label, run) => {
+        this.undoStack.push({ label, run });
+        if (this.undoStack.length > 5) this.undoStack.shift();
+      },
+    );
+    this.cleanupFuncs.push(() => setAnnouncer(undefined));
 
     setBuddyLink({
       command: (text, source) => void this.handle(text, source),
@@ -649,7 +670,7 @@ export class BuddySystem extends createSystem({
     record.log = result.log;
     const allOk = result.log.length > 0 && result.log.every((l) => l.ok) && result.confirm === undefined;
     // Spatial results are grounded in the room (where it landed, where it is): the executor's line wins.
-    const spatial = validated.actions.some((a) => a.type === 'place_card' || a.type === 'arrange' || a.type === 'find' || a.type === 'focus_on' || a.type === 'show_streak');
+    const spatial = validated.actions.some((a) => a.type === 'place_card' || a.type === 'arrange' || a.type === 'find' || a.type === 'focus_on' || a.type === 'show_streak' || a.type === 'open_document');
     record.reply = aiReply !== null && allOk && result.offer === undefined && !spatial && held.length === 0 ? aiReply : result.reply;
     if (held.length > 0 && result.confirm !== undefined) {
       // A delete is waiting on its Confirm chip: don't stack a second question on it.
@@ -1230,7 +1251,10 @@ export class BuddySystem extends createSystem({
     b.tag = tag;
     b.chips = chips.slice(0, 3);
     b.shownAt = performance.now();
-    b.until = sticky ? Infinity : b.shownAt + ms * BUDDY_SLOW;
+    // PR 10, captions always on: every line stays up longer (at least 9 s).
+    const shownMs = getSettings().captions ? Math.max(ms * 1.6, 9000) : ms;
+    b.until = sticky ? Infinity : b.shownAt + shownMs * BUDDY_SLOW;
+    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ fontSize: getSettings().largeText ? 25 : 18 } as never);
     b.sticky = sticky;
     b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text });
     b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: tag });
@@ -1323,7 +1347,8 @@ export class BuddySystem extends createSystem({
     if (b === undefined) return;
     // Pointed at with chips to press: hold it a little longer.
     if (b.hovered && b.chips.length > 0 && b.opacity > 0.5 && b.until - now < 1500 * BUDDY_SLOW) b.until = now + 1500 * BUDDY_SLOW;
-    const want = collapsed && now < b.until ? 1 : 0;
+    // PR 10: with captions always on, the buddy's lines show even while the home panel is open.
+    const want = (collapsed || getSettings().captions) && now < b.until ? 1 : 0;
     const dt = Math.min(0.1, (now - (this.lastBubbleAt || now)) / 1000);
     this.lastBubbleAt = now;
     // Ease toward the wanted opacity and stop there. (PR 6 treated "already
@@ -1416,6 +1441,7 @@ export class BuddySystem extends createSystem({
             hovered: b.hovered,
             text: b.text,
             tag: b.tag,
+            msLeft: Number.isFinite(b.until) ? Math.max(0, Math.round(b.until - performance.now())) : -1,
             chips: b.chips.map((c) => ({ label: c.label, kind: c.kind })),
             box,
           }

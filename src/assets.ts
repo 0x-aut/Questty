@@ -70,5 +70,10 @@ export default defineAssets({
   'label-select': uikitml('label-select.uikitml', 'Select Label'),
   'label-spin': uikitml('label-spin.uikitml', 'Spin Label'),
   coach: uikitml('coach.uikitml', 'Coach Mark'),
+  // PR 10
+  'doc-header': uikitml('doc-header.uikitml', 'Document Header'),
+  'doc-close': uikitml('doc-close.uikitml', 'Document Close'),
+  ritual: uikitml('ritual.uikitml', 'Return Ritual'),
+  settings: uikitml('settings.uikitml', 'Settings Panel'),
   'coach-hand': uikitml('coach-hand.uikitml', 'Coach Hand'),
 });
