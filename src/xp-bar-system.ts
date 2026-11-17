@@ -12,6 +12,7 @@ import { createSystem, UIKit, UIKitMLAsset } from '@iwsdk/core';
 import { getProgress, onAward, onProgress, type AwardEvent } from './progress.js';
 import { barLabel, barSegments, easeOut, segmentMs, xpBarView, type BarSegment } from './xp-bar.js';
 import { chooseAwardSound } from './sfx-logic.js';
+import { buddySpeechLog } from './buddy-speech.js';
 import { playSound, recordBuddyOutput, renderSoundWav, soundLog, spatialState, type SoundKind } from './sfx.js';
 import { getSettings } from './settings.js';
 
@@ -103,6 +104,7 @@ export class XpBarSystem extends createSystem({}) {
           render: (kind: SoundKind) => renderSoundWav(kind),
           recordBuddy: (ms: number) => recordBuddyOutput(ms),
           play: (kind: 'chime' | 'levelup') => playSound(kind, 'dev'),
+          speech: () => buddySpeechLog(),
         },
       };
     }

@@ -78,6 +78,7 @@ import {
 import { createFocusShell, type FocusShell } from './focus-shell.js';
 import { CARD_UNITS_H, CARD_UNITS_W } from './card-layout.js';
 import { setCardWorldPose } from './surfaces.js';
+import { preloadBuddyLine, speakBuddyLine } from './buddy-speech.js';
 
 const FADE_MS = 1_000;
 /** Dev-only slow motion for the calm fades (?fadeSlow=3), for the emulator harness: software GL draws few frames. */
@@ -535,8 +536,13 @@ export class SessionSystem extends createSystem({}) {
     window.setTimeout(() => {
       if (this.state.phase !== 'break') return;
       playBuddyCue(`break:${prompt.id}`);
+      // The buddy says it out loud too (from the orb), unless the break ended meanwhile.
+      const questId = this.state.questId;
+      window.setTimeout(() => {
+        void speakBuddyLine(prompt.buddy, () => this.state.phase === 'break' && this.state.questId === questId);
+      }, 450);
       announce(prompt.buddy, {
-        tag: 'QUESTTY  ·  BREAK',
+        tag: 'QUESTTY  -  BREAK',
         ms: Math.max(4000, this.state.endsAt - focusNow()),
         chips: skippable ? [{ label: 'Skip break', kind: 'plain', run: () => this.skipCurrentBreak() }] : [],
       });
@@ -547,6 +553,8 @@ export class SessionSystem extends createSystem({}) {
   private tick(): void {
     const now = focusNow();
     if (this.state.phase === 'focus') {
+      // Fetch the coming break's spoken line while the user works, so it plays on time.
+      preloadBuddyLine(nextBreakPrompt(loadLastBreakPrompt()).buddy);
       if (focusExpired(this.state, now) && this.activeCard !== undefined) {
         this.finishFocus(this.activeCard, 'timer');
         return;

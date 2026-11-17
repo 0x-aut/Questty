@@ -328,6 +328,31 @@ export function attachBuddyVoice(stream: MediaStream): boolean {
   }
 }
 
+/**
+ * PR 11: play a spoken buddy line (decoded text-to-speech audio) from the orb,
+ * on the same HRTF panner as the talk-mode voice. Resolves when it ends.
+ */
+export async function playBuddySpeech(encoded: ArrayBuffer, reason?: string): Promise<boolean> {
+  primeAudio();
+  const c = ctx;
+  if (c === undefined || voiceIn === undefined) return false;
+  try {
+    const buffer = await c.decodeAudioData(encoded.slice(0));
+    const src = c.createBufferSource();
+    src.buffer = buffer;
+    src.connect(voiceIn);
+    record('buddy-voice', reason ?? 'speech', true);
+    await new Promise<void>((resolve) => {
+      src.onended = () => resolve();
+      src.start(c.currentTime + 0.02);
+    });
+    src.disconnect();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function detachBuddyVoice(): void {
   try {
     voiceSource?.disconnect();
