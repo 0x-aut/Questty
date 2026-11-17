@@ -80,6 +80,12 @@ import { CARD_UNITS_H, CARD_UNITS_W } from './card-layout.js';
 import { setCardWorldPose } from './surfaces.js';
 
 const FADE_MS = 1_000;
+/** Dev-only slow motion for the calm fades (?fadeSlow=3), for the emulator harness: software GL draws few frames. */
+const FADE_SLOW = (() => {
+  if (!import.meta.env.DEV) return 1;
+  const raw = Number(new URLSearchParams(window.location.search).get('fadeSlow'));
+  return Number.isFinite(raw) && raw >= 1 ? raw : 1;
+})();
 const PAUSED_FADE_FACTOR = 0.4;
 const BLUR_OPACITY: Record<BlurLevel, number> = { off: 0, soft: 0.6, strong: 0.9 };
 /** PR 11: the calm scene replaces the room fully at Strong, nearly at Soft. */
@@ -752,7 +758,7 @@ export class SessionSystem extends createSystem({}) {
     this.fadeFrom = this.shellOpacity;
     this.fadeTarget = target;
     // The calm scene fades in slowly (2.5 s) and back out a little faster (1.5 s).
-    this.fadeMs = this.calm ? (target > this.fadeFrom ? 2_500 : 1_500) : FADE_MS;
+    this.fadeMs = this.calm ? (target > this.fadeFrom ? 2_500 : 1_500) * FADE_SLOW : FADE_MS;
     this.fadeStartedAt = performance.now();
     this.fadeAnimating = this.fadeFrom !== target;
   }
