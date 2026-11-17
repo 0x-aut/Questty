@@ -1,0 +1,657 @@
+{
+  "marks": [
+    {
+      "name": "seat",
+      "t": 27.8
+    },
+    {
+      "name": "unlit",
+      "t": 51
+    },
+    {
+      "name": "quest",
+      "t": 62.2
+    },
+    {
+      "name": "focus",
+      "t": 92
+    },
+    {
+      "name": "tiers",
+      "t": 109.4
+    },
+    {
+      "name": "shadow",
+      "t": 202.8
+    },
+    {
+      "name": "grab",
+      "t": 258
+    },
+    {
+      "name": "buddy",
+      "t": 314.9
+    },
+    {
+      "name": "reload",
+      "t": 336.1
+    },
+    {
+      "name": "perf",
+      "t": 388.1
+    },
+    {
+      "name": "footprint",
+      "t": 404
+    },
+    {
+      "name": "finale",
+      "t": 437.6
+    },
+    {
+      "name": "end",
+      "t": 455.1
+    }
+  ],
+  "checks": {
+    "P1 flame stands on the detected desk in front of the user (coffee table)": {
+      "ok": true,
+      "detail": {
+        "st": {
+          "visible": true,
+          "placed": "surface",
+          "surfaceId": "room-1",
+          "userPlaced": false,
+          "position": [
+            0.41499999165534973,
+            0.4204999804496765,
+            -1.790000081062317
+          ],
+          "streak": 0,
+          "status": "out",
+          "tier": "unlit",
+          "tierName": "Pilot",
+          "body": "#ffb04a",
+          "targetBody": "#ffb04a",
+          "scale": 0.5,
+          "targetScale": 0.5,
+          "flameHeightM": 0.057499999999999996,
+          "light": {
+            "on": true,
+            "intensity": 0.13049447964648148,
+            "castShadow": true,
+            "mapSize": 256,
+            "color": "#ffc06f"
+          },
+          "pool": true,
+          "catcher": {
+            "visible": true,
+            "scale": [
+              1.149999976158142,
+              1,
+              0.6000000238418579
+            ],
+            "position": [
+              0,
+              0.4211999773979187,
+              -1.9500000476837158
+            ]
+          },
+          "held": false,
+          "grabMode": "ray",
+          "label": {
+            "text": "Light it: finish one thing today",
+            "alpha": 0
+          },
+          "badge": "0",
+          "flaring": false,
+          "flares": 0,
+          "shadowRenders": 2,
+          "castingCards": 0,
+          "updateMs": 0.09035828230233209,
+          "flicker": 0.9321034260462963
+        },
+        "desk": {
+          "id": "room-1",
+          "kind": "desk",
+          "source": "room",
+          "position": [
+            0,
+            0.42,
+            -1.95
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ],
+          "width": 1.15,
+          "height": 0.6
+        }
+      }
+    },
+    "P2a fresh user: no streak, small pilot flame": {
+      "ok": true,
+      "detail": {
+        "streak": 0,
+        "status": "out",
+        "tier": "unlit",
+        "scale": 0.5
+      }
+    },
+    "P2b label on gaze": {
+      "ok": true,
+      "detail": {
+        "text": "Light it: finish one thing today",
+        "alpha": 1
+      }
+    },
+    "P3 quest done: flare, chime, streak 1, Ember tier, badge \"1\", XP": {
+      "ok": true,
+      "detail": {
+        "flared": true,
+        "osc": 6,
+        "streak": 1,
+        "tier": "spark",
+        "progress": {
+          "version": 1,
+          "xp": 20,
+          "level": 1,
+          "streak": 1,
+          "lastCompletedAt": 1794882603226,
+          "lastDay": "2026-11-17"
+        },
+        "panel": [
+          "Level 1 | 0 XP",
+          "Level 1 | 20 XP"
+        ]
+      }
+    },
+    "P4 focus session completion: XP, flare, same-day streak unchanged": {
+      "ok": true,
+      "detail": {
+        "phase": "break",
+        "xp": [
+          20,
+          40
+        ],
+        "streak": 1,
+        "flaredFocus": true
+      }
+    },
+    "P5 colour changes per tier (5 distinct colours, eased in)": {
+      "ok": true,
+      "detail": [
+        {
+          "n": 1,
+          "tier": "spark",
+          "body": "#ffc800",
+          "target": "#ffc800",
+          "height": 0.1024,
+          "scale": 0.891,
+          "label": "1-day streak - Ember"
+        },
+        {
+          "n": 3,
+          "tier": "gold",
+          "body": "#ffe45c",
+          "target": "#ffe45c",
+          "height": 0.1129,
+          "scale": 0.982,
+          "label": "3-day streak - Gold"
+        },
+        {
+          "n": 7,
+          "tier": "blue",
+          "body": "#8fdcff",
+          "target": "#8fdcff",
+          "height": 0.1233,
+          "scale": 1.072,
+          "label": "7-day streak - Blue"
+        },
+        {
+          "n": 14,
+          "tier": "violet",
+          "body": "#d8a8ff",
+          "target": "#d8a8ff",
+          "height": 0.1328,
+          "scale": 1.155,
+          "label": "14-day streak - Violet"
+        },
+        {
+          "n": 30,
+          "tier": "emerald",
+          "body": "#7cf0b2",
+          "target": "#7cf0b2",
+          "height": 0.1437,
+          "scale": 1.25,
+          "label": "30-day streak - Emerald"
+        },
+        {
+          "n": 100,
+          "tier": "emerald",
+          "body": "#7cf0b2",
+          "target": "#7cf0b2",
+          "height": 0.1438,
+          "scale": 1.25,
+          "label": "100-day streak - Emerald"
+        }
+      ]
+    },
+    "P6 size grows with the streak and is clamped (30 == 100, under 17 cm)": {
+      "ok": true,
+      "detail": [
+        0.1024,
+        0.1129,
+        0.1233,
+        0.1328,
+        0.1437,
+        0.1438
+      ]
+    },
+    "P7 missed a day: low ember (grace day)": {
+      "ok": true,
+      "detail": {
+        "status": "ember",
+        "scale": 0.4201090544879129,
+        "label": "6-day streak - ember, finish one today"
+      }
+    },
+    "P7b waiting (not yet today): same streak, a touch lower": {
+      "ok": true,
+      "detail": {
+        "status": "waiting",
+        "targetScale": 0.9494981208252813
+      }
+    },
+    "P8 real shadow: a darker region on the desk around the flame with the light on vs off (the flame casts its own shadow)": {
+      "ok": true,
+      "detail": {
+        "darkerPx": 1186,
+        "nearPx": 1186,
+        "nearFrac": 1,
+        "meanDrop": 29.4,
+        "centroid": [
+          483,
+          302
+        ],
+        "base": [
+          480,
+          302
+        ],
+        "radiusPx": 185
+      }
+    },
+    "P8b point light casts shadows (256 px map), flickers": {
+      "ok": true,
+      "detail": {
+        "on": true,
+        "intensity": 0.15852236452460391,
+        "castShadow": true,
+        "mapSize": 256,
+        "color": "#afe4ff"
+      }
+    },
+    "P9 pinch-ray grab moves the flame; it lands flush on the desk": {
+      "ok": true,
+      "detail": {
+        "moved": 0.452928275559808,
+        "heldSeen": true,
+        "position": [
+          -0.03789585083723068,
+          0.4204999804496765,
+          -1.784579873085022
+        ],
+        "surfaceId": "room-1"
+      }
+    },
+    "P10 direct pinch: carried up, released in the air above the desk -> stands flush on the desk again": {
+      "ok": true,
+      "detail": {
+        "nearHeld": true,
+        "hold": {
+          "attempt": 0,
+          "grabMode": "near",
+          "y": 0.6305000185966492
+        },
+        "position": [
+          0.0821041464805603,
+          0.4204999804496765,
+          -1.7345799207687378
+        ]
+      }
+    },
+    "P11 offline: \"what's my streak?\" answers with the real streak": {
+      "ok": true,
+      "detail": {
+        "text": "what's my streak?",
+        "source": "tap",
+        "mode": "offline",
+        "actions": [
+          {
+            "type": "show_streak"
+          }
+        ],
+        "rejected": [],
+        "reply": "7 days and counting. Today's done - the flame's blue.",
+        "log": [
+          {
+            "type": "show_streak",
+            "ok": true
+          }
+        ],
+        "at": 1794882848846,
+        "apiError": "server-not-configured"
+      }
+    },
+    "P12 AI path: show_streak action, the app's grounded number wins over the model's line": {
+      "ok": true,
+      "detail": {
+        "text": "how many days in a row have I done this",
+        "source": "tap",
+        "mode": "ai",
+        "actions": [
+          {
+            "type": "show_streak"
+          }
+        ],
+        "rejected": [],
+        "reply": "7 days and counting. Today's done - the flame's blue.",
+        "log": [
+          {
+            "type": "show_streak",
+            "ok": true
+          }
+        ],
+        "at": 1794882863366
+      }
+    },
+    "P13 reload: streak, tier and the hand-placed spot come back": {
+      "ok": true,
+      "detail": {
+        "before": [
+          7,
+          [
+            0.0821041464805603,
+            0.4204999804496765,
+            -1.7345799207687378
+          ]
+        ],
+        "after": [
+          7,
+          "blue",
+          [
+            0.0821041464805603,
+            0.4204999804496765,
+            -1.7345799207687378
+          ],
+          "surface"
+        ]
+      }
+    },
+    "P14 draw calls: <= 9 per view, point shadow 1..6 x (1 + nearby cards), key-light pass only the discarded casters; update < 0.5 ms": {
+      "ok": true,
+      "detail": {
+        "audit": {
+          "main": 18,
+          "pointShadow": 3,
+          "keyShadow": 1,
+          "total": 80,
+          "objects": {
+            "keyShadow:Mesh": 1,
+            "pointShadow:Mesh": 3,
+            "main:Streak Flame Shadow Catcher": 2,
+            "main:Mesh": 14,
+            "main:Points": 2
+          },
+          "views": 2
+        },
+        "fpsWith": 1.6666666666666667,
+        "fpsWithout": 2,
+        "updateMs": 0.062429498574638954,
+        "castingCards": 1
+      }
+    },
+    "P15 no WebGL errors, no page errors": {
+      "ok": true,
+      "detail": {
+        "gl": []
+      }
+    },
+    "P16 cards lined up on the desk keep clear of the flame (>= 5 cm from its centre)": {
+      "ok": true,
+      "detail": {
+        "reply": "Lined up 4 cards on your desk.",
+        "flame": [
+          0.0821041464805603,
+          0.4204999804496765,
+          -1.7345799207687378
+        ],
+        "cards": [
+          {
+            "title": "Read chapter three",
+            "scale": 0.059,
+            "gapM": 0.402
+          },
+          {
+            "title": "Check the mail",
+            "scale": 0.059,
+            "gapM": 0.33
+          },
+          {
+            "title": "Book the dentist",
+            "scale": 0.059,
+            "gapM": 0.266
+          },
+          {
+            "title": "Stretch for ten minutes",
+            "scale": 0.059,
+            "gapM": 0.135
+          }
+        ]
+      }
+    }
+  },
+  "data": {
+    "surfaces": [
+      {
+        "id": "room-1",
+        "kind": "desk",
+        "source": "room",
+        "position": [
+          0,
+          0.42,
+          -1.95
+        ]
+      },
+      {
+        "id": "room-2",
+        "kind": "door",
+        "source": "room",
+        "position": [
+          1.45,
+          1.028,
+          2.378
+        ]
+      },
+      {
+        "id": "room-3",
+        "kind": "desk",
+        "source": "room",
+        "position": [
+          -0.95,
+          0.74,
+          1.35
+        ]
+      },
+      {
+        "id": "room-4",
+        "kind": "wall",
+        "source": "room",
+        "position": [
+          -2.5,
+          1.35,
+          -0.5
+        ]
+      },
+      {
+        "id": "room-5",
+        "kind": "wall",
+        "source": "room",
+        "position": [
+          2.5,
+          1.35,
+          -0.5
+        ]
+      },
+      {
+        "id": "room-6",
+        "kind": "wall",
+        "source": "room",
+        "position": [
+          0,
+          1.35,
+          -3.4
+        ]
+      },
+      {
+        "id": "room-7",
+        "kind": "wall",
+        "source": "room",
+        "position": [
+          0,
+          1.35,
+          2.4
+        ]
+      }
+    ],
+    "ladder": [
+      {
+        "n": 1,
+        "tier": "spark",
+        "body": "#ffc800",
+        "target": "#ffc800",
+        "height": 0.1024,
+        "scale": 0.891,
+        "label": "1-day streak - Ember"
+      },
+      {
+        "n": 3,
+        "tier": "gold",
+        "body": "#ffe45c",
+        "target": "#ffe45c",
+        "height": 0.1129,
+        "scale": 0.982,
+        "label": "3-day streak - Gold"
+      },
+      {
+        "n": 7,
+        "tier": "blue",
+        "body": "#8fdcff",
+        "target": "#8fdcff",
+        "height": 0.1233,
+        "scale": 1.072,
+        "label": "7-day streak - Blue"
+      },
+      {
+        "n": 14,
+        "tier": "violet",
+        "body": "#d8a8ff",
+        "target": "#d8a8ff",
+        "height": 0.1328,
+        "scale": 1.155,
+        "label": "14-day streak - Violet"
+      },
+      {
+        "n": 30,
+        "tier": "emerald",
+        "body": "#7cf0b2",
+        "target": "#7cf0b2",
+        "height": 0.1437,
+        "scale": 1.25,
+        "label": "30-day streak - Emerald"
+      },
+      {
+        "n": 100,
+        "tier": "emerald",
+        "body": "#7cf0b2",
+        "target": "#7cf0b2",
+        "height": 0.1438,
+        "scale": 1.25,
+        "label": "100-day streak - Emerald"
+      }
+    ],
+    "shadowPixels": {
+      "darkerPx": 1186,
+      "nearPx": 1186,
+      "nearFrac": 1,
+      "meanDrop": 29.4,
+      "centroid": [
+        483,
+        302
+      ],
+      "base": [
+        480,
+        302
+      ],
+      "radiusPx": 185
+    },
+    "nearHold": {
+      "attempt": 0,
+      "grabMode": "near",
+      "y": 0.6305000185966492
+    },
+    "perf": {
+      "audit": {
+        "main": 18,
+        "pointShadow": 3,
+        "keyShadow": 1,
+        "total": 80,
+        "objects": {
+          "keyShadow:Mesh": 1,
+          "pointShadow:Mesh": 3,
+          "main:Streak Flame Shadow Catcher": 2,
+          "main:Mesh": 14,
+          "main:Points": 2
+        },
+        "views": 2
+      },
+      "fpsWith": 1.6666666666666667,
+      "fpsWithout": 2,
+      "updateMs": 0.062429498574638954,
+      "castingCards": 1
+    },
+    "footprint": {
+      "reply": "Lined up 4 cards on your desk.",
+      "flame": [
+        0.0821041464805603,
+        0.4204999804496765,
+        -1.7345799207687378
+      ],
+      "cards": [
+        {
+          "title": "Read chapter three",
+          "scale": 0.059,
+          "gapM": 0.402
+        },
+        {
+          "title": "Check the mail",
+          "scale": 0.059,
+          "gapM": 0.33
+        },
+        {
+          "title": "Book the dentist",
+          "scale": 0.059,
+          "gapM": 0.266
+        },
+        {
+          "title": "Stretch for ten minutes",
+          "scale": 0.059,
+          "gapM": 0.135
+        }
+      ]
+    }
+  },
+  "passed": 19,
+  "total": 19
+}
