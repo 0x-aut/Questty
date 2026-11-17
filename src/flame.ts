@@ -492,6 +492,9 @@ export class FlameSystem extends createSystem({
   private lastFrameAt = performance.now();
   /** Dev only: a frozen animation clock (ms) for frame-exact captures; null = real time. */
   private fixedClock: number | null = null;
+  /** Dev only: advance the frozen clock by 1/30 s every rendered frame (smooth video from a slow renderer). */
+  private stepClock = false;
+  private frameLog: number[] = [];
 
   private clock(): number {
     return this.fixedClock ?? performance.now();
@@ -948,6 +951,10 @@ export class FlameSystem extends createSystem({
 
   update(): void {
     const t0 = performance.now();
+    if (this.stepClock && this.fixedClock !== null) {
+      this.fixedClock += 1000 / 30;
+      this.frameLog.push(t0);
+    }
     const now = this.clock();
     this.frame += 1;
     if (now - this.lastViewCheck > 30_000) {
@@ -1155,13 +1162,20 @@ export class FlameSystem extends createSystem({
           tiers: () => STREAK_TIERS.map((t) => ({ id: t.id, from: t.from, body: hex(t.body) })),
           forgetPlacement: () => localStorage.removeItem(STORAGE_KEY),
           /** Freeze the flame's animation clock at `ms` (null: real time again) for smooth frame-by-frame video. */
-          setClock: (ms: number | null) => {
+          setClock: (ms: number | null, step = false) => {
             if (ms === null) {
               this.fixedClock = null;
+              this.stepClock = false;
               this.lastFrameAt = performance.now();
-            } else this.fixedClock = ms;
+            } else {
+              this.fixedClock = ms;
+              this.stepClock = step;
+            }
             return ms;
           },
+          frameClock: () => this.fixedClock,
+          /** performance.now() of every stepped frame since the last call (and clears it). */
+          takeFrameLog: () => this.frameLog.splice(0),
         },
       };
     }
