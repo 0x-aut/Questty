@@ -36,10 +36,10 @@ export function homeForward(fallback: Vector3): Vector3 {
 const STEP_DEG = 29;
 const ROWS: Array<{ drop: number; angles: number[] }> = [
   { drop: 0.3, angles: [0, -STEP_DEG, STEP_DEG, 2 * STEP_DEG] },
-  { drop: 0.58, angles: [-STEP_DEG / 2, STEP_DEG / 2, 1.5 * STEP_DEG, 2.5 * STEP_DEG] },
+  { drop: 0.63, angles: [-STEP_DEG / 2, STEP_DEG / 2, 1.5 * STEP_DEG, 2.5 * STEP_DEG] },
 ];
 /** PR 10: seated mode pulls the arc in to arm's reach (settings.ts) and lifts the lower row. */
-const SEATED_DROPS = [0.22, 0.4];
+const SEATED_DROPS = [0.22, 0.45];
 const SLOT_CLEARANCE = 0.14;
 
 const worldUp = new Vector3(0, 1, 0);
@@ -47,8 +47,9 @@ const lookMatrix = new Matrix4();
 
 /**
  * Every spawn slot, nearest first, for a head at `head` looking along the
- * horizontal `forward`. Cards sit 0.58-0.86 m away, 0.30-0.58 m below the
- * eyes, and turn to face the head.
+ * horizontal `forward`. Cards sit 0.58-0.86 m away, 0.30-0.63 m below the
+ * eyes (PR 11: the lower row 5 cm lower, so its top edge no longer hides
+ * behind the front row's bottom edge), and turn to face the head.
  */
 export function spawnSlots(head: Vector3, forward: Vector3): CardPose[] {
   const flat = forward.clone();

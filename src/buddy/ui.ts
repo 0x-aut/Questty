@@ -14,6 +14,7 @@
  * The pipeline: transcript -> /api/buddy (AI, validated) or the offline
  * parser -> executor.ts. See README/PR 6 for the safety rules.
  */
+import { uiSafe } from '../ui-text.js';
 import {
   CanvasTexture,
   createSystem,
@@ -426,7 +427,7 @@ export class BuddySystem extends createSystem({
     const session = new TalkSession({
       voice: (stream) => attachBuddyVoice(stream),
       command: (text, heardAt) => this.talkCommand(text, heardAt),
-      caption: (who, text) => this.sayCaption(who === 'you' ? `"${text}"` : text, who === 'you' ? 'YOU' : 'QUESTTY  ·  TALKING'),
+      caption: (who, text) => this.sayCaption(who === 'you' ? `"${text}"` : text, who === 'you' ? 'YOU' : 'QUESTTY  -  TALKING'),
       state: (state, detail) => this.onTalkState(state, detail),
       levels: (out, inp) => {
         this.orb.setVoiceLevel(out);
@@ -445,7 +446,7 @@ export class BuddySystem extends createSystem({
     } else if (state === 'live') {
       this.setOrb('talking');
       playBuddyCue('talk-live');
-      this.say("I'm here. Tell me what to move or start.", { tag: 'QUESTTY  ·  TALKING', ms: 5000 });
+      this.say("I'm here. Tell me what to move or start.", { tag: 'QUESTTY  -  TALKING', ms: 5000 });
     } else if (state === 'off') {
       detachBuddyVoice();
       if (this.orb.state === 'talking' || this.orb.state === 'thinking') this.setOrb('idle');
@@ -507,8 +508,8 @@ export class BuddySystem extends createSystem({
     const clipped = text.length > 120 ? `...${text.slice(-117)}` : text;
     b.text = clipped;
     b.tag = tag;
-    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text: clipped });
-    b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: tag });
+    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text: uiSafe(clipped) });
+    b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: uiSafe(tag) });
     b.panel.getElementById<UIKit.Text>('buddy-tag-dot')?.setProperties({ backgroundColor: tag === 'YOU' ? '#ef9a84' : '#c9a6e0' });
     const now = performance.now();
     b.sticky = false;
@@ -1274,8 +1275,8 @@ export class BuddySystem extends createSystem({
     b.until = sticky ? Infinity : b.shownAt + shownMs * BUDDY_SLOW;
     b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ fontSize: getSettings().largeText ? 25 : 18 } as never);
     b.sticky = sticky;
-    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text });
-    b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: tag });
+    b.panel.getElementById<UIKit.Text>('buddy-text')?.setProperties({ text: uiSafe(text) });
+    b.panel.getElementById<UIKit.Text>('buddy-tag-text')?.setProperties({ text: uiSafe(tag) });
     const dot = tag.includes('OFFLINE') ? '#a9a191' : tag === 'LISTENING' ? '#ef9a84' : '#e0b85c';
     b.panel.getElementById<UIKit.Text>('buddy-tag-dot')?.setProperties({ backgroundColor: dot });
     b.panel.getElementById<UIKit.Text>('buddy-chips')?.setProperties({ display: b.chips.length > 0 ? 'flex' : 'none' });

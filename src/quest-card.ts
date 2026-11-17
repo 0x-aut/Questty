@@ -15,6 +15,7 @@ import {
   type Entity,
   type World,
 } from '@iwsdk/core';
+import { uiSafe } from './ui-text.js';
 import { QuestCard, QuestCardTween, QuestFocusAction } from './quest-component.js';
 import {
   requestCardCompletion,
@@ -209,7 +210,7 @@ export function renameQuestCard(entity: Entity, title: string): boolean {
   entity.setValue(QuestCard, 'title', title);
   const panel = entity.object3D;
   if (panel instanceof UIKitMLAsset) {
-    panel.getElementById<UIKit.Text>('quest-title')?.setProperties({ text: title });
+    panel.getElementById<UIKit.Text>('quest-title')?.setProperties({ text: uiSafe(title) });
     panel.name = `Quest Card: ${title}`;
   }
   emitCard('renamed', entity);
@@ -246,7 +247,7 @@ export async function createQuestCard({
   const panel = await activeWorld.assets.instantiate<UIKitMLAsset>('quest-card');
   panel
     .requireElementById<UIKit.Text>('quest-title')
-    .setProperties({ text: title });
+    .setProperties({ text: uiSafe(title) });
   panel
     .requireElementById<UIKit.Text>('quest-xp')
     .setProperties({ text: `+${Math.round(xp)} XP` });

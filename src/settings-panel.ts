@@ -110,7 +110,7 @@ export class SettingsSystem extends createSystem({
           // PR 11: no second chime here; the level-up fanfare already played with the award.
           const next = levelsToNext(event.progress.level);
           announce(`Level ${event.progress.level}! Your cards are ${up.label} now.${next ? ` ${next.levels} more levels to ${next.next.label}.` : ''}`, {
-            tag: 'QUESTTY  ·  LEVEL UP',
+            tag: 'QUESTTY  -  LEVEL UP',
             ms: 5000,
           });
         }, 1800);

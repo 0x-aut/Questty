@@ -176,7 +176,7 @@ export class ReviewSystem extends createSystem({
       this.panel.visible = true;
     });
     playBuddyCue('review');
-    announce(open.length > 0 ? `Evening review. ${reviewLine(open.length)}` : reviewLine(0), { tag: 'QUESTTY  ·  EVENING REVIEW', ms: 6000 });
+    announce(open.length > 0 ? `Evening review. ${reviewLine(open.length)}` : reviewLine(0), { tag: 'QUESTTY  -  EVENING REVIEW', ms: 6000 });
     if (getSettings().reducedMotion && open.length > 0) {
       pulseCards(this.run.open, 3200);
       this.run.glowed = this.run.open.length;

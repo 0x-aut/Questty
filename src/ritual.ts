@@ -217,7 +217,7 @@ export class RitualSystem extends createSystem({
     this.opacity = 0;
     this.lastOpacity = -1;
     panel.visible = true;
-    announce(welcomeLine(reason, counts, view.streak, rollover.length, promoted.size), { tag: 'QUESTTY  ·  WELCOME BACK', ms: (this.run.endsAt - this.run.startedAt) * 0.9 });
+    announce(welcomeLine(reason, counts, view.streak, rollover.length, promoted.size), { tag: 'QUESTTY  -  WELCOME BACK', ms: (this.run.endsAt - this.run.startedAt) * 0.9 });
     // Reduced motion: the Today cards light up together (no sequence).
     if (getSettings().reducedMotion && glow.length > 0) {
       pulseCards(glow, 3200 * SLOW);
