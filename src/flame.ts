@@ -29,6 +29,7 @@
  * flight, the flame itself) and otherwise at ~15 Hz. Casters only cast for
  * this light (never for the room's key light).
  */
+import { homeForward } from './card-layout.js';
 import {
   AdditiveBlending,
   MeshStandardMaterial,
@@ -86,35 +87,55 @@ const STORAGE_KEY = 'questty.flame.v1';
 const DAY_MS = 86_400_000;
 
 // ---- flame geometry (metres, at flame scale 1)
-const FLAME_R = 0.036; // outer teardrop's widest radius
-const FLAME_H = 0.115; // outer teardrop's height (base on the desk to the tip)
+/**
+ * PR 11: the flame is drawn 2.2x its PR 9 size (users reached for it by hand
+ * and found it tiny and hard to grab). Every size below derives from it.
+ */
+export const FLAME_SIZE = 2.2;
+const FLAME_R = 0.036 * FLAME_SIZE; // outer teardrop's widest radius
+const FLAME_H = 0.115 * FLAME_SIZE; // outer teardrop's height (base on the desk to the tip)
 const BASE_R = FLAME_R; // footprint on the desk (placement inset)
-const FOOTPRINT_R = 0.06; // the flame + its badge + a little air, kept free of pinned cards
-const BADGE_W = 0.058;
-const BADGE_H = 0.035;
+const FOOTPRINT_R = FLAME_R * 1.25 + 0.03; // the flame + its badge + a little air, kept free of pinned cards
+const BADGE_W = 0.058 * 1.6;
+const BADGE_H = 0.035 * 1.6;
+/** Grab target margin around the drawn flame (near pinch / grab and pinch-ray). */
+const HIT_MARGIN = 0.03;
+/**
+ * Default spot when no desk is within reach: 0.42 m out at 30 degrees right of
+ * the head's forward, 0.6 m below the eyes (seated desk height). That keeps
+ * it closer than the card arc (0.58 m+, so cards never pass through it),
+ * between the arc's lower-row slots, and with its top below where a seated
+ * user's right hand rests, so a pinch-ray toward the cards never starts
+ * inside its grab box.
+ */
+const REACH_FORWARD = 0.42 * Math.cos(Math.PI / 6);
+const REACH_RIGHT = 0.42 * Math.sin(Math.PI / 6);
+const REACH_DROP = 0.6;
+/** A detected desk is used for the default spot only if the flame would stand within this (horizontal) distance of the head. */
+const REACH_MAX = 0.7;
 
 // ---- light
-const LIGHT_INTENSITY = 0.2; // candela-ish at three's physical units (decay 2)
+const LIGHT_INTENSITY = 0.2 * FLAME_SIZE; // candela-ish at three's physical units (decay 2)
 /** 0 = no hard cut-off (physical 1/d^2 falloff). three uses light.distance as the shadow far plane when set, so it stays 0. */
 const LIGHT_DISTANCE = 0;
 const SHADOW_MAP = 256;
-const SHADOW_FAR = 0.4;
+const SHADOW_FAR = 0.4 * 1.6;
 const NEAR_ENTER = 0.12;
 const NEAR_EXIT = 0.2;
 const SNAP_UP = 0.45; // a release this far above a desk (or 15 cm below) lands on it
 const SNAP_DOWN = 0.15;
 
 // ---- wall mount (a little wooden ledge; the flame stands on it, upright)
-const WALL_OFF = 0.055; // flame axis to the wall (the flame's widest radius at the top tier is 4.5 cm)
-const LEDGE_W = 0.13;
-const LEDGE_D = 0.1; // wall to the ledge's front edge
+const WALL_OFF = FLAME_R * 1.25 + 0.01; // flame axis to the wall (the flame's widest radius at the top tier, plus air)
+const LEDGE_W = FLAME_R * 2.5 + 0.04;
+const LEDGE_D = WALL_OFF + FLAME_R * 0.9; // wall to the ledge's front edge
 const LEDGE_T = 0.014;
 /** The point light sits this far in front of the flame's axis on a wall, so the flame throws its shadow back onto the wall. */
-const WALL_LIGHT_Z = 0.075;
+const WALL_LIGHT_Z = WALL_OFF + 0.02;
 /** Wall footprint kept free of cards, around the base on the wall: half-width, below, above (the ledge, the badge plaque, the tallest flame and its label, plus air). */
 const WALL_HALF_W = LEDGE_W / 2 + 0.02;
 const WALL_DOWN = LEDGE_T + 0.03 + 0.02;
-const WALL_UP = 0.144 + 0.07 + 0.02;
+const WALL_UP = FLAME_H * 1.25 + 0.07 + 0.02;
 const WALL_CARD_GAP = 0.03;
 /** Same near-drop feel as cards on walls and doors (6 cm behind to 22 cm in front); desks only by pinch-ray here (the desk band below is checked first). */
 const WALL_BAND: NearBand = { wall: [0.06, 0.22], door: [0.06, 0.22], desk: null };
@@ -359,8 +380,8 @@ function buildLantern(): Lantern {
   const casters = [layers[0]];
 
   // Soft glow behind it, a few sparks above it.
-  const glowGeo = new PlaneGeometry(0.2, 0.22);
-  glowGeo.translate(0, 0.05, -0.02);
+  const glowGeo = new PlaneGeometry(0.2 * FLAME_SIZE, 0.22 * FLAME_SIZE);
+  glowGeo.translate(0, 0.05 * FLAME_SIZE, -0.02 * FLAME_SIZE);
   const glowMat = glowMaterial();
   const glow = new Mesh(glowGeo, glowMat);
   glow.renderOrder = 955;
@@ -400,20 +421,21 @@ function buildLantern(): Lantern {
   root.add(tag.mesh);
 
   // Label shown on gaze or while held: "5-day streak - Gold".
-  const label = canvasPlane(0.17, 0.048, [512, 144]);
+  const label = canvasPlane(0.17 * 1.5, 0.048 * 1.5, [512, 144]);
   label.mesh.renderOrder = 963;
   (label.mesh.material as MeshBasicMaterial).opacity = 0;
   label.mesh.visible = false;
   root.add(label.mesh);
 
-  // Grab target: a box around the flame (invisible, raycast only).
+  // Grab target: a box around the flame and its badge plus a generous margin
+  // (invisible, raycast only). Sized at flame scale 1; the frame loop scales it with the streak.
   const hitbox = new Mesh(
-    new BoxGeometry(0.085, FLAME_H + 0.02, 0.085),
+    new BoxGeometry(2 * FLAME_R + 2 * HIT_MARGIN, FLAME_H + 2 * HIT_MARGIN, 2 * FLAME_R + 2 * HIT_MARGIN),
     // Never drawn (material.visible false skips the draw call); pointer rays still hit it.
     new MeshBasicMaterial({ visible: false }),
   );
   hitbox.name = 'StreakFlameHitbox';
-  hitbox.position.y = (FLAME_H + 0.02) / 2;
+  hitbox.position.y = FLAME_H / 2;
   root.add(hitbox);
 
   // Wall ledge: a small wooden shelf from the wall to just past the flame
@@ -542,7 +564,7 @@ export class FlameSystem extends createSystem({
   private clock(): number {
     return this.fixedClock ?? performance.now();
   }
-  private placed: 'none' | 'surface' | 'fallback' | 'saved' = 'none';
+  private placed: 'none' | 'surface' | 'fallback' | 'saved' | 'reach' = 'none';
   private surfaceId = '';
   /** Where it stands: a desk (or the fallback patch), a wall/door ledge, or in the air. */
   private mount: 'desk' | 'wall' | 'float' = 'desk';
@@ -991,7 +1013,8 @@ export class FlameSystem extends createSystem({
       return;
     }
     if (desks.length > 0) {
-      // The nearest desk; the lantern goes to its right-hand end, toward the user.
+      // The nearest desk; the lantern goes to its right-hand end, toward the user,
+      // but only when that spot is within easy arm's reach of a seated user.
       this.world.player.head.getWorldPosition(this.head);
       this.headDir.set(0, 0, -1).applyQuaternion(this.world.player.head.getWorldQuaternion(this.tmpQ));
       // The nearest desk in front of the user (one behind them only if there is no other).
@@ -1007,29 +1030,52 @@ export class FlameSystem extends createSystem({
       const toward = this.tmpA.copy(this.head).sub(best.center);
       toward.addScaledVector(best.normal, -toward.dot(best.normal)).normalize();
       const halfToward = Math.abs(toward.dot(best.u)) * best.width / 2 + Math.abs(toward.dot(best.v)) * best.height / 2;
+      const inset = FLAME_R * 1.25 + 0.04;
       const point = best.center
         .clone()
-        .addScaledVector(right, Math.max(0, halfRight - 0.16))
-        .addScaledVector(toward, Math.max(0, halfToward - 0.14));
-      this.standOn(best, point);
-      this.faceHead();
-      root.visible = true;
-      this.placed = 'surface';
+        .addScaledVector(right, Math.max(0, halfRight - inset - 0.05))
+        .addScaledVector(toward, Math.max(0, halfToward - inset));
+      if (Math.hypot(point.x - this.head.x, point.z - this.head.z) <= REACH_MAX) {
+        this.standOn(best, point);
+        this.faceHead();
+        root.visible = true;
+        this.placed = 'surface';
+        return;
+      }
+      // The desk is out of reach (a coffee table across the room): stand within reach instead.
+      this.placeInReach();
       return;
     }
     if (this.placed === 'none' && now - this.startedAt > 5000 && this.world.renderer.xr.isPresenting) {
-      // No desk detected: in front of the user, at desk height.
-      this.world.player.head.getWorldPosition(this.head);
-      this.headDir.set(0, 0, -1).applyQuaternion(this.world.player.head.getWorldQuaternion(this.tmpQ));
-      this.headDir.y = 0;
-      this.headDir.normalize();
-      root.position.copy(this.head).addScaledVector(this.headDir, 0.55).add(this.tmpA.set(0.18, 0, 0));
-      root.position.y = Math.max(0.55, this.head.y - 0.5);
-      this.faceHead();
-      this.layPatch(root.position);
-      root.visible = true;
-      this.placed = 'fallback';
+      // No desk detected: within reach, at desk height.
+      this.placeInReach();
     }
+  }
+
+  /**
+   * Default spot without a desk in reach: about 0.45 m from the head, ahead
+   * and a little to the right, half a metre below the eyes (desk height for a
+   * seated user), clear of the card arc ahead and the home panel low-left. It
+   * stays there (it never follows the head); a grab moves it.
+   */
+  private placeInReach(): void {
+    const root = this.lantern.root;
+    this.world.player.head.getWorldPosition(this.head);
+    this.headDir.set(0, 0, -1).applyQuaternion(this.world.player.head.getWorldQuaternion(this.tmpQ));
+    // The same "forward" the card arc fans out around (recorded at session start), so the flame keeps its slot between the arc's rows.
+    this.headDir.copy(homeForward(this.headDir));
+    this.headDir.y = 0;
+    if (this.headDir.lengthSq() < 1e-6) this.headDir.set(0, 0, -1);
+    this.headDir.normalize();
+    const right = this.tmpB.set(-this.headDir.z, 0, this.headDir.x);
+    root.position.copy(this.head).addScaledVector(this.headDir, REACH_FORWARD).addScaledVector(right, REACH_RIGHT);
+    root.position.y = Math.max(0.45, this.head.y - REACH_DROP);
+    this.setMount('float');
+    this.surfaceId = '';
+    this.faceHead();
+    this.layPatch(root.position);
+    root.visible = true;
+    this.placed = 'reach';
   }
 
   private save(): void {
@@ -1074,11 +1120,13 @@ export class FlameSystem extends createSystem({
       player.raySpaces.left, player.raySpaces.right,
     ];
     const centre = this.tmpA.copy(this.lantern.root.position);
-    centre.y += 0.09;
+    centre.y += FLAME_H * this.scale * 0.5;
+    // Distance from the flame's surface (its middle, out by its radius plus the hitbox margin).
+    const reach = FLAME_R * this.scale + HIT_MARGIN;
     let nearest = Infinity;
     for (let i = 0; i < spaces.length; i += 1) {
       spaces[i].getWorldPosition(this.handPoints[i]);
-      nearest = Math.min(nearest, this.handPoints[i].distanceTo(centre) - 0.06);
+      nearest = Math.min(nearest, this.handPoints[i].distanceTo(centre) - reach);
     }
     const near = this.nearMode ? nearest < NEAR_EXIT : nearest < NEAR_ENTER;
     if (near !== this.nearMode) {
@@ -1098,14 +1146,15 @@ export class FlameSystem extends createSystem({
     const root = this.lantern.root;
     // Asked first even when a desk wins, so the pinch-ray's hold-and-swing guard starts at the grab.
     // The flame's middle, not its base, is what is held near the wall.
-    const mid = this.tmpB.copy(root.position).add(this.tmpA.set(0, 0.06, 0));
+    const midH = FLAME_H * this.scale * 0.5;
+    const mid = this.tmpB.copy(root.position).add(this.tmpA.set(0, midH, 0));
     const hit = this.entity === undefined ? null : surfaceHitFor(this.entity, mid, WALL_BAND);
     const d = this.deskUnder(root.position);
     if (d !== null) return { kind: 'desk', surface: d, point: root.position.clone() };
     if (hit === null) return null;
     if (hit.surface.kind === 'desk') return { kind: 'desk', surface: hit.surface, point: hit.point };
-    // The base goes ~6 cm below the point the flame's middle was held at.
-    const point = hit.point.clone().addScaledVector(this.tmpA.set(0, 1, 0).addScaledVector(hit.surface.normal, -hit.surface.normal.y).normalize(), -0.06);
+    // The base goes half a flame below the point the flame's middle was held at.
+    const point = hit.point.clone().addScaledVector(this.tmpA.set(0, 1, 0).addScaledVector(hit.surface.normal, -hit.surface.normal.y).normalize(), -midH);
     return { kind: 'wall', surface: hit.surface, point };
   }
 
@@ -1281,6 +1330,9 @@ export class FlameSystem extends createSystem({
     const bounce = env > 0 && !still ? Math.sin(Math.min(1, (now - this.flareAt) / 1000 / 0.9) * Math.PI * 3) * 0.12 * env : 0;
     const s = this.scale * (1 + (still ? 0.12 : 0.45) * env + bounce);
     L.flame.scale.setScalar(s);
+    // The grab box follows the streak size (not the flare bounce, so it never jitters under a hand).
+    L.hitbox.scale.setScalar(this.scale);
+    L.hitbox.position.y = (FLAME_H * this.scale) / 2;
     // Idle loop: a gentle sway and squash-and-stretch (the ember droops and sags).
     const squash = still ? 0 : Math.sin(time * 3.4) * 0.045 + bounce * 0.8;
     L.body.scale.set(1 - squash * 0.5, (1 + squash) * (ember ? 0.86 : 1), 1 - squash * 0.5);
@@ -1347,7 +1399,7 @@ export class FlameSystem extends createSystem({
     const yawRel = yawHead - yawRoot;
     L.flame.rotation.y = yawRel;
     L.label.rotation.y = yawRel;
-    L.label.position.y = FLAME_H * s + 0.045;
+    L.label.position.y = FLAME_H * s + 0.06;
     // The badge stands in front of the flame's base, toward the user, leaning back a touch.
     if (onWall) {
       // On a wall the badge is a plaque on the ledge's front edge, facing out.
@@ -1362,7 +1414,7 @@ export class FlameSystem extends createSystem({
 
     // Label on gaze (or while held).
     this.headDir.set(0, 0, -1).applyQuaternion(this.world.player.head.getWorldQuaternion(this.tmpQ));
-    const to = this.tmpA.copy(root.position).add(this.tmpB.set(0, 0.06, 0)).sub(this.head).normalize();
+    const to = this.tmpA.copy(root.position).add(this.tmpB.set(0, FLAME_H * this.scale * 0.5, 0)).sub(this.head).normalize();
     const gazing = this.headDir.dot(to) > GAZE_COS;
     const want = held || gazing || this.flareAt >= 0 ? 1 : 0;
     this.labelAlpha += (want - this.labelAlpha) * (1 - Math.exp(-dt / 0.2));
