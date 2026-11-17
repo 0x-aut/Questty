@@ -46,8 +46,10 @@ export function styleCard(card: Entity): void {
   if (!(panel instanceof UIKitMLAsset)) return;
   const s = getSettings();
   const hc = s.highContrast;
-  panel.getElementById<UIKit.Text>('quest-title')?.setProperties({ fontSize: s.largeText ? 52 : 42, color: hc ? '#ffffff' : '#fbfaf5' } as never);
-  panel.getElementById<UIKit.Text>('quest-card-state')?.setProperties({ fontSize: s.largeText ? 18 : 14, color: hc ? '#ffffff' : '#b9bcc2' } as never);
+  // The card's classes carry :dark colours, which outrank plain properties: set the dark variant too
+  // (undefined hands the colour back to the class).
+  panel.getElementById<UIKit.Text>('quest-title')?.setProperties({ fontSize: s.largeText ? 52 : 42, color: hc ? '#ffffff' : undefined, dark: { color: hc ? '#ffffff' : undefined } } as never);
+  panel.getElementById<UIKit.Text>('quest-card-state')?.setProperties({ fontSize: s.largeText ? 18 : 14, color: hc ? '#ffffff' : undefined, dark: { color: hc ? '#ffffff' : undefined } } as never);
   panel.getElementById<UIKit.Text>('quest-xp')?.setProperties({ fontSize: s.largeText ? 24 : 20, color: hc ? '#000000' : '#33280e' } as never);
   const root = panel.getElementById<UIKit.Text>('quest-card-root');
   if (hc) root?.setProperties({ backgroundColor: '#000000', backgroundOpacity: 1, borderColor: '#ffffff', borderWidth: 3 } as never);

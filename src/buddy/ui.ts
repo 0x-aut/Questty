@@ -1441,6 +1441,7 @@ export class BuddySystem extends createSystem({
             hovered: b.hovered,
             text: b.text,
             tag: b.tag,
+            msLeft: Number.isFinite(b.until) ? Math.max(0, Math.round(b.until - performance.now())) : -1,
             chips: b.chips.map((c) => ({ label: c.label, kind: c.kind })),
             box,
           }

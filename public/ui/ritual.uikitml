@@ -1,13 +1,17 @@
 <!--
   Return ritual (PR 10): a short "welcome back" card shown when the app opens
-  on a new day or after 4+ hours away. Small, low and to the right: it never
+  on a new day or after 4+ hours away. Small, low and a little to the left: it never
   covers the room or blocks a pinch elsewhere, and it goes away by itself in
   under 10 seconds. Element ids: ritual-root, ritual-skip, ritual-line,
   ritual-streak, ritual-roll-row, ritual-roll-text, ritual-roll, ritual-roll-label,
   ritual-leave. 1 px = 1 mm at its scale (0.1).
+  Only the three buttons take rays (pointer-events: auto); the rest is
+  pointer-events: none, so a pinch-ray aimed past it at a card goes through.
+  The buttons sit along the bottom, under the line a resting hand's ray takes up to the cards.
 -->
 <style>
   .root {
+    pointer-events: none;
     flex-direction: column;
     gap: 12px;
     width: 400px;
@@ -34,7 +38,13 @@
     letter-spacing: 1.6px;
   }
 
+  .foot {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
   .skip {
+    pointer-events: auto;
     width: 74px;
     height: 34px;
     border-radius: 17px;
@@ -82,6 +92,7 @@
   }
 
   .roll {
+    pointer-events: auto;
     height: 44px;
     padding-left: 18px;
     padding-right: 18px;
@@ -99,6 +110,7 @@
   }
 
   .leave {
+    pointer-events: auto;
     height: 44px;
     padding-left: 16px;
     padding-right: 16px;
@@ -118,9 +130,6 @@
 <div id="ritual-root" class="root">
   <div class="head">
     <span class="eyebrow">WELCOME BACK</span>
-    <div id="ritual-skip" class="skip">
-      <span class="skip-label">Skip</span>
-    </div>
   </div>
   <span id="ritual-line" class="line">3 for today, 2 later</span>
   <span id="ritual-streak" class="streak">4-day streak</span>
@@ -134,6 +143,11 @@
       <div id="ritual-leave" class="leave">
         <span class="leave-label">Leave them</span>
       </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div id="ritual-skip" class="skip">
+      <span class="skip-label">Skip</span>
     </div>
   </div>
 </div>

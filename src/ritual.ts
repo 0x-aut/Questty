@@ -2,7 +2,7 @@
  * PR 10: the return ritual (rules in ritual-logic.ts).
  *
  * Opening the app on a new day or after 4+ hours away: once you are in the
- * room, a small welcome card appears low and to the right (never in the way,
+ * room, a small welcome card appears low and a little to the left (never in the way,
  * no frost, nothing blocked) and the buddy says what's waiting. The cards due
  * today glow one after another. Cards from an earlier day that are not in
  * Today get one pinch to roll into Today (or leave them). It is gone in under
@@ -30,10 +30,22 @@ import {
   type WelcomeReason,
 } from './ritual-logic.js';
 
-const SCALE = 0.1;
-const DISTANCE = 0.62;
-const DROP = 0.24;
+const SCALE = 0.065;
+// Nearer than the card arc (0.58-0.86 m), so floating cards never cover it.
+const DISTANCE = 0.46;
+// Below the card arc's lower edge: it never covers a card, and a pinch-ray from a resting hand up to the cards passes over it.
+const DROP = 0.4;
 const SIDE_DEG = 16;
+/**
+ * Dev-only slow clock for the emulator harness (?ritualSlow=8 makes the moment
+ * last 8x longer in wall time; software rendering screenshots take seconds).
+ */
+const SLOW = (() => {
+  if (!import.meta.env.DEV) return 1;
+  const raw = Number(new URLSearchParams(window.location.search).get('ritualSlow'));
+  return Number.isFinite(raw) && raw >= 1 ? raw : 1;
+})();
+const clock = (): number => performance.now() / SLOW;
 const FADE_MS = 300;
 const SAVE_EVERY_MS = 30_000;
 
@@ -169,8 +181,8 @@ export class RitualSystem extends createSystem({
     const glow = cards.filter((c) => c.category === 'today').map((c) => c.id).slice(0, MAX_GLOW);
     this.run = {
       reason,
-      startedAt: performance.now(),
-      endsAt: performance.now() + (rollover.length > 0 ? RITUAL_ROLL_MS : RITUAL_MS),
+      startedAt: clock(),
+      endsAt: clock() + (rollover.length > 0 ? RITUAL_ROLL_MS : RITUAL_MS),
       glow,
       glowed: 0,
       rollover,
@@ -198,7 +210,7 @@ export class RitualSystem extends createSystem({
     announce(welcomeLine(reason, counts, view.streak, rollover.length), { tag: 'QUESTTY  ·  WELCOME BACK', ms: (this.run.endsAt - this.run.startedAt) * 0.9 });
     // Reduced motion: the Today cards light up together (no sequence).
     if (getSettings().reducedMotion && glow.length > 0) {
-      pulseCards(glow, 3200);
+      pulseCards(glow, 3200 * SLOW);
       this.run.glowed = glow.length;
     }
     return true;
@@ -223,7 +235,7 @@ export class RitualSystem extends createSystem({
     return this.loading;
   }
 
-  /** Low and a little to the right of the eyes, facing them; within reach when seated. */
+  /** Low and a little to the left of the eyes, facing them; within reach when seated. */
   private place(): void {
     const panel = this.panel;
     if (panel === undefined) return;
@@ -234,6 +246,8 @@ export class RitualSystem extends createSystem({
     this.fwd.y = 0;
     if (this.fwd.lengthSq() < 1e-4) this.fwd.set(0, 0, -1);
     this.fwd.normalize();
+    // Rotate the forward vector toward the user's LEFT (-x when facing -z): out of the line a right hand's
+    // pinch-ray takes to the cards, and well inside the home panel (55 deg left), so the two never overlap.
     const a = (-SIDE_DEG * Math.PI) / 180;
     const dir = new Vector3(this.fwd.x * Math.cos(a) - this.fwd.z * Math.sin(a), 0, this.fwd.x * Math.sin(a) + this.fwd.z * Math.cos(a));
     const dist = getSettings().seated ? Math.min(DISTANCE, SEATED_REACH_M - 0.04) : DISTANCE;
@@ -274,7 +288,7 @@ export class RitualSystem extends createSystem({
     const run = this.run;
     if (run === null) return false;
     if (run.answered === null) run.answered = how;
-    run.endsAt = Math.min(run.endsAt, performance.now());
+    run.endsAt = Math.min(run.endsAt, clock());
     if (how === 'skip') this.log('skip');
     return true;
   }
@@ -283,12 +297,12 @@ export class RitualSystem extends createSystem({
     const run = this.run;
     const panel = this.panel;
     if (run === null || panel === undefined) return;
-    const now = performance.now();
+    const now = clock();
     // The cards due today glow one after another (reduced motion lit them all at once).
     if (run.answered === null && run.glowed < run.glow.length) {
       const due = Math.floor((now - run.startedAt - 500) / GLOW_STEP_MS);
       while (run.glowed <= due && run.glowed < run.glow.length) {
-        pulseCards([run.glow[run.glowed]], 1500);
+        pulseCards([run.glow[run.glowed]], 1500 * SLOW);
         run.glowed += 1;
       }
     }
@@ -323,7 +337,7 @@ export class RitualSystem extends createSystem({
       active: run !== null,
       pending: this.pending,
       reason: run?.reason ?? null,
-      msLeft: run === null ? 0 : Math.max(0, Math.round(run.endsAt - performance.now())),
+      msLeft: run === null ? 0 : Math.max(0, Math.round(run.endsAt - clock())),
       totalMs: run === null ? 0 : Math.round(run.endsAt - run.startedAt),
       glow: run?.glow ?? [],
       glowed: run?.glowed ?? 0,

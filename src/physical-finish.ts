@@ -26,7 +26,7 @@ import {
 } from '@iwsdk/core';
 import { QuestCard, QuestCardTween } from './quest-component.js';
 import { setReleaseInterceptor } from './quest-card.js';
-import { getDropTarget } from './surfaces.js';
+import { holdLanding, landingTarget } from './surfaces.js';
 import { getBuddyFocusApi } from './session-events.js';
 import { announce, pushBuddyUndo } from './announce.js';
 import { getSettings } from './settings.js';
@@ -302,11 +302,18 @@ export class PhysicalFinishSystem extends createSystem({
     this.heldState.delete(e);
     if (s === undefined || s.hand === null || !e.active || e.hasComponent(QuestCardTween)) return false;
     const cardId = e.getValue(QuestCard, 'cardId') as string;
-    const head = this.world.player.head.getWorldPosition(this.tmpA);
+    // Copy the head position out now: sampleHands() below reuses tmpA for the hand, and a head read
+    // through the shared vector would be the hand itself (away-from-you then always passes).
+    const h = this.world.player.head.getWorldPosition(this.tmpA);
+    const head: Vec = [h.x, h.y, h.z];
     // Fresh sample at the release itself (this frame's time: a stepped dev clock only advances in update()).
     const now = this.stepMs === null ? performance.now() : this.virtualNow + this.stepMs;
     this.sampleHands(now);
-    const verdict = flickVerdict(this.samples[s.hand], [head.x, head.y, head.z], now - s.since, getDropTarget(cardId) !== null);
+    // Pinning always wins: a release over a surface (or a fast drop onto one) is never a flick,
+    // and the release then pins it there.
+    const landing = landingTarget(e, this.world.player.gripSpaces[s.hand].getWorldPosition(new Vector3()));
+    const verdict = flickVerdict(this.samples[s.hand], head, now - s.since, landing !== null);
+    if (landing !== null) holdLanding(cardId, landing);
     this.verdicts.push({ ...verdict, title: e.getValue(QuestCard, 'title') as string, at: Date.now() });
     if (this.verdicts.length > 40) this.verdicts.shift();
     if (!verdict.flick) return false;
