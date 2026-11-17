@@ -1,5 +1,6 @@
 import { createSystem, Matrix4, Quaternion, UIKit, UIKitMLAsset, Vector3 } from '@iwsdk/core';
 import { allowFloatingFocus, createQuestCard, setQuestCardState, showFocusActionFor } from './quest-card.js';
+import { setCardNote } from './documents.js';
 import { setWelcomeCollapsed, suppressPillOpen } from './panel.js';
 import { classify } from './buddy/parser.js';
 import {
@@ -378,7 +379,7 @@ export class QuestInputSystem extends createSystem({
     const fresh = quests.filter((_, i) => !dupIdx.has(i));
     const dups = quests.filter((_, i) => dupIdx.has(i));
     try {
-      await this.spawnFloatingQuests(fresh);
+      await this.spawnFloatingQuests(fresh, text);
     } catch (error) {
       console.warn('[quest] Could not create dictated quest cards.', error);
     }
@@ -417,21 +418,25 @@ export class QuestInputSystem extends createSystem({
     this.voiceOrb?.setProperties({ width: size, height: size, borderRadius: size / 2 } as never);
   }
 
-  private async spawnFloatingQuests(quests: QuestSuggestion[]): Promise<void> {
+  private async spawnFloatingQuests(quests: QuestSuggestion[], transcript?: string): Promise<void> {
     for (const quest of quests) {
-      await this.spawnFloatingQuest(quest);
+      await this.spawnFloatingQuest(quest, transcript);
     }
   }
 
-  private async spawnFloatingQuest(quest: QuestSuggestion): Promise<void> {
+  private async spawnFloatingQuest(quest: QuestSuggestion, transcript?: string): Promise<void> {
     const pose = this.getNextFloatingPose();
-    await createQuestCard({
+    const card = await createQuestCard({
       title: quest.title,
       xp: quest.xp,
       position: pose.position,
       quaternion: pose.quaternion,
       category: quest.when,
     });
+    // PR 10: a card from a brain dump keeps the words it came from, as notes the buddy can open.
+    if (transcript !== undefined && transcript.trim().length > 0) {
+      setCardNote(card.getValue(QuestCard, 'cardId') as string, `# ${quest.title}\n\nFrom your brain dump:\n\n${transcript.trim()}`);
+    }
   }
 
   /** Next free slot in the seated-reach arc (see card-layout.ts). */
