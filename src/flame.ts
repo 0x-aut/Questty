@@ -71,6 +71,7 @@ import {
   type SurfaceFrame,
 } from './surfaces.js';
 import { getProgress, onAward, onProgress, setStreakForDev, type AwardEvent } from './progress.js';
+import { getSettings } from './settings.js';
 import {
   dayKey,
   flameScale,
@@ -579,6 +580,8 @@ export class FlameSystem extends createSystem({
   private castingCards = 0;
   private flickerValue = 1;
   private updateMs = 0;
+  /** PR 10: reduced motion was on last frame (dev state). */
+  private still = false;
 
   init(): void {
     activeFlame = this;
@@ -1272,14 +1275,17 @@ export class FlameSystem extends createSystem({
     this.flickerValue = flicker;
     const env = this.flareEnvelope(now);
     // The completion flare is a big bounce: an overshooting swell with a springy wobble.
-    const bounce = env > 0 ? Math.sin(Math.min(1, (now - this.flareAt) / 1000 / 0.9) * Math.PI * 3) * 0.12 * env : 0;
-    const s = this.scale * (1 + 0.45 * env + bounce);
+    // PR 10, reduced motion: no bounce, no idle sway or squash; a flare only glows brighter.
+    const still = getSettings().reducedMotion;
+    this.still = still;
+    const bounce = env > 0 && !still ? Math.sin(Math.min(1, (now - this.flareAt) / 1000 / 0.9) * Math.PI * 3) * 0.12 * env : 0;
+    const s = this.scale * (1 + (still ? 0.12 : 0.45) * env + bounce);
     L.flame.scale.setScalar(s);
     // Idle loop: a gentle sway and squash-and-stretch (the ember droops and sags).
-    const squash = Math.sin(time * 3.4) * 0.045 + bounce * 0.8;
+    const squash = still ? 0 : Math.sin(time * 3.4) * 0.045 + bounce * 0.8;
     L.body.scale.set(1 - squash * 0.5, (1 + squash) * (ember ? 0.86 : 1), 1 - squash * 0.5);
-    L.body.rotation.z = Math.sin(time * 1.7) * 0.05 + (ember ? 0.22 : 0);
-    L.body.rotation.x = Math.sin(time * 1.3 + 0.8) * 0.03;
+    L.body.rotation.z = (still ? 0 : Math.sin(time * 1.7) * 0.05) + (ember ? 0.22 : 0);
+    L.body.rotation.x = still ? 0 : Math.sin(time * 1.3 + 0.8) * 0.03;
 
     // Layer gradients: outer edge colour -> lighter at the base, mid body colour, near-white core.
     const lm0 = L.layerMats[0].uniforms;
@@ -1436,6 +1442,9 @@ export class FlameSystem extends createSystem({
           shadowRenders: this.shadowRenders,
           castingCards: this.castingCards,
           updateMs: this.updateMs,
+          still: this.still,
+          bodyScale: this.lantern.body.scale.toArray(),
+          bodyRot: [this.lantern.body.rotation.x, this.lantern.body.rotation.z],
           flicker: this.flickerValue,
         };
       };

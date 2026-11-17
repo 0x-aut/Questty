@@ -24,7 +24,10 @@ import {
 } from '@iwsdk/core';
 import { CARD_UNITS_H, CARD_UNITS_W, FLOAT_CARD_SCALE } from './card-layout.js';
 import { QuestCard, QuestCardTween, SnapSurface } from './quest-component.js';
-import { syncCardDecor } from './card-decor.js';
+import { setCardFade, syncCardDecor } from './card-decor.js';
+import { getSettings } from './settings.js';
+/** PR 10: a pin with reduced motion is a 300 ms fade out + fade in, no flight. */
+const REDUCED_FADE_MS = 300;
 import { playTap } from './focus-store.js';
 
 /**
@@ -1321,6 +1324,27 @@ export class SurfaceSystem extends createSystem({
         continue;
       }
       const elapsed = now - f.startedAt;
+      if (getSettings().reducedMotion) {
+        // PR 10, reduced motion: no flight. Fade out where it was, appear on the surface, fade in.
+        const t = Math.min(1, elapsed / REDUCED_FADE_MS);
+        if (t < 0.4) {
+          setCardFade(object, 1 - t / 0.4);
+          continue;
+        }
+        setWorld(object, f.to, f.qTo);
+        object.scale.setScalar(f.sTo);
+        setCardFade(object, (t - 0.4) / 0.6);
+        if (f.normal !== null && !f.tapped) {
+          f.tapped = true;
+          playTap();
+          pulseHaptics(this.xrManager.getSession());
+        }
+        if (t >= 1) {
+          setCardFade(object, 1);
+          this.flights.delete(entity);
+        }
+        continue;
+      }
       // 1. Fly to just above the surface, already in its final orientation.
       const t = Math.min(1, elapsed / FLIGHT_MS);
       const k = 1 - (1 - t) ** 3;

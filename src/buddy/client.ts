@@ -6,6 +6,7 @@
  * line, which the caller validates (actions.ts) before anything runs.
  */
 import type { BuddyCard } from './actions.js';
+import { knownDocs } from '../documents.js';
 
 export type BuddyApiReply = { reply: unknown; actions: unknown };
 export type FocusInfo = { card_id: string; paused: boolean; remaining_min: number } | null;
@@ -35,7 +36,8 @@ export async function askBuddyApi(
     const response = await fetch('/api/buddy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text.slice(0, 500), cards: cards.slice(0, 40), focus }),
+      // PR 10: the documents the buddy may open (ids + titles only, never their text).
+      body: JSON.stringify({ text: text.slice(0, 500), cards: cards.slice(0, 40), focus, docs: knownDocs().slice(0, 20).map((d) => ({ id: d.id, title: d.title })) }),
       signal: controller.signal,
     });
     if (!response.ok) {

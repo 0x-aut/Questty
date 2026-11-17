@@ -8,6 +8,8 @@
  * IWSDK imports), so the harness unit-tests it directly.
  */
 
+import { cleanBody, cleanDocTitle, isKnownDocId } from '../documents.js';
+
 export const BUDDY_CATEGORIES = ['today', 'later', 'before-leave', 'unsorted'] as const;
 export type BuddyCategory = (typeof BUDDY_CATEGORIES)[number];
 
@@ -39,7 +41,15 @@ export type BuddyAction =
   | { type: 'focus_on'; card_id: string; minutes: number }
   | { type: 'find'; card_id: string }
   /** PR 9: "what's my streak?" - the app answers from the saved streak. */
-  | { type: 'show_streak' };
+  | { type: 'show_streak' }
+  /**
+   * PR 10: open a document in the reading view. Exactly one source: a known
+   * document id (bundled sample or one the buddy wrote), a card (its notes),
+   * or a title + body the buddy wrote just now (saved, then opened).
+   */
+  | { type: 'open_document'; doc_id: string }
+  | { type: 'open_document'; card_id: string }
+  | { type: 'open_document'; title: string; body: string };
 
 export type BuddyActionType = BuddyAction['type'];
 export const ACTION_TYPES: readonly BuddyActionType[] = [
@@ -57,6 +67,7 @@ export const ACTION_TYPES: readonly BuddyActionType[] = [
   'focus_on',
   'find',
   'show_streak',
+  'open_document',
 ];
 
 /** What the buddy (AI or parser) is told about each card: compact, no poses. */
@@ -214,6 +225,22 @@ export function validateAction(raw: unknown, cardIds: ReadonlySet<string>): Budd
     }
     case 'show_streak':
       return { type: 'show_streak' };
+    case 'open_document': {
+      const hasBody = raw.body !== undefined && raw.body !== null;
+      const hasDoc = raw.doc_id !== undefined && raw.doc_id !== null;
+      const hasCard = raw.card_id !== undefined && raw.card_id !== null;
+      if (Number(hasBody) + Number(hasDoc) + Number(hasCard) !== 1) return 'bad-document';
+      if (hasDoc) return isKnownDocId(raw.doc_id) ? { type: 'open_document', doc_id: raw.doc_id } : 'unknown-document';
+      if (hasCard) {
+        const id = card();
+        return id === null ? 'unknown-card' : { type: 'open_document', card_id: id };
+      }
+      const body = cleanBody(raw.body);
+      const title = cleanDocTitle(raw.title);
+      if (body === null) return 'bad-body';
+      if (title === null) return 'bad-title';
+      return { type: 'open_document', title, body };
+    }
     default:
       return 'unknown-type';
   }

@@ -89,7 +89,9 @@ export type BuddyFocusApi = {
   /** Put the focus back exactly as a snapshot had it (null: end any focus). For Undo. */
   restore(snapshot: FocusSnapshot | null): boolean;
   /** Finish a card: the focus completion when it is the focus card, else the same chime, XP and shelf. Returns XP awarded. */
-  complete(entity: Entity): number;
+  complete(entity: Entity, visual?: 'shelf' | 'crumple'): number;
+  /** PR 10: where finished cards land (the trophy shelf), for the paper-ball arc. */
+  shelfPoint?(): [number, number, number];
   /** Undo a completion: take the XP back. */
   revokeXp(amount: number): void;
 };

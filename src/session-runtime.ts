@@ -27,6 +27,7 @@ import {
   setQuestCardState,
   showFocusActionFor,
   tweenQuestCardTo,
+  crumpleQuestCard,
 } from './quest-card.js';
 import {
   setCardActionMode,
@@ -212,7 +213,11 @@ export class SessionSystem extends createSystem({}) {
       start: (entity, minutes) => this.buddyStart(entity, minutes),
       control: (command, minutes) => this.buddyControl(command, minutes),
       restore: (snapshot) => this.buddyRestore(snapshot),
-      complete: (entity) => this.buddyComplete(entity),
+      complete: (entity, visual) => this.buddyComplete(entity, visual),
+      shelfPoint: () => {
+        void this.loadTrophyShelf();
+        return TROPHY_SHELF_CARD_POSITION.toArray() as [number, number, number];
+      },
       revokeXp: (amount) => {
         this.progress = revokeXp(amount);
         this.updateProgressStatus();
@@ -428,11 +433,11 @@ export class SessionSystem extends createSystem({}) {
   }
 
   /** "Mark laundry done": the same completion as the Complete button (chime, XP, shelf). */
-  private buddyComplete(entity: Entity): number {
+  private buddyComplete(entity: Entity, visual: 'shelf' | 'crumple' = 'shelf'): number {
     if (!entity.active) return 0;
     const xp = entity.getValue(QuestCard, 'xp') as number;
     if (this.state.phase === 'focus' && this.activeCard === entity) {
-      this.finishFocus(entity, 'manual');
+      this.finishFocus(entity, 'manual', visual);
       return xp;
     }
     void this.loadTrophyShelf();
@@ -442,7 +447,8 @@ export class SessionSystem extends createSystem({}) {
     playChime();
     setQuestCardState(entity, `Completed - +${xp} XP${bonusNote()}`);
     setCardActionMode(entity.getValue(QuestCard, 'cardId') as string, 'hidden');
-    tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
+    if (visual === 'crumple') crumpleQuestCard(entity);
+    else tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
     return xp;
   }
 
@@ -459,7 +465,7 @@ export class SessionSystem extends createSystem({}) {
   }
 
   /** Complete (button) or the timer ran out: chime, mark done, award XP. */
-  private finishFocus(entity: Entity, reason: 'manual' | 'timer' | 'away'): void {
+  private finishFocus(entity: Entity, reason: 'manual' | 'timer' | 'away', visual: 'shelf' | 'crumple' = 'shelf'): void {
     if (this.state.phase !== 'focus' || this.activeCard !== entity) return;
     void this.loadTrophyShelf();
     const xp = entity.getValue(QuestCard, 'xp') as number;
@@ -473,7 +479,8 @@ export class SessionSystem extends createSystem({}) {
     const prefix = reason === 'away' ? 'Finished while you were away' : 'Completed';
     setQuestCardState(entity, `${prefix} - +${xp} XP${bonusNote()}`);
     setCardActionMode(cardId, 'hidden');
-    tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
+    if (visual === 'crumple') crumpleQuestCard(entity);
+    else tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
     this.activeCard = undefined;
     this.state = completeFocus(this.state, focusNow());
     this.hideTimer();

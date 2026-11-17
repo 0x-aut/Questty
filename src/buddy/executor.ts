@@ -62,9 +62,16 @@ export type ExecutorHost = {
   arrange(entities: Entity[], target: PlaceTarget): PlaceOutcome;
   /** PR 7: a short phrase for where a card is ("on the wall on your left"). */
   where(entity: Entity): string;
+  /** PR 10: open a document in the reading view (doc-view.ts). */
+  openDocument(request: DocRequest): Promise<DocOutcome>;
 };
 
-type CardSnap = {
+export type DocRequest = { doc_id: string } | { card_id: string } | { title: string; body: string };
+export type DocOutcome =
+  | { ok: true; title: string; minutes: number; written: boolean; undo: () => void }
+  | { ok: false; reply: string };
+
+export type CardSnap = {
   id: string;
   title: string;
   xp: number;
@@ -76,7 +83,7 @@ type CardSnap = {
   surfaceId: string;
 };
 
-function snapCard(entity: Entity): CardSnap | null {
+export function snapCard(entity: Entity): CardSnap | null {
   const object = entity.object3D;
   if (object == null) return null;
   object.updateWorldMatrix(true, false);
@@ -94,7 +101,7 @@ function snapCard(entity: Entity): CardSnap | null {
 }
 
 /** Put a deleted/completed card back exactly where it was (same id when free). */
-async function restoreCard(snap: CardSnap): Promise<Entity> {
+export async function restoreCard(snap: CardSnap): Promise<Entity> {
   const old = findQuestCard(snap.id);
   if (old !== undefined) removeQuestCard(old); // still flying to the shelf
   const entity = await createQuestCard({
@@ -204,6 +211,28 @@ export class BuddyExecutor {
         case 'show_streak': {
           replies.push(streakLine(viewStreak(getProgress(), dayKey(Date.now()))));
           pingFlame();
+          log(true);
+          break;
+        }
+        case 'open_document': {
+          const { type: _t, ...request } = action;
+          const out = await this.host.openDocument(request as DocRequest);
+          if (!out.ok) {
+            replies.push(out.reply);
+            log(false, 'no-document');
+            break;
+          }
+          if ('card_id' in action) result.touched.push(action.card_id);
+          result.changed = true;
+          replies.push(
+            out.written
+              ? `Wrote "${quote(out.title)}" and opened it. Pinch and drag to scroll.`
+              : `Opened "${quote(out.title)}" (${out.minutes} min read). Pinch and drag to scroll.`,
+          );
+          undos.push(async () => {
+            out.undo();
+            return [];
+          });
           log(true);
           break;
         }

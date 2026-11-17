@@ -1,0 +1,139 @@
+<!--
+  Return ritual (PR 10): a short "welcome back" card shown when the app opens
+  on a new day or after 4+ hours away. Small, low and to the right: it never
+  covers the room or blocks a pinch elsewhere, and it goes away by itself in
+  under 10 seconds. Element ids: ritual-root, ritual-skip, ritual-line,
+  ritual-streak, ritual-roll-row, ritual-roll-text, ritual-roll, ritual-roll-label,
+  ritual-leave. 1 px = 1 mm at its scale (0.1).
+-->
+<style>
+  .root {
+    flex-direction: column;
+    gap: 12px;
+    width: 400px;
+    padding-top: 16px;
+    padding-bottom: 18px;
+    padding-left: 20px;
+    padding-right: 16px;
+    border-radius: 24px;
+    background-color: #f3eee3;
+    border-width: 1px;
+    border-color: #cfc7b5;
+  }
+
+  .head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .eyebrow {
+    color: #8a5a2b;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+  }
+
+  .skip {
+    width: 74px;
+    height: 34px;
+    border-radius: 17px;
+    justify-content: center;
+    align-items: center;
+    background-color: #e3dccb;
+    cursor: pointer;
+  }
+
+  .skip-label {
+    color: #4a4436;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .line {
+    color: #24221e;
+    font-size: 21px;
+    font-weight: 700;
+  }
+
+  .streak {
+    color: #6b5a3a;
+    font-size: 16px;
+  }
+
+  .roll-row {
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .divider {
+    height: 1px;
+    background-color: #d8d0bd;
+  }
+
+  .roll-text {
+    color: #3a352b;
+    font-size: 16px;
+  }
+
+  .buttons {
+    flex-direction: row;
+    gap: 10px;
+  }
+
+  .roll {
+    height: 44px;
+    padding-left: 18px;
+    padding-right: 18px;
+    border-radius: 22px;
+    justify-content: center;
+    align-items: center;
+    background-color: #c7784f;
+    cursor: pointer;
+  }
+
+  .roll-label {
+    color: #fffaf1;
+    font-size: 17px;
+    font-weight: 700;
+  }
+
+  .leave {
+    height: 44px;
+    padding-left: 16px;
+    padding-right: 16px;
+    border-radius: 22px;
+    justify-content: center;
+    align-items: center;
+    background-color: #e3dccb;
+    cursor: pointer;
+  }
+
+  .leave-label {
+    color: #4a4436;
+    font-size: 17px;
+    font-weight: 700;
+  }
+</style>
+<div id="ritual-root" class="root">
+  <div class="head">
+    <span class="eyebrow">WELCOME BACK</span>
+    <div id="ritual-skip" class="skip">
+      <span class="skip-label">Skip</span>
+    </div>
+  </div>
+  <span id="ritual-line" class="line">3 for today, 2 later</span>
+  <span id="ritual-streak" class="streak">4-day streak</span>
+  <div id="ritual-roll-row" class="roll-row">
+    <div class="divider"></div>
+    <span id="ritual-roll-text" class="roll-text">2 unfinished from yesterday</span>
+    <div class="buttons">
+      <div id="ritual-roll" class="roll">
+        <span id="ritual-roll-label" class="roll-label">Roll into Today</span>
+      </div>
+      <div id="ritual-leave" class="leave">
+        <span class="leave-label">Leave them</span>
+      </div>
+    </div>
+  </div>
+</div>
