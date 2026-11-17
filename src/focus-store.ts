@@ -1,3 +1,4 @@
+import { playSound, primeAudio } from './sfx.js';
 /**
  * Small persistence + clock helpers for the focus timer.
  *
@@ -118,83 +119,38 @@ export function clearFocusTimer(): void {
   }
 }
 
-let audioContext: AudioContext | undefined;
-
-/** Create/resume the AudioContext. Call from a pinch so autoplay rules allow it. */
-export function primeChime(): void {
-  try {
-    if (audioContext === undefined) {
-      const Ctor =
-        window.AudioContext ??
-        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (Ctor === undefined) return;
-      audioContext = new Ctor();
-    }
-    if (audioContext.state === 'suspended') void audioContext.resume();
-  } catch {
-    audioContext = undefined;
-  }
-}
-
-/** A gentle three-note bell made with WebAudio oscillators (no audio files). */
-export function playChime(): void {
-  primeChime();
-  const ctx = audioContext;
-  if (ctx === undefined) return;
-  try {
-    const master = ctx.createGain();
-    master.gain.value = 0.22;
-    master.connect(ctx.destination);
-    const start = ctx.currentTime + 0.05;
-    const notes = [659.25, 987.77, 1318.51]; // E5, B5, E6
-    notes.forEach((frequency, index) => {
-      const at = start + index * 0.18;
-      for (const [ratio, level] of [
-        [1, 1],
-        [2.01, 0.18],
-      ] as const) {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = frequency * ratio;
-        gain.gain.setValueAtTime(0.0001, at);
-        gain.gain.exponentialRampToValueAtTime(0.6 * level, at + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, at + 1.8);
-        osc.connect(gain);
-        gain.connect(master);
-        osc.start(at);
-        osc.stop(at + 1.9);
-      }
-    });
-  } catch {
-    // A blocked or missing audio device must never break completion.
-  }
-}
-
 /**
- * A soft "tap" as a card settles onto a surface: a few ms of filtered noise
- * (no oscillators, no audio file). Silent until the AudioContext was primed by a pinch.
+ * Sounds moved to sfx.ts in PR 11 (one shared AudioContext, an effects bus
+ * with a mute setting, and the buddy's spatial panner). These keep their old
+ * names for the callers.
  */
+export function primeChime(): void {
+  primeAudio();
+}
+
+/** The completion chime (three-note bell). Awards play it through the XP bar system. */
+export function playChime(reason = 'chime'): void {
+  playSound('chime', reason);
+}
+
+/** A soft "tap" as a card settles onto a surface; silent until a pinch primed audio. */
 export function playTap(): void {
-  const ctx = audioContext;
-  if (ctx === undefined || ctx.state !== 'running') return;
+  playSound('tap');
+}
+
+const BREAK_KEY = 'questty.break.v1';
+/** PR 11: the last break prompt shown, so the next break asks for the next one (survives reloads). */
+export function loadLastBreakPrompt(): string | null {
   try {
-    const length = Math.floor(ctx.sampleRate * 0.045);
-    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** 3;
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 1400;
-    const gain = ctx.createGain();
-    gain.gain.value = 0.18;
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(ctx.destination);
-    source.start();
+    return localStorage.getItem(BREAK_KEY);
   } catch {
-    // ignore
+    return null;
+  }
+}
+export function saveLastBreakPrompt(id: string): void {
+  try {
+    localStorage.setItem(BREAK_KEY, id);
+  } catch {
+    // not fatal
   }
 }

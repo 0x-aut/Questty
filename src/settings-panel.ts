@@ -25,10 +25,11 @@ import { getProgress, onAward, saveProgress } from './progress.js';
 import { levelsToNext, tierForLevel, tierUp, TIERS } from './tiers.js';
 import { flashFrames, frameState } from './card-decor.js';
 import { announce, announceLog } from './announce.js';
-import { playChime } from './focus-store.js';
+import { hourLabel, nextReviewHour } from './review-logic.js';
+import { reviewHour, setReviewHour } from './review-store.js';
 
 const SCALE = 0.1;
-const ANGLE_DEG = -28; // to the user's left, between the home panel and the middle
+const ANGLE_DEG = -20; // to the user's left, between the home panel and the middle
 const DISTANCE = 0.62;
 const DROP = 0.28;
 const ID: Record<SettingKey, string> = {
@@ -38,6 +39,8 @@ const ID: Record<SettingKey, string> = {
   reducedMotion: 'reduced-motion',
   oneHanded: 'one-handed',
   captions: 'captions',
+  calmScene: 'calm-scene',
+  muteSounds: 'mute-sounds',
 };
 
 /** Card text and colours for the current settings (also re-applied to every card when they change). */
@@ -89,7 +92,7 @@ export class SettingsSystem extends createSystem({
         flashFrames();
         // After the completion's own line, so both are seen.
         window.setTimeout(() => {
-          playChime();
+          // PR 11: no second chime here; the level-up fanfare already played with the award.
           const next = levelsToNext(event.progress.level);
           announce(`Level ${event.progress.level}! Your cards are ${up.label} now.${next ? ` ${next.levels} more levels to ${next.next.label}.` : ''}`, {
             tag: 'QUESTTY  ·  LEVEL UP',
@@ -154,6 +157,11 @@ export class SettingsSystem extends createSystem({
       for (const key of SETTING_KEYS) {
         panel.requireElementById(`set-${ID[key]}`).addEventListener('click', () => toggleSetting(key));
       }
+      // PR 11: the evening review hour cycles 5 pm .. 10 pm.
+      panel.requireElementById('set-review-hour').addEventListener('click', () => {
+        setReviewHour(nextReviewHour(reviewHour()));
+        this.refreshRows();
+      });
     })();
     return this.loading;
   }
@@ -187,12 +195,14 @@ export class SettingsSystem extends createSystem({
       panel.getElementById<UIKit.Text>(`set-${ID[key]}-state`)?.setProperties({ text: on ? 'On' : 'Off', color: on ? '#1d1a08' : '#e6e7ea' } as never);
       panel.getElementById<UIKit.Text>(`set-${ID[key]}-pill`)?.setProperties({ backgroundColor: on ? '#f5d90a' : '#45484f' } as never);
     }
+    panel.getElementById<UIKit.Text>('set-review-hour-state')?.setProperties({ text: hourLabel(reviewHour()) } as never);
   }
 
   private rowState(): Record<string, string> {
     const out: Record<string, string> = {};
     const s = getSettings();
     for (const key of SETTING_KEYS) out[key] = s[key] ? 'On' : 'Off';
+    out.reviewHour = hourLabel(reviewHour());
     return out;
   }
 }

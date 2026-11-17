@@ -43,11 +43,12 @@ export type RitualCard = { id: string; title: string; category: string };
  * Yesterday's unfinished cards: made on an earlier day, still open and not in
  * Today. Oldest first, at most MAX_ROLLOVER.
  */
-export function rolloverCandidates(cards: readonly RitualCard[], now: number): RitualCard[] {
+export function rolloverCandidates(cards: readonly RitualCard[], now: number, scheduled: ReadonlySet<string> = new Set()): RitualCard[] {
   const today = dayKey(now);
   return cards
     .map((c) => ({ c, at: cardCreatedAt(c.id) }))
-    .filter((x) => x.c.category !== 'today' && x.at !== null && dayKey(x.at) < today)
+    // PR 11: a card the evening review rolled to a later day was decided already: never asked about again.
+    .filter((x) => x.c.category !== 'today' && !scheduled.has(x.c.id) && x.at !== null && dayKey(x.at) < today)
     .sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
     .slice(0, MAX_ROLLOVER)
     .map((x) => x.c);
@@ -78,9 +79,11 @@ export function streakPhrase(streak: number, status: string): string {
 }
 
 /** What the buddy says (one short line for the caption bubble). */
-export function welcomeLine(reason: WelcomeReason, counts: Record<string, number>, streak: number, rollover: number): string {
+export function welcomeLine(reason: WelcomeReason, counts: Record<string, number>, streak: number, rollover: number, promoted = 0): string {
   const hello = reason === 'new-day' ? 'Good to see you.' : 'Welcome back.';
   const roll = rollover > 0 ? ` ${rollover} from before - roll ${rollover === 1 ? 'it' : 'them'} into Today?` : '';
   const flame = streak > 0 ? ` ${streak}-day streak.` : '';
-  return `${hello} ${countsLine(counts)}${flame}${roll}`;
+  // PR 11: cards the evening review rolled to today are already in Today.
+  const moved = promoted > 0 ? ` ${promoted} from last night's review ${promoted === 1 ? 'is' : 'are'} in Today.` : '';
+  return `${hello} ${countsLine(counts)}${flame}${moved}${roll}`;
 }

@@ -33,6 +33,12 @@ export type TalkHost = {
   state(state: TalkState, detail?: string): void;
   /** The buddy's output level 0..1 (and the user's mic level), per animation frame. */
   levels(output: number, input: number): void;
+  /**
+   * PR 11: route the buddy's voice through the orb's spatial panner. True =
+   * it is being played there (the plain audio element is then muted, kept only
+   * so Chrome keeps pulling the WebRTC stream).
+   */
+  voice?(stream: MediaStream): boolean;
 };
 
 export type TalkDebug = {
@@ -48,6 +54,8 @@ export type TalkDebug = {
   peakOutput: number;
   startedAt: number;
   endedAt: number;
+  /** PR 11: the voice plays through the orb's HRTF panner. */
+  spatialVoice: boolean;
 };
 
 const IDLE_MS = 60_000;
@@ -84,6 +92,7 @@ export class TalkSession {
     peakOutput: 0,
     startedAt: 0,
     endedAt: 0,
+    spatialVoice: false,
   };
 
   constructor(private readonly host: TalkHost) {}
@@ -110,6 +119,9 @@ export class TalkSession {
       peer.addEventListener('track', (event) => {
         const stream = event.streams[0] ?? new MediaStream([event.track]);
         if (this.audio !== null) {
+          const spatial = this.host.voice?.(stream) ?? false;
+          this.audio.muted = spatial;
+          this.debug.spatialVoice = spatial;
           this.audio.srcObject = stream;
           void this.audio.play().catch(() => undefined);
         }

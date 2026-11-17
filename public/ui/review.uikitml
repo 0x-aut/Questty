@@ -1,0 +1,97 @@
+<!--
+  Evening review (PR 11): offered once a day at/after the review hour (Settings,
+  default 6 pm) or on demand ("review my day"). Flick or crumple the cards you
+  finished; everything still open rolls to tomorrow with one pinch.
+  Element ids: review-root, review-line, review-count, review-roll,
+  review-roll-label, review-later. Like the return ritual it sits low and to the
+  left, and only the buttons take rays (pointer-events: auto).
+  1 px = 1 mm at its scale (0.1).
+-->
+<style>
+  .root {
+    pointer-events: none;
+    flex-direction: column;
+    gap: 12px;
+    width: 420px;
+    padding-top: 16px;
+    padding-bottom: 18px;
+    padding-left: 20px;
+    padding-right: 18px;
+    border-radius: 24px;
+    background-color: #232842;
+    border-width: 1px;
+    border-color: #4a5280;
+  }
+
+  .eyebrow {
+    color: #f3c27a;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+  }
+
+  .line {
+    color: #f4f1ea;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .count {
+    color: #b9c0e0;
+    font-size: 16px;
+  }
+
+  .buttons {
+    flex-direction: row;
+    gap: 10px;
+  }
+
+  .roll {
+    pointer-events: auto;
+    height: 46px;
+    padding-left: 18px;
+    padding-right: 18px;
+    border-radius: 23px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f3c27a;
+    cursor: pointer;
+  }
+
+  .roll-label {
+    color: #231d10;
+    font-size: 17px;
+    font-weight: 700;
+  }
+
+  .later {
+    pointer-events: auto;
+    height: 46px;
+    padding-left: 16px;
+    padding-right: 16px;
+    border-radius: 23px;
+    justify-content: center;
+    align-items: center;
+    background-color: #3a4166;
+    cursor: pointer;
+  }
+
+  .later-label {
+    color: #e6e8f2;
+    font-size: 17px;
+    font-weight: 700;
+  }
+</style>
+<div id="review-root" class="root">
+  <span class="eyebrow">EVENING REVIEW</span>
+  <span id="review-line" class="line">4 still open.</span>
+  <span id="review-count" class="count">Flick a finished card away to clear it.</span>
+  <div class="buttons">
+    <div id="review-roll" class="roll">
+      <span id="review-roll-label" class="roll-label">Roll 4 to tomorrow</span>
+    </div>
+    <div id="review-later" class="later">
+      <span class="later-label">Not now</span>
+    </div>
+  </div>
+</div>

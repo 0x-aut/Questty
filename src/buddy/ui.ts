@@ -52,7 +52,10 @@ import {
   type DupAnswer,
 } from './dedupe.js';
 import type { DumpItem } from './bus.js';
-import { classify, parseCommand } from './parser.js';
+import { classify, parseCommand, wantsEveningReview } from './parser.js';
+import { startEveningReview } from '../review.js';
+import { attachBuddyVoice, detachBuddyVoice, playBuddyCue, primeAudio } from '../sfx.js';
+import { setBuddySoundSource } from '../spatial-audio.js';
 import { askBuddyApi, resetBuddyApiBackoff, type FocusInfo } from './client.js';
 import { BuddyExecutor, type ExecResult, type Offer, type PlaceOutcome, type UndoEntry } from './executor.js';
 import { aimPoint, describeSpot, resolvePlace, whereLabel } from './spatial.js';
@@ -211,6 +214,8 @@ export class BuddySystem extends createSystem({
     }
     this.orb = new BuddyOrb();
     this.orbEntity = this.world.createTransformEntity(this.orb.group, { parent: this.world.sceneEntity, persistent: true });
+    // PR 11: the buddy's voice and cue sound come from the orb.
+    setBuddySoundSource(this.orb.group);
     this.lines = new LightLines();
     this.world.createTransformEntity(this.lines.group, { parent: this.world.sceneEntity, persistent: true });
     this.executor = new BuddyExecutor({
@@ -416,7 +421,9 @@ export class BuddySystem extends createSystem({
     if (!this.liveOk || !talkSupported() || (typeof navigator !== 'undefined' && navigator.onLine === false)) return false;
     this.markUsed();
     setWelcomeCollapsed(true);
+    primeAudio(); // inside the pinch: the spatial voice path may start
     const session = new TalkSession({
+      voice: (stream) => attachBuddyVoice(stream),
       command: (text, heardAt) => this.talkCommand(text, heardAt),
       caption: (who, text) => this.sayCaption(who === 'you' ? `"${text}"` : text, who === 'you' ? 'YOU' : 'QUESTTY  ·  TALKING'),
       state: (state, detail) => this.onTalkState(state, detail),
@@ -436,8 +443,10 @@ export class BuddySystem extends createSystem({
       this.say('Connecting...', { tag: 'TALK', sticky: true });
     } else if (state === 'live') {
       this.setOrb('talking');
+      playBuddyCue('talk-live');
       this.say("I'm here. Tell me what to move or start.", { tag: 'QUESTTY  ·  TALKING', ms: 5000 });
     } else if (state === 'off') {
+      detachBuddyVoice();
       if (this.orb.state === 'talking' || this.orb.state === 'thinking') this.setOrb('idle');
       const why = detail === 'idle' ? 'Talk ended after a quiet minute.' : 'Talk ended.';
       this.say(why, { tag: 'QUESTTY', ms: 3000 });
@@ -592,6 +601,14 @@ export class BuddySystem extends createSystem({
     if (local.kind === 'accept') {
       await this.acceptOffer();
       return null;
+    }
+    // PR 11: the evening review runs on the device (no API call).
+    if (wantsEveningReview(spoken)) {
+      const ok = startEveningReview();
+      const rec: RunRecord = { text: spoken, source, mode: 'local', actions: [], rejected: [], reply: ok ? 'evening review' : 'review unavailable', log: [], at: Date.now() };
+      this.runs.push(rec);
+      if (!ok) this.say("I can't start the review right now.", { ms: 3000 });
+      return rec;
     }
 
     this.busy = true;

@@ -193,9 +193,16 @@ const COMMAND_START =
  * become cards? Commands start with a command verb or ask a question; a dump
  * is everything else (lists, "I need to...", a single thing to remember).
  */
+/** PR 11: "review my day", "evening review", "wrap up the day": the evening review, handled on the device. */
+export const REVIEW_RE = /\b(evening review|review (my|the|to)?\s*day|(day|daily) review|wrap (up )?(my|the) day|end of (the )?day review|roll (the rest|everything|it all) (over )?to tomorrow)\b/iu;
+export function wantsEveningReview(text: string): boolean {
+  return REVIEW_RE.test(normalize(text));
+}
+
 export function classify(text: string): 'command' | 'dump' {
   const t = normalize(text);
   if (t.length === 0) return 'dump';
+  if (REVIEW_RE.test(t) && t.split(' ').length <= 9) return 'command';
   // "I need to X, Y and Z" or a long list is a dump even if a verb sneaks in.
   const commas = (t.match(/,/gu) ?? []).length;
   if (/^(okay |so |um |uh )*(today |later |tomorrow )?(i (need|have|got|want|should|must) to|i've got to|gotta)\b/iu.test(t)) return 'dump';

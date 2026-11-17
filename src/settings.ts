@@ -11,6 +11,10 @@
  *                  every action already works with one pinch.
  *  - captions:     buddy speech captions always on (they stay up longer and
  *                  also show while the home panel is open).
+ *  - calmScene:    (PR 11) during focus the room fades into a calm desk scene
+ *                  (on, the default) or only frosts over (off).
+ *  - muteSounds:   (PR 11) no chime, level-up or buddy cue sounds; the buddy's
+ *                  talk-mode voice still plays.
  */
 
 export type Settings = {
@@ -20,10 +24,12 @@ export type Settings = {
   reducedMotion: boolean;
   oneHanded: boolean;
   captions: boolean;
+  calmScene: boolean;
+  muteSounds: boolean;
 };
 
 export type SettingKey = keyof Settings;
-export const SETTING_KEYS: readonly SettingKey[] = ['seated', 'largeText', 'highContrast', 'reducedMotion', 'oneHanded', 'captions'];
+export const SETTING_KEYS: readonly SettingKey[] = ['seated', 'largeText', 'highContrast', 'reducedMotion', 'oneHanded', 'captions', 'calmScene', 'muteSounds'];
 export const SETTING_LABELS: Record<SettingKey, string> = {
   seated: 'Seated mode',
   largeText: 'Larger text',
@@ -31,6 +37,8 @@ export const SETTING_LABELS: Record<SettingKey, string> = {
   reducedMotion: 'Reduced motion',
   oneHanded: 'One-handed mode',
   captions: 'Captions always on',
+  calmScene: 'Calm scene in focus',
+  muteSounds: 'Mute sound effects',
 };
 
 export const SETTINGS_KEY = 'questty.settings.v1';
@@ -41,6 +49,8 @@ export const DEFAULT_SETTINGS: Settings = {
   reducedMotion: false,
   oneHanded: false,
   captions: false,
+  calmScene: true,
+  muteSounds: false,
 };
 
 /** Parse a saved value; unknown keys are dropped, missing ones take the default. */

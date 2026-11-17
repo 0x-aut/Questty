@@ -52,8 +52,14 @@ import {
   resumeFocus,
   skipBreak,
   startFocus,
+  breakPromptById,
+  canSkipBreak,
+  nextBreakPrompt,
   type SessionState,
 } from './session.js';
+import { announce } from './announce.js';
+import { playBuddyCue } from './sfx.js';
+import { getSettings, onSettings } from './settings.js';
 import { awardXp, getLastAward, getProgress, onProgress, revokeXp, type ProgressState } from './progress.js';
 import { dayKey, viewStreak } from './streak.js';
 import { syncRoomGrowth } from './room-growth.js';
@@ -63,8 +69,9 @@ import {
   focusNow,
   loadBlurLevel,
   loadFocusTimer,
-  playChime,
+  loadLastBreakPrompt,
   primeChime,
+  saveLastBreakPrompt,
   saveBlurLevel,
   saveFocusTimer,
   type BlurLevel,
@@ -76,6 +83,8 @@ import { setCardWorldPose } from './surfaces.js';
 const FADE_MS = 1_000;
 const PAUSED_FADE_FACTOR = 0.4;
 const BLUR_OPACITY: Record<BlurLevel, number> = { off: 0, soft: 0.6, strong: 0.9 };
+/** PR 11: the calm scene replaces the room fully at Strong, nearly at Soft. */
+const CALM_OPACITY: Record<BlurLevel, number> = { off: 0, soft: 0.9, strong: 1 };
 const TROPHY_SHELF_ORIGIN = new Vector3(0.65, 0, -1.2);
 const TROPHY_SHELF_CARD_POSITION = new Vector3(0.65, 1.12, -1.2);
 const TIMER_RADIUS = 0.15;
@@ -187,6 +196,9 @@ export class SessionSystem extends createSystem({}) {
   private fadeStartedAt = 0;
   private fadeAnimating = false;
   private shellOpacity = 0;
+  private calm = getSettings().calmScene;
+  private fadeMs = FADE_MS;
+  private readonly breakLog: Array<{ at: number; prompt: string; skippable: boolean }> = [];
 
   init(): void {
     const panel = this.world.getSceneObject<UIKitMLAsset>('welcome-panel');
@@ -226,6 +238,16 @@ export class SessionSystem extends createSystem({}) {
     this.cleanupFuncs.push(onCardEvent((type, entity) => this.onActiveCardEvent(type, entity)));
     this.createShell();
     void this.loadTimer();
+    // PR 11: switching frost <-> calm mid-focus changes the look at once (same opacity fade rules).
+    this.cleanupFuncs.push(
+      onSettings((_s, changed) => {
+        if (changed !== 'calmScene') return;
+        if (this.state.phase === 'focus') {
+          this.fadeTarget = -1; // force a re-target
+          this.applyFade();
+        }
+      }),
+    );
 
     const onSkip = () => this.skipCurrentBreak();
     this.skipButton?.addEventListener('click', onSkip);
@@ -249,13 +271,20 @@ export class SessionSystem extends createSystem({}) {
           remainingMs: focusRemainingMs(this.state, focusNow()),
           blur: this.blurLevel,
           shellOpacity: this.shellOpacity,
+          scene: this.calm ? 'calm' : 'frost',
           shellTarget: this.fadeTarget,
           shellAt: this.shell?.mesh.position.toArray(),
           shellWindows: this.shell ? [this.shell.material.uniforms.uWin0.value.toArray(), this.shell.material.uniforms.uWin1.value.toArray()] : null,
           timerVisible: this.timerDisk?.group.visible ?? false,
           timerPosition: this.timerDisk?.group.position.toArray(),
           clock: this.timerPanel?.getElementById('timer-clock')?.properties?.peek?.()?.text,
+          breakPrompt: this.state.phase === 'break' ? breakPromptById(this.state.promptId).id : null,
+          canSkip: canSkipBreak(this.state),
+          breakLog: [...this.breakLog],
+          sessionText: this.sessionStatusText?.properties?.peek?.()?.text ?? null,
+          sessionShown: this.sessionStatus?.properties?.peek?.()?.display ?? null,
         }),
+        skipBreak: () => this.skipCurrentBreak(),
       };
     }
 
@@ -290,12 +319,13 @@ export class SessionSystem extends createSystem({}) {
 
   update(): void {
     if (this.fadeAnimating) {
-      const t = Math.min(1, Math.max(0, (performance.now() - this.fadeStartedAt) / FADE_MS));
+      const t = Math.min(1, Math.max(0, (performance.now() - this.fadeStartedAt) / this.fadeMs));
       const eased = t * t * (3 - 2 * t);
       this.shellOpacity = this.fadeFrom + (this.fadeTarget - this.fadeFrom) * eased;
       this.shell?.setOpacity(this.shellOpacity);
       if (t >= 1) this.fadeAnimating = false;
     }
+    if (this.calm && this.shellOpacity > 0.002) this.shell?.setTime(performance.now() / 1000);
     if (this.state.phase === 'focus') {
       this.followActiveCard();
       this.refreshTimer(false);
@@ -444,7 +474,7 @@ export class SessionSystem extends createSystem({}) {
     this.progress = awardXp(xp);
     this.updateProgressStatus();
     void syncRoomGrowth(this.world, this.progress.level);
-    playChime();
+    // The award's sound (chime, or the level-up fanfare instead) plays from XpBarSystem's onAward.
     setQuestCardState(entity, `Completed - +${xp} XP${bonusNote()}`);
     setCardActionMode(entity.getValue(QuestCard, 'cardId') as string, 'hidden');
     if (visual === 'crumple') crumpleQuestCard(entity);
@@ -473,7 +503,7 @@ export class SessionSystem extends createSystem({}) {
     this.progress = progress;
     this.updateProgressStatus();
     void syncRoomGrowth(this.world, progress.level);
-    playChime();
+    // The award's sound (chime, or the level-up fanfare instead) plays from XpBarSystem's onAward.
     clearFocusTimer();
     const cardId = entity.getValue(QuestCard, 'cardId') as string;
     const prefix = reason === 'away' ? 'Finished while you were away' : 'Completed';
@@ -482,10 +512,33 @@ export class SessionSystem extends createSystem({}) {
     if (visual === 'crumple') crumpleQuestCard(entity);
     else tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
     this.activeCard = undefined;
-    this.state = completeFocus(this.state, focusNow());
+    // PR 11: each break asks for something different (far point, shoulders, water), in turn.
+    const prompt = nextBreakPrompt(loadLastBreakPrompt());
+    saveLastBreakPrompt(prompt.id);
+    this.state = completeFocus(this.state, focusNow(), prompt.id);
     this.hideTimer();
     this.applyFade();
     this.updateBreakStatus();
+    this.guideBreak();
+  }
+
+  /** The buddy speaks the break prompt (caption bubble + its cue sound from the orb). */
+  private guideBreak(): void {
+    if (this.state.phase !== 'break') return;
+    const prompt = breakPromptById(this.state.promptId);
+    const skippable = canSkipBreak(this.state);
+    this.breakLog.push({ at: Date.now(), prompt: prompt.id, skippable });
+    if (this.breakLog.length > 20) this.breakLog.shift();
+    // After the completion line, so both are seen.
+    window.setTimeout(() => {
+      if (this.state.phase !== 'break') return;
+      playBuddyCue(`break:${prompt.id}`);
+      announce(prompt.buddy, {
+        tag: 'QUESTTY  ·  BREAK',
+        ms: Math.max(4000, this.state.endsAt - focusNow()),
+        chips: skippable ? [{ label: 'Skip break', kind: 'plain', run: () => this.skipCurrentBreak() }] : [],
+      });
+    }, 1200);
   }
 
   /** Wall-clock deadline checks (frame loop + 1 s fallback). */
@@ -508,11 +561,13 @@ export class SessionSystem extends createSystem({}) {
     }
   }
 
-  private skipCurrentBreak(): void {
+  private skipCurrentBreak(): boolean {
     const next = skipBreak(this.state);
-    if (next === this.state) return;
+    if (next === this.state) return false;
+    this.breakLog.push({ at: Date.now(), prompt: 'skip', skippable: false });
     this.state = next;
     this.setSessionStatus(undefined);
+    return true;
   }
 
   // ---- Timer display ---------------------------------------------------
@@ -561,10 +616,8 @@ export class SessionSystem extends createSystem({}) {
   private updateBreakStatus(): void {
     if (this.state.phase !== 'break') return;
     const remaining = Math.max(0, this.state.endsAt - focusNow());
-    this.setSessionStatus(
-      `Look at the farthest point for 20 seconds (${formatClock(remaining)})`,
-      this.state.consecutiveSkips === 0,
-    );
+    const prompt = breakPromptById(this.state.promptId);
+    this.setSessionStatus(`${prompt.status} (${formatClock(remaining)})`, canSkipBreak(this.state));
   }
 
   private headPose(): void {
@@ -693,12 +746,17 @@ export class SessionSystem extends createSystem({}) {
   private applyFade(): void {
     let target = 0;
     if (this.state.phase === 'focus') {
-      target = BLUR_OPACITY[this.blurLevel];
+      // The look is chosen when a fade starts (a fade back keeps the look it came in with).
+      this.calm = getSettings().calmScene;
+      this.shell?.setCalm(this.calm ? 1 : 0);
+      target = (this.calm ? CALM_OPACITY : BLUR_OPACITY)[this.blurLevel];
       if (this.state.pausedRemainingMs !== null) target *= PAUSED_FADE_FACTOR;
     }
     if (target === this.fadeTarget && (this.fadeAnimating || this.shellOpacity === target)) return;
     this.fadeFrom = this.shellOpacity;
     this.fadeTarget = target;
+    // The calm scene fades in slowly (2.5 s) and back out a little faster (1.5 s).
+    this.fadeMs = this.calm ? (target > this.fadeFrom ? 2_500 : 1_500) : FADE_MS;
     this.fadeStartedAt = performance.now();
     this.fadeAnimating = this.fadeFrom !== target;
   }

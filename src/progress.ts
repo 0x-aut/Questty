@@ -33,7 +33,7 @@ export function onProgress(listener: (progress: ProgressState) => void): () => v
 }
 
 export const PROGRESS_STORAGE_KEY = 'questty.progress.v1';
-const XP_PER_LEVEL = 100;
+export const XP_PER_LEVEL = 100;
 
 const DEFAULT_PROGRESS: ProgressState = {
   version: 1,

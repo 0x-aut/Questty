@@ -15,6 +15,8 @@ import { getProgress } from './progress.js';
 import { dayKey, viewStreak } from './streak.js';
 import { announce, pushBuddyUndo } from './announce.js';
 import { getSettings, SEATED_REACH_M } from './settings.js';
+import { promoteDueCards } from './review.js';
+import { scheduledIds, setRitualRunning } from './review-store.js';
 import {
   GLOW_STEP_MS,
   LAST_SEEN_KEY,
@@ -176,8 +178,12 @@ export class RitualSystem extends createSystem({
       this.log('nothing-to-say');
       return false; // a first-ever or empty room: no ceremony
     }
+    // PR 11: cards the evening review rolled to today move into Today first, so they count as today's
+    // and are never offered as "from before".
+    const promoted = new Set(promoteDueCards(now));
+    for (const c of cards) if (promoted.has(c.id)) c.category = 'today';
     const counts = categoryCounts();
-    const rollover = rolloverCandidates(cards, now);
+    const rollover = rolloverCandidates(cards, now, scheduledIds());
     const glow = cards.filter((c) => c.category === 'today').map((c) => c.id).slice(0, MAX_GLOW);
     this.run = {
       reason,
@@ -188,10 +194,14 @@ export class RitualSystem extends createSystem({
       rollover,
       answered: null,
     };
-    this.log('start', `${reason} glow=${glow.length} roll=${rollover.length}`);
+    setRitualRunning(true);
+    this.log('start', `${reason} glow=${glow.length} roll=${rollover.length} promoted=${promoted.size}`);
     await this.ensurePanel();
     const panel = this.panel;
-    if (panel === undefined || this.run === null) return false;
+    if (panel === undefined || this.run === null) {
+      setRitualRunning(false);
+      return false;
+    }
     panel.getElementById<UIKit.Text>('ritual-line')?.setProperties({ text: countsLine(counts) });
     panel.getElementById<UIKit.Text>('ritual-streak')?.setProperties({ text: streakPhrase(view.streak, view.status) });
     panel.getElementById<UIKit.Text>('ritual-roll-row')?.setProperties({ display: rollover.length > 0 ? 'flex' : 'none' });
@@ -207,7 +217,7 @@ export class RitualSystem extends createSystem({
     this.opacity = 0;
     this.lastOpacity = -1;
     panel.visible = true;
-    announce(welcomeLine(reason, counts, view.streak, rollover.length), { tag: 'QUESTTY  ·  WELCOME BACK', ms: (this.run.endsAt - this.run.startedAt) * 0.9 });
+    announce(welcomeLine(reason, counts, view.streak, rollover.length, promoted.size), { tag: 'QUESTTY  ·  WELCOME BACK', ms: (this.run.endsAt - this.run.startedAt) * 0.9 });
     // Reduced motion: the Today cards light up together (no sequence).
     if (getSettings().reducedMotion && glow.length > 0) {
       pulseCards(glow, 3200 * SLOW);
@@ -319,6 +329,7 @@ export class RitualSystem extends createSystem({
       if (run.answered === null) run.answered = 'timeout';
       this.log('end', run.answered);
       this.run = null;
+      setRitualRunning(false);
     }
     if (Date.now() - this.lastSaved > SAVE_EVERY_MS) {
       this.lastSaved = Date.now();

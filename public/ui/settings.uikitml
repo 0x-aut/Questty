@@ -3,12 +3,14 @@
   Every row is one pinch (ray or poke) and is saved at once. Element ids:
   settings-root, settings-close, set-<seated|large-text|high-contrast|reduced-motion|one-handed|captions>,
   set-<key>-pill, set-<key>-state, set-<key>-label. 1 px = 1 mm at its scale (0.1).
+  PR 11: set-calm-scene, set-mute-sounds (booleans) and set-review-hour (cycles the evening review hour);
+  two columns (settings-rows) so nine rows stay within a comfortable height.
 -->
 <style>
   .root {
     flex-direction: column;
     gap: 8px;
-    width: 380px;
+    width: 744px;
     padding-top: 14px;
     padding-bottom: 16px;
     padding-left: 16px;
@@ -49,7 +51,14 @@
     font-weight: 700;
   }
 
+  .rows {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
   .row {
+    width: 352px;
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
@@ -95,11 +104,12 @@
 </style>
 <div id="settings-root" class="root">
   <div class="head">
-    <span class="title">ACCESSIBILITY</span>
+    <span class="title">SETTINGS</span>
     <div id="settings-close" class="close">
       <span class="close-text">Done</span>
     </div>
   </div>
+  <div id="settings-rows" class="rows">
   <div id="set-seated" class="row">
     <div class="row-text">
       <span id="set-seated-label" class="row-label">Seated mode</span>
@@ -153,5 +163,33 @@
     <div id="set-captions-pill" class="pill">
       <span id="set-captions-state" class="pill-text">Off</span>
     </div>
+  </div>
+  <div id="set-calm-scene" class="row">
+    <div class="row-text">
+      <span id="set-calm-scene-label" class="row-label">Calm scene in focus</span>
+      <span class="row-hint">Off: frosted glass only</span>
+    </div>
+    <div id="set-calm-scene-pill" class="pill">
+      <span id="set-calm-scene-state" class="pill-text">On</span>
+    </div>
+  </div>
+  <div id="set-mute-sounds" class="row">
+    <div class="row-text">
+      <span id="set-mute-sounds-label" class="row-label">Mute sound effects</span>
+      <span class="row-hint">Chime, level-up, buddy cue</span>
+    </div>
+    <div id="set-mute-sounds-pill" class="pill">
+      <span id="set-mute-sounds-state" class="pill-text">Off</span>
+    </div>
+  </div>
+  <div id="set-review-hour" class="row">
+    <div class="row-text">
+      <span id="set-review-hour-label" class="row-label">Evening review</span>
+      <span class="row-hint">Pinch to change the hour</span>
+    </div>
+    <div id="set-review-hour-pill" class="pill">
+      <span id="set-review-hour-state" class="pill-text">6 pm</span>
+    </div>
+  </div>
   </div>
 </div>
