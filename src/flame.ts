@@ -409,6 +409,11 @@ function buildLantern(): Lantern {
   hitbox.name = 'StreakFlameHitbox';
   hitbox.position.y = (CAGE_TOP + 0.03) / 2;
   root.add(hitbox);
+  // Only the hitbox takes pointer rays. The rest must not: the embers are Points
+  // (three's default ray threshold is 1 m), and the visuals would snag rays meant for cards.
+  root.traverse((o) => {
+    if (o !== hitbox && o !== root) noPointer(o);
+  });
 
   return {
     root,
@@ -462,6 +467,12 @@ function loadSaved(): Saved | null {
 let activeFlame: FlameSystem | undefined;
 
 /** A gentle flare when the buddy talks about the streak (no-op before the flame exists). */
+/** Make an object invisible to pointer rays (IWSDK pointers skip `pointerEvents: 'none'`; plain raycasters hit a no-op). */
+function noPointer(o: Object3D): void {
+  (o as Object3D & { pointerEvents?: string }).pointerEvents = 'none';
+  o.raycast = () => {};
+}
+
 export function pingFlame(): void {
   activeFlame?.flare(0.45);
 }
@@ -547,6 +558,10 @@ export class FlameSystem extends createSystem({
     this.pool.position.y = 0.0004;
     this.pool.renderOrder = 941;
     this.deskGroup.add(this.catcher, this.pool);
+    // The desk rectangle is only light and shadow: pointer rays go through it
+    // (a card's picker or panel that dips below the desk top stays pinchable).
+    noPointer(this.catcher);
+    noPointer(this.pool);
     this.deskGroup.visible = false;
     this.world.createTransformEntity(this.deskGroup, { parent: this.world.sceneEntity, persistent: true });
 
