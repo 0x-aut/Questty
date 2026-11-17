@@ -1,18 +1,23 @@
 /**
- * The streak flame (PR 9): a small brass lantern on the user's desk whose
- * flame is the daily streak. It really burns (a noise-driven shader flame
- * with a hot core, rising tongues, a soft glow and a few embers), grows a
- * little with the streak, changes colour by tier (streak.ts STREAK_TIERS),
- * and carries a real flickering PointLight that casts shadows: the lantern's
- * posts and nearby cards throw shadows onto a ShadowMaterial catcher laid on
- * the detected desk, so the shadow shows over passthrough.
+ * The streak flame (PR 9): a game-style cartoon fire standing on the user's
+ * real desk, whose size, colour and number are the daily streak (Duolingo's
+ * streak flame, in the room). Three nested teardrop layers (outer, mid, hot
+ * core), each a clean vertical gradient with a soft rim, bounce in an idle
+ * loop (sway, squash and stretch, tips flicking) with a few sparks. A bold
+ * number badge stands in front of it. It grows a little with the streak,
+ * changes colour by tier (streak.ts STREAK_TIERS), droops to a small dim
+ * ember on a grace day, and bounces and bursts when something is completed.
  *
- * Cost: the lantern is 3 meshes (base+candle, brass cage, wick), the flame,
- * glow and embers are 1 draw each, plus the desk catcher and light pool. The
- * point light's cube shadow map is 256 px a face and is re-rendered only when
- * something can have moved (a grab, a flight, the lantern itself) and
- * otherwise at ~15 Hz. Casters only cast for this light (never for the
- * room's key light).
+ * It carries a real flickering PointLight (just above and behind the tip)
+ * that casts shadows: the flame's own outer layer and nearby cards throw
+ * shadows onto a ShadowMaterial catcher laid on the detected desk, so the
+ * shadow shows over passthrough.
+ *
+ * Cost: 3 flame layers, glow, sparks and the badge are 1 draw each, plus the
+ * desk catcher and light pool. The point light's cube shadow map is 256 px a
+ * face and is re-rendered only when something can have moved (a grab, a
+ * flight, the flame itself) and otherwise at ~15 Hz. Casters only cast for
+ * this light (never for the room's key light).
  */
 import {
   AdditiveBlending,
@@ -20,19 +25,15 @@ import {
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
-  CircleGeometry,
   Color,
   createSystem,
-  CylinderGeometry,
   DistanceGrabbable,
-  DoubleSide,
   Grabbed,
   Group,
   LatheGeometry,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
-  MeshStandardMaterial,
   MovementMode,
   OneHandGrabbable,
   PlaneGeometry,
@@ -41,14 +42,12 @@ import {
   Quaternion,
   ShaderMaterial,
   ShadowMaterial,
-  TorusGeometry,
   Vector2,
   Vector3,
   type Entity,
   type Material,
   type Object3D,
 } from '@iwsdk/core';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { QuestCard, QuestCardTween } from './quest-component.js';
 import { setSurfaceObstacle, surfaceFrames, type SurfaceFrame } from './surfaces.js';
 import { getProgress, onAward, onProgress, setStreakForDev, type AwardEvent } from './progress.js';
@@ -65,19 +64,16 @@ import {
 const STORAGE_KEY = 'questty.flame.v1';
 const DAY_MS = 86_400_000;
 
-// ---- lantern geometry (metres)
-const BASE_R = 0.045;
-const FOOTPRINT_R = 0.07; // lantern base + glass + a little air, kept free of pinned cards
-const WICK_TOP = 0.056;
-const CAGE_R = 0.04;
-const CAGE_TOP = 0.165;
-const POSTS = 5;
-const FLAME_W = 0.05;
-const FLAME_H = 0.088;
-const LIGHT_LIFT = 0.024;
+// ---- flame geometry (metres, at flame scale 1)
+const FLAME_R = 0.036; // outer teardrop's widest radius
+const FLAME_H = 0.115; // outer teardrop's height (base on the desk to the tip)
+const BASE_R = FLAME_R; // footprint on the desk (placement inset)
+const FOOTPRINT_R = 0.06; // the flame + its badge + a little air, kept free of pinned cards
+const BADGE_W = 0.058;
+const BADGE_H = 0.035;
 
 // ---- light
-const LIGHT_INTENSITY = 0.09; // candela-ish at three's physical units (decay 2)
+const LIGHT_INTENSITY = 0.2; // candela-ish at three's physical units (decay 2)
 /** 0 = no hard cut-off (physical 1/d^2 falloff). three uses light.distance as the shadow far plane when set, so it stays 0. */
 const LIGHT_DISTANCE = 0;
 const SHADOW_MAP = 256;
@@ -99,64 +95,68 @@ const NO_DEPTH = new ShaderMaterial({
 });
 NO_DEPTH.name = 'questty-no-key-light-shadow';
 
-const NOISE_GLSL = /* glsl */ `
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float noise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-float fbm(vec2 p) {
-  float v = 0.0;
-  float a = 0.5;
-  for (int i = 0; i < 4; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; }
-  return v;
-}`;
-
-function flameMaterial(): ShaderMaterial {
+/**
+ * One cartoon flame layer: a teardrop of revolution with a clean vertical
+ * gradient (uBottom -> uTop), a soft brighter rim and soft edges. The vertex
+ * shader flicks the tip (more bend toward the top) and can droop it (ember).
+ */
+function layerMaterial(phase: number): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
-      uCore: { value: new Color() },
-      uBody: { value: new Color() },
-      uEdge: { value: new Color() },
-      uIntensity: { value: 1 },
-      uTurb: { value: 1 },
+      uPhase: { value: phase },
+      uBend: { value: 0.004 },
+      uDroop: { value: 0 },
+      uH: { value: FLAME_H },
+      uBottom: { value: new Color() },
+      uTop: { value: new Color() },
+      uAlpha: { value: 1 },
+      uRim: { value: 0.35 },
     },
     vertexShader: /* glsl */ `
-      varying vec2 vUv;
-      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: /* glsl */ `
-      uniform float uTime; uniform vec3 uCore; uniform vec3 uBody; uniform vec3 uEdge;
-      uniform float uIntensity; uniform float uTurb;
-      varying vec2 vUv;
-      ${NOISE_GLSL}
+      uniform float uTime; uniform float uPhase; uniform float uBend; uniform float uDroop; uniform float uH;
+      varying float vT; varying vec3 vN; varying vec3 vV;
       void main() {
-        float y = vUv.y;
-        float t = uTime;
-        float n = fbm(vec2(vUv.x * 2.6 + 3.1, y * 3.6 - t * 2.9));
-        float n2 = fbm(vec2(vUv.x * 5.5 - 1.7, y * 6.5 - t * 4.6));
-        float x = (vUv.x - 0.5) * 2.0;
-        // sway and lick: more at the top, like a real candle
-        x += ((n - 0.5) * 0.85 * y * y + sin(t * 2.1 + y * 2.5) * 0.07 * y) * uTurb;
-        float w = 0.62 * pow(max(sin(3.14159 * pow(clamp(y, 0.0, 1.0), 0.58)), 0.0), 0.85);
-        float d = abs(x) / max(w, 0.001);
-        float tip = 1.0 - smoothstep(0.5, 1.0, y + (n2 - 0.5) * 0.4 * uTurb);
-        float body = (1.0 - smoothstep(0.55, 1.0, d)) * tip * smoothstep(0.0, 0.07, y);
-        float core = (1.0 - smoothstep(0.0, 0.5, d)) * (1.0 - smoothstep(0.12, 0.6, y)) * smoothstep(0.03, 0.14, y);
-        vec3 col = mix(uEdge, uBody, smoothstep(0.0, 0.7, body));
-        col = mix(col, uCore, core);
-        // the cool blue root of a real flame
-        col = mix(col, vec3(0.28, 0.45, 1.0), (1.0 - smoothstep(0.04, 0.2, y)) * 0.55 * (1.0 - core));
-        float a = clamp(body * uIntensity, 0.0, 1.0);
-        gl_FragColor = vec4(col * (1.15 + core * 0.6) * a, a);
+        vec3 p = position;
+        float t = clamp(p.y / uH, 0.0, 1.0);
+        float w = t * t;
+        p.x += (sin(uTime * 3.1 + uPhase) * 0.6 + sin(uTime * 7.3 + uPhase * 1.7) * 0.4) * uBend * w;
+        p.z += sin(uTime * 2.3 + uPhase * 0.7) * uBend * 0.5 * w;
+        p.x += uDroop * w * uH * 0.45;
+        p.y -= uDroop * w * uH * 0.3;
+        vT = t;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        vN = normalize(normalMatrix * normal);
+        vV = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uBottom; uniform vec3 uTop; uniform float uAlpha; uniform float uRim;
+      varying float vT; varying vec3 vN; varying vec3 vV;
+      void main() {
+        float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+        vec3 col = mix(uBottom, uTop, smoothstep(0.05, 0.95, vT));
+        col += vec3(1.0, 0.95, 0.8) * uRim * pow(f, 3.0);
+        float a = uAlpha * (1.0 - 0.75 * smoothstep(0.82, 1.0, f));
+        gl_FragColor = vec4(col, a);
+        #include <colorspace_fragment>
       }`,
     transparent: true,
     depthWrite: false,
-    blending: AdditiveBlending,
-    side: DoubleSide,
   });
+}
+
+/** Teardrop of revolution: a round bulb at the bottom, a pointed tip at the top. */
+function teardrop(r: number, h: number): BufferGeometry {
+  const pts: Vector2[] = [];
+  const n = 26;
+  for (let i = 0; i <= n; i += 1) {
+    const t = i / n;
+    pts.push(new Vector2(Math.max(0.0001, r * Math.sin(Math.PI * Math.pow(t, 0.62))), t * h));
+  }
+  pts[0].x = 0;
+  pts[n].x = 0;
+  return new LatheGeometry(pts, 36);
 }
 
 function glowMaterial(): ShaderMaterial {
@@ -201,7 +201,7 @@ function emberMaterial(): ShaderMaterial {
         vFade = (1.0 - ph) * smoothstep(0.0, 0.1, ph);
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = clamp(2.4 * (1.0 - ph * 0.5) / max(-mv.z, 0.05), 1.0, 6.0);
+        gl_PointSize = clamp(3.4 * (1.0 - ph * 0.6) / max(-mv.z, 0.05), 1.5, 8.0);
       }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor; uniform float uAlpha; varying float vFade;
@@ -244,8 +244,12 @@ function poolMaterial(): ShaderMaterial {
 
 type Lantern = {
   root: Group;
+  /** Billboard group (turns to the head around Y), scaled with the streak. */
   flame: Group;
-  flameMesh: Mesh;
+  /** The three layers' parent: sway, squash and stretch. */
+  body: Group;
+  layers: Mesh[];
+  layerMats: ShaderMaterial[];
   glow: Mesh;
   embers: Points;
   light: PointLight;
@@ -256,7 +260,6 @@ type Lantern = {
   labelCtx: CanvasRenderingContext2D;
   labelTex: CanvasTexture;
   hitbox: Mesh;
-  flameMat: ShaderMaterial;
   glowMat: ShaderMaterial;
   emberMat: ShaderMaterial;
   casters: Mesh[];
@@ -283,80 +286,46 @@ function buildLantern(): Lantern {
   root.name = 'Streak Flame';
   root.userData.iwsdkPreviewBounds = 'exclude';
 
-  // Brass dish with a cream candle on it: one lathe each, merged into one mesh per material.
-  const dish = new LatheGeometry(
-    [
-      new Vector2(0.0, 0.0),
-      new Vector2(BASE_R, 0.0),
-      new Vector2(BASE_R + 0.002, 0.004),
-      new Vector2(BASE_R - 0.002, 0.011),
-      new Vector2(0.03, 0.013),
-      new Vector2(0.019, 0.016),
-      new Vector2(0.0, 0.016),
-    ],
-    40,
-  );
-  const brass = new MeshStandardMaterial({ color: 0xa47a42, metalness: 0.6, roughness: 0.36 });
-  const wax = new MeshStandardMaterial({ vertexColors: true, color: 0xf3e6cf, roughness: 0.7, metalness: 0, emissive: 0x6a3a10, emissiveIntensity: 0.25 });
-  const candle = new CylinderGeometry(0.0155, 0.017, WICK_TOP - 0.016 - 0.004, 28, 1);
-  candle.translate(0, 0.016 + (WICK_TOP - 0.02) / 2, 0);
-  const wickGeo = new CylinderGeometry(0.0012, 0.0012, 0.006, 6);
-  wickGeo.translate(0, WICK_TOP - 0.001, 0);
-  // Candle + wick in one mesh (vertex colours): cream wax, dark wick.
-  const paint = (g: BufferGeometry, c: number) => {
-    const col = new Color(c);
-    const n = g.getAttribute('position').count;
-    const arr = new Float32Array(n * 3);
-    for (let i = 0; i < n; i += 1) col.toArray(arr, i * 3);
-    g.setAttribute('color', new BufferAttribute(arr, 3));
-    return g.toNonIndexed();
-  };
-  const candleGeo = mergeGeometries([paint(candle, 0xffffff), paint(wickGeo, 0x2a1a10)]);
-  candle.dispose();
-  wickGeo.dispose();
-
-  // Cage: posts from the rim up past the flame, a top ring, a little handle loop.
-  const parts: BufferGeometry[] = [];
-  for (let i = 0; i < POSTS; i += 1) {
-    const a = (i / POSTS) * Math.PI * 2 + Math.PI / POSTS;
-    const post = new CylinderGeometry(0.0026, 0.0026, CAGE_TOP - 0.008, 8);
-    post.translate(Math.cos(a) * CAGE_R, 0.008 + (CAGE_TOP - 0.008) / 2, Math.sin(a) * CAGE_R);
-    parts.push(post);
-  }
-  const ring = new TorusGeometry(CAGE_R, 0.0032, 8, 40);
-  ring.rotateX(Math.PI / 2);
-  ring.translate(0, CAGE_TOP, 0);
-  parts.push(ring);
-  const loop = new TorusGeometry(0.014, 0.0022, 6, 20, Math.PI);
-  loop.translate(0, CAGE_TOP + 0.002, 0);
-  parts.push(loop);
-  // Dish + cage share the brass: one mesh, one draw (and one caster per shadow face).
-  const cageGeo = mergeGeometries([dish.toNonIndexed(), ...parts.map((g) => g.toNonIndexed())]);
-  for (const g of parts) g.dispose();
-  dish.dispose();
-  const cageMesh = new Mesh(cageGeo, brass);
-  const candleMesh = new Mesh(candleGeo, wax);
-  // Only the brass casts: the candle sits under the light, its shadow would hide beneath it.
-  cageMesh.castShadow = true;
-  cageMesh.customDepthMaterial = NO_DEPTH;
-  const casters = [cageMesh];
-  root.add(cageMesh, candleMesh);
-
-  // Flame, glow, embers: a cylindrical billboard group sitting on the wick.
   const flame = new Group();
   flame.name = 'Streak Flame Fire';
-  flame.position.y = WICK_TOP;
-  const flameGeo = new PlaneGeometry(FLAME_W, FLAME_H);
-  flameGeo.translate(0, FLAME_H / 2 - 0.004, 0);
-  const flameMat = flameMaterial();
-  const flameMesh = new Mesh(flameGeo, flameMat);
-  flameMesh.renderOrder = 960;
+  const body = new Group();
+  body.name = 'Streak Flame Body';
+  flame.add(body);
+
+  // Outer, mid and core teardrops. The inner ones sit lower and a little toward
+  // the viewer (the billboard faces the head), drawn over the outer one.
+  const specs = [
+    { r: FLAME_R, h: FLAME_H, y: 0, z: 0, phase: 0, order: 956 },
+    { r: FLAME_R * 0.68, h: FLAME_H * 0.68, y: 0.002, z: FLAME_R * 0.18, phase: 1.9, order: 957 },
+    { r: FLAME_R * 0.4, h: FLAME_H * 0.4, y: 0.003, z: FLAME_R * 0.38, phase: 3.7, order: 958 },
+  ];
+  const layers: Mesh[] = [];
+  const layerMats: ShaderMaterial[] = [];
+  const geos: BufferGeometry[] = [];
+  for (const sp of specs) {
+    const g = teardrop(sp.r, sp.h);
+    const m = layerMaterial(sp.phase);
+    m.uniforms.uH.value = sp.h;
+    const mesh = new Mesh(g, m);
+    mesh.position.set(0, sp.y, sp.z);
+    mesh.renderOrder = sp.order;
+    layers.push(mesh);
+    layerMats.push(m);
+    geos.push(g);
+    body.add(mesh);
+  }
+  // The outer layer casts the flame's shadow (for this light only: NO_DEPTH skips the key light).
+  layers[0].castShadow = true;
+  layers[0].customDepthMaterial = NO_DEPTH;
+  const casters = [layers[0]];
+
+  // Soft glow behind it, a few sparks above it.
   const glowGeo = new PlaneGeometry(0.2, 0.22);
-  glowGeo.translate(0, 0.035, 0);
+  glowGeo.translate(0, 0.05, -0.02);
   const glowMat = glowMaterial();
   const glow = new Mesh(glowGeo, glowMat);
-  glow.renderOrder = 959;
-  const count = 14;
+  glow.renderOrder = 955;
+  const count = 12;
   const emberGeo = new BufferGeometry();
   emberGeo.setAttribute('position', new BufferAttribute(new Float32Array(count * 3), 3));
   const seeds = new Float32Array(count);
@@ -365,51 +334,49 @@ function buildLantern(): Lantern {
   const emberMat = emberMaterial();
   const embers = new Points(emberGeo, emberMat);
   embers.frustumCulled = false;
-  embers.position.y = 0.04;
+  embers.position.y = FLAME_H * 0.75;
   embers.renderOrder = 961;
-  flame.add(glow, flameMesh, embers);
+  flame.add(glow, embers);
   root.add(flame);
 
+  // The light sits just above and behind the tip (in the billboard group), so the
+  // flame's own shadow falls on the desk around its base, toward the user.
   const light = new PointLight(0xffa040, LIGHT_INTENSITY, LIGHT_DISTANCE, 2);
   light.name = 'Streak Flame Light';
-  light.position.y = WICK_TOP + LIGHT_LIFT;
+  light.position.set(0, FLAME_H + 0.022, -0.028);
   light.castShadow = true;
   light.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
   light.shadow.camera.near = 0.005;
-  // Shadows only within reach of a candle: the desk around it. (Further out the room's
-  // floor catcher would get spokes the real table would have blocked.)
+  // Shadows only within reach of the flame: the desk around it.
   light.shadow.camera.far = SHADOW_FAR;
   light.shadow.bias = -0.002;
   light.shadow.normalBias = 0.0;
   light.shadow.radius = 2.5;
   light.shadow.autoUpdate = false;
-  root.add(light);
+  flame.add(light);
 
-  // Engraved brass tag on the front of the dish: the streak number.
-  const tag = canvasPlane(0.03, 0.017, [128, 72]);
-  tag.mesh.position.set(0, 0.0105, BASE_R + 0.0022);
-  tag.mesh.rotation.x = -0.18;
+  // Duolingo-style number badge in front of the flame's base (turned to the head each frame).
+  const tag = canvasPlane(BADGE_W, BADGE_H, [200, 120]);
   tag.mesh.renderOrder = 962;
   root.add(tag.mesh);
 
   // Label shown on gaze or while held: "5-day streak - Gold".
   const label = canvasPlane(0.17, 0.048, [512, 144]);
-  label.mesh.position.y = CAGE_TOP + 0.05;
   label.mesh.renderOrder = 963;
   (label.mesh.material as MeshBasicMaterial).opacity = 0;
   label.mesh.visible = false;
   root.add(label.mesh);
 
-  // Grab target: a box around the lantern (invisible, raycast only).
+  // Grab target: a box around the flame (invisible, raycast only).
   const hitbox = new Mesh(
-    new BoxGeometry(0.11, CAGE_TOP + 0.03, 0.11),
+    new BoxGeometry(0.085, FLAME_H + 0.02, 0.085),
     // Never drawn (material.visible false skips the draw call); pointer rays still hit it.
     new MeshBasicMaterial({ visible: false }),
   );
   hitbox.name = 'StreakFlameHitbox';
-  hitbox.position.y = (CAGE_TOP + 0.03) / 2;
+  hitbox.position.y = (FLAME_H + 0.02) / 2;
   root.add(hitbox);
-  // Only the hitbox takes pointer rays. The rest must not: the embers are Points
+  // Only the hitbox takes pointer rays. The rest must not: the sparks are Points
   // (three's default ray threshold is 1 m), and the visuals would snag rays meant for cards.
   root.traverse((o) => {
     if (o !== hitbox && o !== root) noPointer(o);
@@ -418,7 +385,9 @@ function buildLantern(): Lantern {
   return {
     root,
     flame,
-    flameMesh,
+    body,
+    layers,
+    layerMats,
     glow,
     embers,
     light,
@@ -429,12 +398,11 @@ function buildLantern(): Lantern {
     labelCtx: label.ctx,
     labelTex: label.tex,
     hitbox,
-    flameMat,
     glowMat,
     emberMat,
     casters,
-    materials: [brass, wax, flameMat, glowMat, emberMat, tag.mesh.material as Material, label.mesh.material as Material, hitbox.material as Material],
-    geometries: [cageGeo, candleGeo, flameGeo, glowGeo, emberGeo, tag.mesh.geometry, label.mesh.geometry, hitbox.geometry],
+    materials: [...layerMats, glowMat, emberMat, tag.mesh.material as Material, label.mesh.material as Material, hitbox.material as Material],
+    geometries: [...geos, glowGeo, emberGeo, tag.mesh.geometry, label.mesh.geometry, hitbox.geometry],
   };
 }
 
@@ -603,7 +571,7 @@ export class FlameSystem extends createSystem({
    * desk's edge at full strength.
    */
   private catcherMaterial(): ShadowMaterial {
-    const mat = new ShadowMaterial({ color: 0x120802, opacity: 0.6, transparent: true, depthWrite: false });
+    const mat = new ShadowMaterial({ color: 0x120802, opacity: 0.5, transparent: true, depthWrite: false });
     const uniforms = { uFlame: { value: new Vector3() }, uFade: { value: 0.32 } };
     this.catcherUniforms = uniforms;
     mat.onBeforeCompile = (shader) => {
@@ -638,6 +606,7 @@ export class FlameSystem extends createSystem({
       // A low ember: the same colours, darker and redder.
       this.targetBody.lerp(new Color(0xa03810), 0.5);
       this.targetCore.lerp(new Color(0xff9a50), 0.5);
+      this.targetEdge.lerp(new Color(0x8a2e0c), 0.45);
     }
     this.lastDay = dayKey(Date.now());
     this.drawTag();
@@ -670,25 +639,35 @@ export class FlameSystem extends createSystem({
     return (1 - d) * (1 - d) * this.flareAmount;
   }
 
+  /** The Duolingo-style badge: a chunky white pill with the streak number in the tier colour. */
   private drawTag(): void {
     const { tagCtx: ctx, tagTex } = this.lantern;
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
+    const tier = tierFor(this.view.streak);
+    const ember = this.view.status === 'ember';
+    const fill = ember ? '#a8542e' : hex(tier.edge);
     ctx.clearRect(0, 0, w, h);
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#d9b36a');
-    grad.addColorStop(1, '#8e6a32');
-    ctx.fillStyle = grad;
-    roundRect(ctx, 2, 2, w - 4, h - 4, 14);
+    // A chunky game pill: darker lip underneath, tier-coloured face, white rim, bold white number.
+    ctx.fillStyle = 'rgba(40,16,0,0.45)';
+    roundRect(ctx, 8, 18, w - 16, h - 22, 44);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(60,36,10,0.7)';
-    ctx.lineWidth = 3;
+    ctx.fillStyle = fill;
+    roundRect(ctx, 8, 6, w - 16, h - 22, 44);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 8;
     ctx.stroke();
-    ctx.fillStyle = '#3a240c';
-    ctx.font = 'bold 52px system-ui, sans-serif';
+    const text = String(this.view.streak);
+    ctx.font = `900 ${text.length > 2 ? 64 : 78}px system-ui, "Arial Black", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(this.view.streak), w / 2, h / 2 + 3);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = 'rgba(60,24,0,0.55)';
+    ctx.strokeText(text, w / 2, (h - 16) / 2 + 7);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, w / 2, (h - 16) / 2 + 7);
     tagTex.needsUpdate = true;
   }
 
@@ -1010,32 +989,50 @@ export class FlameSystem extends createSystem({
       0.86 + 0.07 * Math.sin(time * 11.3) + 0.05 * Math.sin(time * 17.9 + 1.1) + 0.04 * Math.sin(time * 29.3 + 2.3);
     this.flickerValue = flicker;
     const env = this.flareEnvelope(now);
-    const s = this.scale * (1 + 0.5 * env);
-    L.flame.scale.set(s * (1 + 0.04 * Math.sin(time * 7.7)), s * (0.97 + 0.06 * flicker), s);
+    // The completion flare is a big bounce: an overshooting swell with a springy wobble.
+    const bounce = env > 0 ? Math.sin(Math.min(1, (now - this.flareAt) / 1000 / 0.9) * Math.PI * 3) * 0.12 * env : 0;
+    const s = this.scale * (1 + 0.45 * env + bounce);
+    L.flame.scale.setScalar(s);
+    // Idle loop: a gentle sway and squash-and-stretch (the ember droops and sags).
+    const squash = Math.sin(time * 3.4) * 0.045 + bounce * 0.8;
+    L.body.scale.set(1 - squash * 0.5, (1 + squash) * (ember ? 0.86 : 1), 1 - squash * 0.5);
+    L.body.rotation.z = Math.sin(time * 1.7) * 0.05 + (ember ? 0.22 : 0);
+    L.body.rotation.x = Math.sin(time * 1.3 + 0.8) * 0.03;
 
-    const fm = L.flameMat.uniforms;
-    fm.uTime.value = time;
-    fm.uCore.value.copy(this.core);
-    fm.uBody.value.copy(this.body);
-    fm.uEdge.value.copy(this.edge);
-    fm.uIntensity.value = (ember ? 0.75 : 1.05) * (0.92 + 0.12 * flicker) * (1 + 0.6 * env);
-    fm.uTurb.value = 1 + env * 0.8;
+    // Layer gradients: outer edge colour -> lighter at the base, mid body colour, near-white core.
+    const lm0 = L.layerMats[0].uniforms;
+    const lm1 = L.layerMats[1].uniforms;
+    const lm2 = L.layerMats[2].uniforms;
+    lm0.uTop.value.copy(this.edge);
+    lm0.uBottom.value.copy(this.edge).lerp(this.body, 0.45);
+    lm1.uTop.value.copy(this.body);
+    lm1.uBottom.value.copy(this.body).lerp(this.core, 0.5);
+    lm2.uTop.value.copy(this.core).lerp(this.body, 0.25);
+    lm2.uBottom.value.copy(this.core);
+    const alpha = ember ? 0.82 : 1;
+    for (const m of L.layerMats) {
+      const u = m.uniforms;
+      u.uTime.value = time;
+      u.uBend.value = (ember ? 0.002 : 0.0045) * (1 + 2 * env);
+      u.uDroop.value = ember ? 0.35 : 0;
+      u.uAlpha.value = alpha;
+      u.uRim.value = 0.3 + 0.4 * env;
+    }
     const gm = L.glowMat.uniforms;
     gm.uColor.value.copy(this.body);
-    gm.uIntensity.value = (ember ? 0.18 : 0.34) * flicker * (1 + 1.4 * env);
+    gm.uIntensity.value = (ember ? 0.14 : 0.3) * flicker * (1 + 1.6 * env);
     const em = L.emberMat.uniforms;
     em.uTime.value = time;
-    em.uColor.value.copy(this.body).lerp(this.core, 0.3);
-    em.uRate.value = 1 + 3 * env;
-    em.uAlpha.value = this.view.streak >= 3 || env > 0.05 ? 0.9 : 0.35;
-    em.uRise.value = 0.1 * s + 0.08 * env;
+    em.uColor.value.copy(this.body).lerp(this.core, 0.4);
+    em.uRate.value = 1 + 4 * env;
+    em.uAlpha.value = ember ? 0 : this.view.streak >= 3 || env > 0.05 ? 0.95 : 0.4;
+    em.uRise.value = 0.06 + 0.12 * env;
 
     // The light: tier colour, flickering with the flame, flaring with it.
     const light = L.light;
     light.visible = this.lightEnabled;
     light.color.copy(this.body).lerp(this.core, 0.25);
     light.intensity = LIGHT_INTENSITY * (0.4 + 0.6 * Math.min(1.3, s)) * flicker * (ember ? 0.4 : 1) * (1 + 1.6 * env);
-    light.position.y = WICK_TOP + LIGHT_LIFT * s;
 
     // Desk pool follows the lantern.
     this.pool.visible = this.poolEnabled && this.lightEnabled;
@@ -1053,12 +1050,19 @@ export class FlameSystem extends createSystem({
     this.world.player.head.getWorldPosition(this.head);
     const yawRoot = 2 * Math.atan2(root.quaternion.y, root.quaternion.w);
     const yawHead = Math.atan2(this.head.x - root.position.x, this.head.z - root.position.z);
-    L.flame.rotation.y = yawHead - yawRoot;
-    L.label.rotation.y = yawHead - yawRoot;
+    const yawRel = yawHead - yawRoot;
+    L.flame.rotation.y = yawRel;
+    L.label.rotation.y = yawRel;
+    L.label.position.y = FLAME_H * s + 0.045;
+    // The badge stands in front of the flame's base, toward the user, leaning back a touch.
+    const front = FLAME_R * s + 0.01;
+    L.tag.position.set(Math.sin(yawRel) * front, BADGE_H * 0.5 + 0.002, Math.cos(yawRel) * front);
+    L.tag.rotation.set(0, yawRel, 0);
+    L.tag.rotateX(-0.2);
 
     // Label on gaze (or while held).
     this.headDir.set(0, 0, -1).applyQuaternion(this.world.player.head.getWorldQuaternion(this.tmpQ));
-    const to = this.tmpA.copy(root.position).add(this.tmpB.set(0, 0.09, 0)).sub(this.head).normalize();
+    const to = this.tmpA.copy(root.position).add(this.tmpB.set(0, 0.06, 0)).sub(this.head).normalize();
     const gazing = this.headDir.dot(to) > GAZE_COS;
     const want = held || gazing || this.flareAt >= 0 ? 1 : 0;
     this.labelAlpha += (want - this.labelAlpha) * (1 - Math.exp(-dt / 0.2));
@@ -1107,6 +1111,7 @@ export class FlameSystem extends createSystem({
           held: this.entity?.hasComponent(Grabbed) === true,
           grabMode: this.nearMode ? 'near' : 'ray',
           label: { text: this.labelText, alpha: this.labelAlpha },
+          badge: String(this.view.streak),
           flaring: this.flareAt >= 0,
           flares: this.flareCount,
           shadowRenders: this.shadowRenders,
@@ -1149,7 +1154,7 @@ export class FlameSystem extends createSystem({
         };
         return {
           base: project(r.position.clone()),
-          top: project(r.position.clone().add(new Vector3(0, CAGE_TOP, 0))),
+          top: project(r.position.clone().add(new Vector3(0, FLAME_H * this.scale, 0))),
           ring: [0.08, 0.15, 0.25].map((rad) =>
             Array.from({ length: 12 }, (_, i) => {
               const a = (i / 12) * Math.PI * 2;

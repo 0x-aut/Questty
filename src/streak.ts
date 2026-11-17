@@ -42,14 +42,16 @@ export type StreakTier = {
 /**
  * The colour ladder. Warm fire first, then hotter and rarer colours, the way
  * a flame really changes as it burns hotter, ending on a rare emerald.
+ * Low tiers use Duolingo's streak orange.
  */
 export const STREAK_TIERS: readonly StreakTier[] = [
-  { id: 'unlit', name: 'Pilot', from: 0, core: 0xffd9a0, body: 0xc85a1e, edge: 0x5a1e08 },
-  { id: 'spark', name: 'Ember', from: 1, core: 0xfff2c8, body: 0xff8a2a, edge: 0xc23a0c },
-  { id: 'gold', name: 'Gold', from: 3, core: 0xfffbe6, body: 0xffc93a, edge: 0xe0780e },
-  { id: 'blue', name: 'Blue', from: 7, core: 0xffffff, body: 0x9fd6ff, edge: 0x2f6fe0 },
-  { id: 'violet', name: 'Violet', from: 14, core: 0xfdf2ff, body: 0xc58cff, edge: 0x6a2ad8 },
-  { id: 'emerald', name: 'Emerald', from: 30, core: 0xf2fff6, body: 0x4dffb0, edge: 0x0c9a5c },
+  // core = inner flame, body = mid flame, edge = outer flame. Duolingo orange at the bottom of the ladder.
+  { id: 'unlit', name: 'Pilot', from: 0, core: 0xffe7b0, body: 0xffb04a, edge: 0xe5801e },
+  { id: 'spark', name: 'Ember', from: 1, core: 0xfff4c2, body: 0xffc800, edge: 0xff9600 },
+  { id: 'gold', name: 'Gold', from: 3, core: 0xfffbe8, body: 0xffe45c, edge: 0xffb300 },
+  { id: 'blue', name: 'Blue', from: 7, core: 0xf2fbff, body: 0x8fdcff, edge: 0x1cb0f6 },
+  { id: 'violet', name: 'Violet', from: 14, core: 0xfdf3ff, body: 0xd8a8ff, edge: 0x9b5cf0 },
+  { id: 'emerald', name: 'Emerald', from: 30, core: 0xf0fff6, body: 0x7cf0b2, edge: 0x22c06a },
 ];
 
 export const MAX_STREAK_BONUS_XP = 25;
