@@ -1053,114 +1053,117 @@ export class FlameSystem extends createSystem({
   // ------------------------------------------------------------ dev hooks
 
   private installDevHooks(): void {
-    const w = window as unknown as { __questty?: Record<string, unknown> };
-    const state = () => {
-      const r = this.lantern.root;
-      r.updateWorldMatrix(true, true);
-      const fireTop = new Vector3(0, FLAME_H, 0);
-      this.lantern.flame.localToWorld(fireTop);
-      return {
-        visible: r.visible,
-        placed: this.placed,
-        surfaceId: this.surfaceId,
-        userPlaced: this.userPlaced,
-        position: r.position.toArray(),
-        streak: this.view.streak,
-        status: this.view.status,
-        tier: tierFor(this.view.streak).id,
-        tierName: tierFor(this.view.streak).name,
-        body: `#${this.body.getHexString()}`,
-        targetBody: `#${this.targetBody.getHexString()}`,
-        scale: this.scale,
-        targetScale: this.targetScale,
-        flameHeightM: fireTop.y - r.position.y,
-        light: { on: this.lightEnabled && this.lantern.light.visible, intensity: this.lantern.light.intensity, castShadow: this.lantern.light.castShadow, mapSize: this.lantern.light.shadow.mapSize.x, color: `#${this.lantern.light.color.getHexString()}` },
-        pool: this.pool.visible,
-        catcher: { visible: this.deskGroup.visible, scale: this.deskGroup.scale.toArray(), position: this.deskGroup.position.toArray() },
-        held: this.entity?.hasComponent(Grabbed) === true,
-        grabMode: this.nearMode ? 'near' : 'ray',
-        label: { text: this.labelText, alpha: this.labelAlpha },
-        flaring: this.flareAt >= 0,
-        flares: this.flareCount,
-        shadowRenders: this.shadowRenders,
-        castingCards: this.castingCards,
-        updateMs: this.updateMs,
-        flicker: this.flickerValue,
+    // The whole body sits under the DEV check so production builds drop it.
+    if (import.meta.env.DEV) {
+      const w = window as unknown as { __questty?: Record<string, unknown> };
+      const state = () => {
+        const r = this.lantern.root;
+        r.updateWorldMatrix(true, true);
+        const fireTop = new Vector3(0, FLAME_H, 0);
+        this.lantern.flame.localToWorld(fireTop);
+        return {
+          visible: r.visible,
+          placed: this.placed,
+          surfaceId: this.surfaceId,
+          userPlaced: this.userPlaced,
+          position: r.position.toArray(),
+          streak: this.view.streak,
+          status: this.view.status,
+          tier: tierFor(this.view.streak).id,
+          tierName: tierFor(this.view.streak).name,
+          body: `#${this.body.getHexString()}`,
+          targetBody: `#${this.targetBody.getHexString()}`,
+          scale: this.scale,
+          targetScale: this.targetScale,
+          flameHeightM: fireTop.y - r.position.y,
+          light: { on: this.lightEnabled && this.lantern.light.visible, intensity: this.lantern.light.intensity, castShadow: this.lantern.light.castShadow, mapSize: this.lantern.light.shadow.mapSize.x, color: `#${this.lantern.light.color.getHexString()}` },
+          pool: this.pool.visible,
+          catcher: { visible: this.deskGroup.visible, scale: this.deskGroup.scale.toArray(), position: this.deskGroup.position.toArray() },
+          held: this.entity?.hasComponent(Grabbed) === true,
+          grabMode: this.nearMode ? 'near' : 'ray',
+          label: { text: this.labelText, alpha: this.labelAlpha },
+          flaring: this.flareAt >= 0,
+          flares: this.flareCount,
+          shadowRenders: this.shadowRenders,
+          castingCards: this.castingCards,
+          updateMs: this.updateMs,
+          flicker: this.flickerValue,
+        };
       };
-    };
-    const setStreak = (streak: number, status: StreakStatus = 'lit') => {
-      const today = Date.now();
-      const back = status === 'lit' ? 0 : status === 'waiting' ? 1 : status === 'ember' ? 2 : 5;
-      setStreakForDev(status === 'out' ? 0 : streak, status === 'out' ? null : dayKey(today - back * DAY_MS));
-      this.refreshView(false);
-      return state();
-    };
-    const renderStats = () => {
-      const info = this.world.renderer.info;
-      return { calls: info.render.calls, triangles: info.render.triangles, programs: info.programs?.length ?? null };
-    };
-    const lightOn = (on: boolean, pool = on) => {
-      this.lightEnabled = on;
-      this.poolEnabled = pool;
-      this.shadowDirty();
-      return state();
-    };
-    const moveTo = (x: number, y: number, z: number, release = true) => {
-      this.lantern.root.position.set(x, y, z);
-      if (release) this.onRelease();
-      return state();
-    };
-    const screenOf = () => {
-      // Where the lantern base and the desk around it land in the canvas (for pixel checks).
-      const r = this.lantern.root;
-      const cam = this.world.renderer.xr.isPresenting ? this.world.renderer.xr.getCamera() : this.world.camera;
-      const view = (cam as unknown as { cameras?: import('@iwsdk/core').PerspectiveCamera[] }).cameras?.[0] ?? cam;
-      const canvas = this.world.renderer.domElement;
-      const project = (p: Vector3) => {
-        const v = p.clone().project(view as import('@iwsdk/core').Camera);
-        return [((v.x + 1) / 2) * canvas.clientWidth, ((1 - v.y) / 2) * canvas.clientHeight];
+      const setStreak = (streak: number, status: StreakStatus = 'lit') => {
+        const today = Date.now();
+        const back = status === 'lit' ? 0 : status === 'waiting' ? 1 : status === 'ember' ? 2 : 5;
+        setStreakForDev(status === 'out' ? 0 : streak, status === 'out' ? null : dayKey(today - back * DAY_MS));
+        this.refreshView(false);
+        return state();
       };
-      return {
-        base: project(r.position.clone()),
-        top: project(r.position.clone().add(new Vector3(0, CAGE_TOP, 0))),
-        ring: [0.08, 0.15, 0.25].map((rad) =>
-          Array.from({ length: 12 }, (_, i) => {
-            const a = (i / 12) * Math.PI * 2;
-            return project(r.position.clone().add(new Vector3(Math.cos(a) * rad, 0, Math.sin(a) * rad)));
-          }),
-        ),
+      const renderStats = () => {
+        const info = this.world.renderer.info;
+        return { calls: info.render.calls, triangles: info.render.triangles, programs: info.programs?.length ?? null };
       };
-    };
-    const hideFlame = (hide: boolean) => {
-      this.lantern.root.visible = !hide;
-      this.deskGroup.visible = !hide;
-      return renderStats();
-    };
-    w.__questty = {
-      ...w.__questty,
-      flame: {
-        state,
-        setStreak,
-        flare: (amount = 1) => {
-          this.flare(amount);
-          return state();
+      const lightOn = (on: boolean, pool = on) => {
+        this.lightEnabled = on;
+        this.poolEnabled = pool;
+        this.shadowDirty();
+        return state();
+      };
+      const moveTo = (x: number, y: number, z: number, release = true) => {
+        this.lantern.root.position.set(x, y, z);
+        if (release) this.onRelease();
+        return state();
+      };
+      const screenOf = () => {
+        // Where the lantern base and the desk around it land in the canvas (for pixel checks).
+        const r = this.lantern.root;
+        const cam = this.world.renderer.xr.isPresenting ? this.world.renderer.xr.getCamera() : this.world.camera;
+        const view = (cam as unknown as { cameras?: import('@iwsdk/core').PerspectiveCamera[] }).cameras?.[0] ?? cam;
+        const canvas = this.world.renderer.domElement;
+        const project = (p: Vector3) => {
+          const v = p.clone().project(view as import('@iwsdk/core').Camera);
+          return [((v.x + 1) / 2) * canvas.clientWidth, ((1 - v.y) / 2) * canvas.clientHeight];
+        };
+        return {
+          base: project(r.position.clone()),
+          top: project(r.position.clone().add(new Vector3(0, CAGE_TOP, 0))),
+          ring: [0.08, 0.15, 0.25].map((rad) =>
+            Array.from({ length: 12 }, (_, i) => {
+              const a = (i / 12) * Math.PI * 2;
+              return project(r.position.clone().add(new Vector3(Math.cos(a) * rad, 0, Math.sin(a) * rad)));
+            }),
+          ),
+        };
+      };
+      const hideFlame = (hide: boolean) => {
+        this.lantern.root.visible = !hide;
+        this.deskGroup.visible = !hide;
+        return renderStats();
+      };
+      w.__questty = {
+        ...w.__questty,
+        flame: {
+          state,
+          setStreak,
+          flare: (amount = 1) => {
+            this.flare(amount);
+            return state();
+          },
+          lightOn,
+          moveTo,
+          screenOf,
+          renderStats,
+          hideFlame,
+          tiers: () => STREAK_TIERS.map((t) => ({ id: t.id, from: t.from, body: hex(t.body) })),
+          forgetPlacement: () => localStorage.removeItem(STORAGE_KEY),
+          /** Freeze the flame's animation clock at `ms` (null: real time again) for smooth frame-by-frame video. */
+          setClock: (ms: number | null) => {
+            if (ms === null) {
+              this.fixedClock = null;
+              this.lastFrameAt = performance.now();
+            } else this.fixedClock = ms;
+            return ms;
+          },
         },
-        lightOn,
-        moveTo,
-        screenOf,
-        renderStats,
-        hideFlame,
-        tiers: () => STREAK_TIERS.map((t) => ({ id: t.id, from: t.from, body: hex(t.body) })),
-        forgetPlacement: () => localStorage.removeItem(STORAGE_KEY),
-        /** Freeze the flame's animation clock at `ms` (null: real time again) for smooth frame-by-frame video. */
-        setClock: (ms: number | null) => {
-          if (ms === null) {
-            this.fixedClock = null;
-            this.lastFrameAt = performance.now();
-          } else this.fixedClock = ms;
-          return ms;
-        },
-      },
-    };
+      };
+    }
   }
 }
