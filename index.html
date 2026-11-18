@@ -1,16 +1,682 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, shrink-to-fit=no"
     />
+    <meta name="theme-color" content="#141518" />
+    <meta
+      name="description"
+      content="Questty: speak what's on your mind, and Questty turns it into quest cards you pin around your real room, focus with, and finish with a flick. Mixed reality for Meta Quest 3/3S."
+    />
     <link rel="icon" href="data:," />
-    <title>questty</title>
+    <title>Questty · Quest cards for your real room</title>
+    <style>
+      /* Flat-browser homepage. Shown before XR and again after a session ends;
+         hidden while immersive (src/homepage.ts). Plain CSS, no web fonts. */
+      html,
+      body {
+        margin: 0;
+        background: #141518;
+      }
+      #qh {
+        --bg: #141518;
+        --panel: #1c1d20;
+        --panel-2: #232427;
+        --line: #33353b;
+        --text: #fafaf7;
+        --muted: #b9bcc2;
+        --dim: #8a8d94;
+        --cream: #f3eee3;
+        --yellow: #f5d90a;
+        --amber: #f5b80a;
+        --clay: #c7784f;
+        --sage: #7f9a62;
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        background: radial-gradient(1200px 600px at 85% -10%, rgba(245, 217, 10, 0.1), transparent 60%),
+          radial-gradient(900px 500px at -10% 110%, rgba(127, 154, 98, 0.12), transparent 60%), var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        font-size: 18px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      #qh[hidden] {
+        display: none;
+      }
+      #qh * {
+        box-sizing: border-box;
+      }
+      #qh a {
+        color: inherit;
+      }
+      .qh-wrap {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 0 28px;
+      }
+      .qh-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 0;
+      }
+      .qh-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 800;
+        font-size: 20px;
+        letter-spacing: 0.2px;
+        text-decoration: none;
+      }
+      .qh-mark {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: var(--yellow);
+        position: relative;
+        transform: rotate(-6deg);
+        box-shadow: 6px 4px 0 -1px var(--clay);
+      }
+      .qh-mark::after {
+        content: '';
+        position: absolute;
+        left: 7px;
+        right: 7px;
+        top: 9px;
+        height: 3px;
+        border-radius: 2px;
+        background: #1c1d20;
+        box-shadow: 0 6px 0 #1c1d20;
+      }
+      .qh-gh {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 16px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        text-decoration: none;
+        font-size: 16px;
+        color: var(--muted);
+      }
+      .qh-gh:hover,
+      .qh-gh:focus-visible {
+        color: var(--text);
+        border-color: var(--muted);
+      }
+      .qh-hero {
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 48px;
+        align-items: center;
+        padding: 28px 0 56px;
+      }
+      .qh-eyebrow {
+        color: var(--yellow);
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin: 0 0 14px;
+      }
+      .qh-hero h1 {
+        font-size: clamp(48px, 7vw, 84px);
+        line-height: 1;
+        margin: 0 0 18px;
+        letter-spacing: -1.5px;
+      }
+      .qh-tagline {
+        font-size: clamp(20px, 2.1vw, 25px);
+        line-height: 1.45;
+        color: var(--cream);
+        margin: 0 0 30px;
+        max-width: 36ch;
+      }
+      .qh-cta-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 14px 18px;
+      }
+      .qh-enter {
+        appearance: none;
+        border: 0;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 64px;
+        padding: 0 34px;
+        border-radius: 999px;
+        background: var(--yellow);
+        color: #1c1d20;
+        font: inherit;
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: 0.2px;
+        box-shadow: 0 10px 30px rgba(245, 217, 10, 0.22);
+        transition: transform 0.15s ease, background 0.15s ease;
+      }
+      .qh-enter:hover {
+        background: #ffe53a;
+        transform: translateY(-1px);
+      }
+      .qh-enter:focus-visible {
+        outline: 3px solid var(--cream);
+        outline-offset: 3px;
+      }
+      .qh-enter[hidden] {
+        display: none;
+      }
+      .qh-enter[disabled] {
+        cursor: progress;
+        opacity: 0.65;
+        transform: none;
+      }
+      .qh-enter svg {
+        width: 28px;
+        height: 28px;
+        flex: none;
+      }
+      .qh-secondary {
+        font-size: 17px;
+        color: var(--muted);
+        text-decoration: none;
+        padding: 10px 6px;
+      }
+      .qh-secondary:hover {
+        color: var(--text);
+      }
+      .qh-status {
+        margin: 16px 0 0;
+        font-size: 16px;
+        color: var(--muted);
+        min-height: 1.5em;
+      }
+      .qh-nosupport {
+        margin-top: 4px;
+        padding: 16px 18px;
+        border-radius: 16px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--cream);
+        font-size: 17px;
+        max-width: 560px;
+      }
+      .qh-nosupport strong {
+        color: var(--yellow);
+      }
+      .qh-nosupport a {
+        color: var(--yellow);
+      }
+      .qh-hint {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        margin-top: 22px;
+        font-size: 15px;
+        color: var(--dim);
+      }
+      .qh-hint span::before {
+        content: '•';
+        margin-right: 8px;
+        color: var(--sage);
+      }
+      /* Hero art: a little stack of quest cards, pure CSS. */
+      .qh-art {
+        position: relative;
+        height: 380px;
+      }
+      .qh-card {
+        position: absolute;
+        width: 250px;
+        padding: 18px 20px 16px;
+        border-radius: 18px;
+        background: var(--cream);
+        color: #2b2a27;
+        box-shadow: 0 24px 50px rgba(0, 0, 0, 0.45);
+        border: 3px solid #cfc7b5;
+      }
+      .qh-card .t {
+        font-weight: 800;
+        font-size: 19px;
+        line-height: 1.25;
+        margin: 6px 0 12px;
+      }
+      .qh-card .chip {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: #e7e0d0;
+        color: #55575d;
+      }
+      .qh-card .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+        color: #55575d;
+      }
+      .qh-card .xp {
+        font-weight: 800;
+        color: #6b5a00;
+      }
+      .qh-c1 {
+        left: 0;
+        top: 118px;
+        transform: rotate(-7deg);
+        border-color: #c7784f;
+      }
+      .qh-c2 {
+        right: 0;
+        top: 0;
+        transform: rotate(5deg);
+        border-color: #f0d787;
+      }
+      .qh-c3 {
+        right: 4%;
+        top: 232px;
+        transform: rotate(2deg);
+        border-color: var(--amber);
+        box-shadow: 0 0 0 4px rgba(245, 184, 10, 0.25), 0 24px 50px rgba(0, 0, 0, 0.5);
+      }
+      .qh-timer {
+        position: absolute;
+        left: 6%;
+        bottom: -6px;
+        width: 108px;
+        height: 108px;
+        border-radius: 50%;
+        background: conic-gradient(var(--yellow) 0 68%, #33353b 68% 100%);
+        display: grid;
+        place-items: center;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+      }
+      .qh-timer::before {
+        content: '17:00';
+        width: 84px;
+        height: 84px;
+        border-radius: 50%;
+        background: var(--panel);
+        display: grid;
+        place-items: center;
+        font-weight: 800;
+        font-size: 20px;
+        color: var(--text);
+      }
+      .qh-section {
+        padding: 56px 0;
+        border-top: 1px solid #232427;
+      }
+      .qh-section h2 {
+        font-size: clamp(30px, 3.4vw, 40px);
+        line-height: 1.15;
+        letter-spacing: -0.5px;
+        margin: 0 0 10px;
+      }
+      .qh-lead {
+        color: var(--muted);
+        margin: 0 0 32px;
+        max-width: 60ch;
+      }
+      .qh-steps {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 18px;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        counter-reset: step;
+      }
+      .qh-steps li {
+        counter-increment: step;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 22px 22px 24px;
+      }
+      .qh-steps li::before {
+        content: counter(step);
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--yellow);
+        color: #1c1d20;
+        font-weight: 800;
+        font-size: 19px;
+        margin-bottom: 14px;
+      }
+      .qh-steps h3,
+      .qh-feats h3 {
+        font-size: 20px;
+        margin: 0 0 6px;
+        line-height: 1.3;
+      }
+      .qh-steps p,
+      .qh-feats p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 17px;
+      }
+      .qh-feats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+      .qh-feat {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 22px;
+      }
+      .qh-feat .ic {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        margin-bottom: 14px;
+        font-size: 22px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+      }
+      .qh-info {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .qh-note {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 22px;
+      }
+      .qh-note h3 {
+        margin: 0 0 6px;
+        font-size: 20px;
+      }
+      .qh-note p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 17px;
+      }
+      .qh-note a {
+        color: var(--yellow);
+      }
+      .qh-final {
+        text-align: center;
+        padding: 64px 0 56px;
+        border-top: 1px solid #232427;
+      }
+      .qh-final h2 {
+        font-size: clamp(30px, 3.4vw, 40px);
+        margin: 0 0 10px;
+      }
+      .qh-final p {
+        color: var(--muted);
+        margin: 0 0 26px;
+      }
+      .qh-final .qh-cta-row {
+        justify-content: center;
+      }
+      .qh-footer {
+        border-top: 1px solid #232427;
+        padding: 26px 0 34px;
+        color: var(--dim);
+        font-size: 15px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .qh-back {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        z-index: 11;
+        appearance: none;
+        border: 1px solid #33353b;
+        background: rgba(28, 29, 32, 0.92);
+        color: #fafaf7;
+        font: 600 16px system-ui, sans-serif;
+        padding: 10px 18px;
+        border-radius: 999px;
+        cursor: pointer;
+      }
+      .qh-back[hidden] {
+        display: none;
+      }
+      @media (max-width: 960px) {
+        .qh-hero {
+          grid-template-columns: 1fr;
+          gap: 28px;
+        }
+        .qh-art {
+          height: 330px;
+          max-width: 460px;
+        }
+        .qh-steps {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .qh-feats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 620px) {
+        #qh {
+          font-size: 17px;
+        }
+        .qh-wrap {
+          padding: 0 18px;
+        }
+        .qh-hero {
+          padding-top: 12px;
+        }
+        .qh-art {
+          display: none;
+        }
+        .qh-steps,
+        .qh-feats,
+        .qh-info {
+          grid-template-columns: 1fr;
+        }
+        .qh-enter {
+          width: 100%;
+          justify-content: center;
+        }
+        .qh-gh .lbl {
+          display: none;
+        }
+        .qh-section {
+          padding: 40px 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .qh-enter {
+          transition: none;
+        }
+      }
+    </style>
   </head>
   <body style="margin: 0">
     <div id="scene-container"></div>
+
+    <main id="qh" aria-label="Questty home">
+      <div class="qh-wrap">
+        <nav class="qh-nav">
+          <a class="qh-brand" href="#qh-top" id="qh-top"><span class="qh-mark" aria-hidden="true"></span>Questty</a>
+          <a class="qh-gh" href="https://github.com/0x-aut/Questty" target="_blank" rel="noopener">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            <span class="lbl">GitHub</span>
+          </a>
+        </nav>
+
+        <section class="qh-hero">
+          <div>
+            <p class="qh-eyebrow">Mixed reality focus for Meta Quest</p>
+            <h1>Questty</h1>
+            <p class="qh-tagline">
+              Speak what's on your mind, and Questty turns it into quest cards you pin around your real room, focus
+              with, and finish with a flick.
+            </p>
+            <div class="qh-cta-row" data-qh-cta>
+              <button class="qh-enter" type="button" data-qh-enter disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 10a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4.4l-1.8-2.4a2.3 2.3 0 0 0-3.6 0L8.4 18H4a2 2 0 0 1-2-2z"/><circle cx="7.5" cy="12.8" r="1.6"/><circle cx="16.5" cy="12.8" r="1.6"/></svg>
+                <span data-qh-label>Loading…</span>
+              </button>
+              <a class="qh-secondary" href="#qh-how">How it works ↓</a>
+            </div>
+            <div data-qh-nosupport hidden></div>
+            <p class="qh-status" data-qh-status role="status" aria-live="polite"></p>
+            <div class="qh-hint">
+              <span>Allow the microphone when asked</span>
+              <span>Hands or controllers</span>
+              <span>Works seated</span>
+            </div>
+          </div>
+          <div class="qh-art" aria-hidden="true">
+            <div class="qh-card qh-c2">
+              <span class="chip">Later</span>
+              <div class="t">Email Sam the draft</div>
+              <div class="row"><span>Door</span><span class="xp">+10 XP</span></div>
+            </div>
+            <div class="qh-card qh-c1">
+              <span class="chip">Before I leave</span>
+              <div class="t">Pack the charger</div>
+              <div class="row"><span>Desk</span><span class="xp">+5 XP</span></div>
+            </div>
+            <div class="qh-card qh-c3">
+              <span class="chip" style="background: #f5d90a; color: #1c1d20">Today</span>
+              <div class="t">Finish the project brief</div>
+              <div class="row"><span>Wall · Lv 3 frame</span><span class="xp">+25 XP</span></div>
+            </div>
+            <div class="qh-timer"></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="qh-section" id="qh-how">
+        <div class="qh-wrap">
+          <h2>How it works</h2>
+          <p class="qh-lead">No typing and no menus to learn. Talk, place, focus, flick.</p>
+          <ol class="qh-steps">
+            <li>
+              <h3>Brain dump by voice</h3>
+              <p>Pinch the orb and say everything on your mind. AI splits it into quest cards with XP.</p>
+            </li>
+            <li>
+              <h3>Pin cards to your room</h3>
+              <p>Grab a card and stick it to a wall, your desk or the door, where it stays next time.</p>
+            </li>
+            <li>
+              <h3>Focus session</h3>
+              <p>Your room frosts over, a visual timer counts down and your buddy works quietly beside you.</p>
+            </li>
+            <li>
+              <h3>Flick it done</h3>
+              <p>Flick a finished card into the trash can. It crumples, lands, and you earn XP.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="qh-section">
+        <div class="qh-wrap">
+          <h2>Built to keep you going</h2>
+          <p class="qh-lead">A calm companion, small rewards, and rituals that bring you back.</p>
+          <div class="qh-feats">
+            <div class="qh-feat">
+              <div class="ic" aria-hidden="true">🫧</div>
+              <h3>An AI buddy that acts</h3>
+              <p>Ask out loud and it moves cards, arranges your room or opens a document for you.</p>
+            </div>
+            <div class="qh-feat">
+              <div class="ic" aria-hidden="true">🔥</div>
+              <h3>XP, levels and a streak flame</h3>
+              <p>Earn XP per quest, level up into tiered card frames, and keep your streak flame lit.</p>
+            </div>
+            <div class="qh-feat">
+              <div class="ic" aria-hidden="true">🌙</div>
+              <h3>Evening review and return ritual</h3>
+              <p>Close the day by sorting what's left, and pick up exactly where you were when you come back.</p>
+            </div>
+            <div class="qh-feat">
+              <div class="ic" aria-hidden="true">☕</div>
+              <h3>Spoken break prompts</h3>
+              <p>Your buddy tells you when to stand up and rest, so a long session doesn't wear you down.</p>
+            </div>
+            <div class="qh-feat">
+              <div class="ic" aria-hidden="true">✋</div>
+              <h3>Hands-first and accessible</h3>
+              <p>Pinch with bare hands. Seated mode, reduced motion, captions and mute are one tap away.</p>
+            </div>
+            <div class="qh-feat">
+              <div class="ic" aria-hidden="true">🏠</div>
+              <h3>Your real room, not a void</h3>
+              <p>Passthrough mixed reality: cards live on your actual walls and furniture.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="qh-section">
+        <div class="qh-wrap qh-info">
+          <div class="qh-note">
+            <h3>Where to run it</h3>
+            <p>
+              Best on <strong>Meta Quest 3 or 3S</strong> in Quest Browser. On desktop, Chrome with Meta's
+              <a href="https://chromewebstore.google.com/detail/immersive-web-emulator/cgffilbpcibhmcfbgggfhfolhkfbhmik" target="_blank" rel="noopener">Immersive Web Emulator</a>
+              works too.
+            </p>
+          </div>
+          <div class="qh-note">
+            <h3>Allow the microphone</h3>
+            <p>
+              Questty listens only while you hold a pinch on the orb. When the browser asks for the mic, choose
+              Allow, or you can still pick quick quest templates.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="qh-final">
+        <div class="qh-wrap">
+          <h2>Ready to clear your head?</h2>
+          <p>Put on your headset, enter XR and say what's on your mind.</p>
+          <div class="qh-cta-row" data-qh-cta>
+            <button class="qh-enter" type="button" data-qh-enter disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 10a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4.4l-1.8-2.4a2.3 2.3 0 0 0-3.6 0L8.4 18H4a2 2 0 0 1-2-2z"/><circle cx="7.5" cy="12.8" r="1.6"/><circle cx="16.5" cy="12.8" r="1.6"/></svg>
+              <span data-qh-label>Loading…</span>
+            </button>
+            <a class="qh-secondary" href="https://github.com/0x-aut/Questty" target="_blank" rel="noopener">View on GitHub</a>
+          </div>
+          <div data-qh-nosupport hidden></div>
+        </div>
+      </section>
+
+      <div class="qh-wrap">
+        <footer class="qh-footer">
+          <span>Questty by 0xaut · Built with Meta's Immersive Web SDK for Meta VR Start 2026</span>
+          <a href="https://github.com/0x-aut/Questty" target="_blank" rel="noopener">github.com/0x-aut/Questty</a>
+        </footer>
+      </div>
+    </main>
+    <button class="qh-back" type="button" data-qh-back hidden>← Back to Questty home</button>
+
     <script type="module" src="/src/index.ts"></script>
   </body>
 </html>

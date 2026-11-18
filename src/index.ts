@@ -25,13 +25,21 @@ import { SettingsSystem } from './settings-panel.js';
 import { XpBarSystem } from './xp-bar-system.js';
 import { ReviewSystem } from './review.js';
 import { SpatialAudioSystem } from './spatial-audio.js';
+import { mountHomepage } from './homepage.js';
 
 const sceneContainer = document.getElementById('scene-container');
 if (!(sceneContainer instanceof HTMLDivElement)) {
   throw new Error('Missing #scene-container');
 }
 
-const world = await World.create(sceneContainer, projectOptions);
+// The flat-browser homepage (index.html #qh) shows at once; its Enter XR buttons
+// go live once the world exists.
+const homepage = mountHomepage();
+const world = await World.create(sceneContainer, projectOptions).catch((error: unknown) => {
+  homepage.fail();
+  throw error;
+});
+homepage.bind(world);
 world.registerSystem(PanelSystem);
 world.registerSystem(RoomSystem);
 world.registerSystem(SurfaceSystem);
