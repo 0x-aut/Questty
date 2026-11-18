@@ -56,7 +56,7 @@ import type { DumpItem } from './bus.js';
 import { brushesOffReview, classify, parseCommand, wantsCloseReview, wantsEveningReview } from './parser.js';
 import { isReviewOpen } from '../review-store.js';
 import { closeEveningReview, startEveningReview } from '../review.js';
-import { attachBuddyVoice, detachBuddyVoice, playBuddyCue, primeAudio } from '../sfx.js';
+import { attachBuddyVoice, detachBuddyVoice, playBuddyCue, primeAudio, setTalkActive } from '../sfx.js';
 import { setBuddySoundSource } from '../spatial-audio.js';
 import { askBuddyApi, looksLikeWeb, resetBuddyApiBackoff, type FocusInfo } from './client.js';
 import { forgetConversation, lastActions, memoryPayload, memoryTurns, rememberNote, rememberTurn } from './memory.js';
@@ -426,6 +426,8 @@ export class BuddySystem extends createSystem({
 
   /** Pinch on the orb: start or stop talking. False = not available (use push-to-talk). */
   private toggleTalk(): boolean {
+    // A session still closing: never start a second one over it.
+    if (this.talk !== null && this.talk.state === 'closing') return true;
     if (this.talk !== null && this.talk.state !== 'off' && this.talk.state !== 'failed') {
       this.talk.stop('user');
       return true;
@@ -450,6 +452,9 @@ export class BuddySystem extends createSystem({
   }
 
   private onTalkState(state: TalkState, detail?: string): void {
+    // One voice owner: talk silences (and stops) spoken TTS lines while it runs.
+    if (state === 'connecting' || state === 'live') setTalkActive(true);
+    else if (state === 'off' || state === 'failed') setTalkActive(false);
     if (state === 'connecting') {
       this.setOrb('thinking');
       this.say('Connecting...', { tag: 'TALK', sticky: true });
@@ -463,6 +468,7 @@ export class BuddySystem extends createSystem({
       const why = detail === 'idle' ? 'Talk ended after a quiet minute.' : 'Talk ended.';
       this.say(why, { tag: 'QUESTTY', ms: 3000 });
     } else if (state === 'failed') {
+      detachBuddyVoice();
       // Live is down: the same pinch falls back to push-to-talk -> transcribe -> buddy.
       this.setOrb('error', 1500);
       this.say("Voice chat isn't available. Push-to-talk instead.", { tag: 'QUESTTY', ms: 4000 });

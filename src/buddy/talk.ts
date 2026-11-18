@@ -62,6 +62,14 @@ export type TalkDebug = {
 const IDLE_MS = 60_000;
 const MAX_SESSION_MS = 5 * 60_000;
 const CLOSE_WAIT_MS = 6_000;
+/**
+ * Echo safety on speakers (the spatial voice is kept): while the buddy is
+ * audibly talking, and for a short tail after, the mic track is muted so the
+ * headset speakers are not heard back as the user talking over it.
+ */
+const ECHO_GATE = true;
+const ECHO_GATE_LEVEL = 0.03;
+const ECHO_GATE_TAIL_MS = 250;
 
 export class TalkSession {
   private peer: RTCPeerConnection | null = null;
@@ -83,6 +91,8 @@ export class TalkSession {
   private buddyLine = '';
   private lastSpeaker: 'you' | 'buddy' | null = null;
   private eventSeq = 0;
+  private gateUntil = 0;
+  private micGated = false;
   private queue: Promise<void> = Promise.resolve();
   readonly debug: TalkDebug = {
     state: 'off',
@@ -221,6 +231,8 @@ export class TalkSession {
     this.raf = 0;
     this.mic?.getTracks().forEach((t) => t.stop());
     this.mic = null;
+    this.micGated = false;
+    this.gateUntil = 0;
     const events = this.events;
     this.events = null;
     try {
@@ -373,6 +385,16 @@ export class TalkSession {
     });
   }
 
+  /** Mute the mic while the buddy's voice is out (plus a short tail); re-enable after. */
+  private gateMic(out: number): void {
+    const now = performance.now();
+    if (out > ECHO_GATE_LEVEL) this.gateUntil = now + ECHO_GATE_TAIL_MS;
+    const gate = now < this.gateUntil;
+    if (gate === this.micGated || this.mic === null) return;
+    this.micGated = gate;
+    for (const track of this.mic.getAudioTracks()) track.enabled = !gate;
+  }
+
   private watchLevel(stream: MediaStream, which: 'in' | 'out'): void {
     try {
       this.ctx ??= new AudioContext();
@@ -400,6 +422,7 @@ export class TalkSession {
       const inp = level(this.inAnalyser);
       if (out > this.debug.peakOutput) this.debug.peakOutput = out;
       if (out > 0.04) this.lastActivity = performance.now();
+      if (ECHO_GATE) this.gateMic(out);
       this.host.levels(out, inp);
       this.raf = requestAnimationFrame(loop);
     };
