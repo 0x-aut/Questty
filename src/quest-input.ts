@@ -196,7 +196,13 @@ export class QuestInputSystem extends createSystem({
 
     this.voiceButton = panel.getElementById<UIKit.Text>('voice-button') ?? undefined;
     if (this.voiceButton !== undefined) {
-      const onVoiceClick = () => this.onVoiceButton();
+      // The voice button opens a GPT-Live conversation (the buddy talks; cards
+      // only for things the user wants kept). Transcribe-and-make-cards is the
+      // fallback when Live is not configured, offline, or fails to connect.
+      const onVoiceClick = () => {
+        if ((this.voiceState === 'idle' || this.voiceState === 'error') && toggleBuddyTalk()) return;
+        this.onVoiceButton();
+      };
       this.voiceButton.addEventListener('click', onVoiceClick);
       this.cleanupFuncs.push(() => this.voiceButton?.removeEventListener('click', onVoiceClick));
     }

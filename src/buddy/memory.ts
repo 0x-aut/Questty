@@ -21,11 +21,17 @@ export type MemoryTurn = {
   did: string[];
   /** The validated actions, kept so the offline parser can replay "again". */
   actions: BuddyAction[];
+  /** Cards this turn created or acted on (ids + titles after the turn): what "it" / "that one" / "them" mean next. */
+  focus?: FocusCard[];
 };
+
+export type FocusCard = { id: string; title: string };
 
 export type MemoryPayload = {
   summary: string;
   recent: Array<{ user: string; buddy: string; did: string }>;
+  /** The cards the latest acting turn created or touched, newest turn only. */
+  focus: FocusCard[];
 };
 
 const KEY = 'questty.buddy.memory.v1';
@@ -124,28 +130,60 @@ export function describeAction(a: BuddyAction, titleOf: (id: string) => string |
 
 /** Store one finished turn (called after every buddy command, typed or spoken). */
 export function rememberTurn(
-  turn: { text: string; reply: string; source: 'voice' | 'tap'; actions: readonly BuddyAction[] },
+  turn: { text: string; reply: string; source: 'voice' | 'tap'; actions: readonly BuddyAction[]; touched?: readonly string[] },
   cards: readonly BuddyCard[],
+  after: readonly BuddyCard[] = cards,
 ): void {
   const user = clip(turn.text, 300);
   if (user.length === 0) return;
   const titles = new Map(cards.map((c) => [c.id, c.title]));
+  const afterTitles = new Map(after.map((c) => [c.id, c.title]));
+  // Cards this turn created: in creation order, so each add_card line gets its new id.
+  const created = after.filter((c) => !titles.has(c.id)).map((c) => c.id);
   // A written document body can be long and a web chapter is ~10-60k chars:
   // keep only a short head for the record (the title, part and URL are kept whole).
   const actions = turn.actions.map((a) =>
     a.type === 'open_document' && 'body' in a ? { ...a, body: a.body.slice(0, 'source_url' in a ? 300 : 1500) } : a,
   ) as BuddyAction[];
+  let made = 0;
+  const did = actions.map((a) => {
+    let line = describeAction(a, (id) => titles.get(id) ?? afterTitles.get(id));
+    if (a.type === 'add_card' && made < created.length) line += ` -> [${created[made++]}]`;
+    return clip(line, 160);
+  }).slice(0, 8);
+  const focusIds = [...new Set([...(turn.touched ?? []), ...created])].filter((id) => afterTitles.has(id)).slice(0, 8);
   const list = load();
   list.push({
     at: Date.now(),
     via: turn.source,
     user,
     buddy: clip(turn.reply, 200),
-    did: actions.map((a) => clip(describeAction(a, (id) => titles.get(id)), 160)).slice(0, 8),
+    did,
     actions,
+    focus: focusIds.map((id) => ({ id, title: clip(afterTitles.get(id) ?? '', 60) })),
   });
   turns = list.slice(-MAX_TURNS);
   save();
+}
+
+/** A turn handled on the device without actions (undo, accepting an offer): still part of the conversation. */
+export function rememberNote(text: string, reply: string, did: string, source: 'voice' | 'tap'): void {
+  const user = clip(text, 300);
+  if (user.length === 0) return;
+  const list = load();
+  list.push({ at: Date.now(), via: source, user, buddy: clip(reply, 200), did: [clip(did, 160)], actions: [] });
+  turns = list.slice(-MAX_TURNS);
+  save();
+}
+
+/** The cards the latest acting turn created or touched (empty when the last few turns touched none). */
+export function lastFocus(): FocusCard[] {
+  const list = load();
+  for (let i = list.length - 1; i >= Math.max(0, list.length - 4); i -= 1) {
+    const f = list[i].focus;
+    if (f !== undefined && f.length > 0) return f;
+  }
+  return [];
 }
 
 /** The last turn's actions that actually did something ("do that again"). */
@@ -182,19 +220,23 @@ export function memoryPayload(now = Date.now()): MemoryPayload {
     summary = next;
   }
   const recent = recentTurns.map((t) => ({ user: t.user, buddy: t.buddy, did: t.did.join('; ') }));
-  // Hard cap on the whole payload: drop the oldest recent turns first.
-  while (recent.length > 0 && JSON.stringify({ summary, recent }).length > MAX_TOTAL) recent.shift();
-  return { summary: summary.trim(), recent };
+  const focus = lastFocus();
+  // Hard cap on the whole payload: the newest turns win, so drop the summary, then the oldest recent turns.
+  if (JSON.stringify({ summary, recent, focus }).length > MAX_TOTAL) summary = '';
+  while (recent.length > 1 && JSON.stringify({ summary, recent, focus }).length > MAX_TOTAL) recent.shift();
+  return { summary: summary.trim(), recent, focus };
 }
 
 /** Plain text of the same memory, for seeding a talk session. */
 export function memoryText(now = Date.now()): string {
-  const { summary, recent } = memoryPayload(now);
+  const { summary, recent, focus } = memoryPayload(now);
   if (summary.length === 0 && recent.length === 0) return '';
   const parts: string[] = [];
   if (summary.length > 0) parts.push(`Earlier: \n${summary}`);
   for (const t of recent) parts.push(`User: ${t.user}\nBuddy: ${t.buddy}${t.did ? `\n(app did: ${t.did})` : ''}`);
-  return parts.join('\n').slice(0, MAX_TOTAL);
+  if (focus.length > 0) parts.push(`Last cards touched: ${focus.map((f) => `"${f.title}"`).join(', ')}`);
+  // Keep the END: the newest turns matter most.
+  return parts.join('\n').slice(-MAX_TOTAL);
 }
 
 /** Test hook: drop the in-memory cache so the next read comes from storage. */
