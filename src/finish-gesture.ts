@@ -70,6 +70,24 @@ export const FLICK = {
   minAwayCos: -0.2,
 } as const;
 
+export type FlickRule = { [K in keyof typeof FLICK]: number };
+
+/**
+ * PR 13: a ray / trigger drag (the emulator's left click) is judged on the CARD's own motion, not the hand's,
+ * and must be a deliberate flick: a short, fast swing still going at full speed when you let go. An ordinary
+ * drag-and-release (well under 1.5 m/s at the card) just moves the card. Any direction counts: a flicked
+ * card always arcs into the trash can.
+ */
+export const RAY_FLICK: FlickRule = {
+  releaseSpeed: 2.5,
+  peakSpeed: 3.0,
+  keepFraction: 0.6,
+  minTravel: 0.25,
+  windowMs: 200,
+  minHoldMs: 250,
+  minAwayCos: -1.01,
+};
+
 export type FlickVerdict = {
   flick: boolean;
   reason: string;
@@ -85,11 +103,11 @@ export type FlickVerdict = {
  * release; `heldMs` how long the card was held; `overSurface` true when the
  * release would pin the card to a surface (pinning always wins).
  */
-export function flickVerdict(samples: readonly Sample[], head: Vec, heldMs: number, overSurface: boolean): FlickVerdict {
+export function flickVerdict(samples: readonly Sample[], head: Vec, heldMs: number, overSurface: boolean, rule: FlickRule = FLICK): FlickVerdict {
   const out: FlickVerdict = { flick: false, reason: '', releaseSpeed: 0, peakSpeed: 0, travel: 0, awayCos: 0 };
   if (samples.length < 2) return { ...out, reason: 'few-samples' };
   const end = samples[samples.length - 1];
-  const win = samples.filter((s) => end.t - s.t <= FLICK.windowMs);
+  const win = samples.filter((s) => end.t - s.t <= rule.windowMs);
   if (win.length < 2) {
     // A slow frame: keep the last two samples so a single long segment still counts.
     win.splice(0, win.length, samples[samples.length - 2], end);
@@ -112,11 +130,11 @@ export function flickVerdict(samples: readonly Sample[], head: Vec, heldMs: numb
   const awayCos = awayLen > 1e-4 && len(vLast) > 1e-6 ? dot(vLast, away) / (awayLen * len(vLast)) : 1;
   Object.assign(out, { releaseSpeed, peakSpeed: peak, travel, awayCos });
   if (overSurface) return { ...out, reason: 'over-surface' };
-  if (heldMs < FLICK.minHoldMs) return { ...out, reason: 'short-hold' };
-  if (peak < FLICK.peakSpeed) return { ...out, reason: 'slow' };
-  if (releaseSpeed < FLICK.releaseSpeed || releaseSpeed < peak * FLICK.keepFraction) return { ...out, reason: 'stopped' };
-  if (travel < FLICK.minTravel) return { ...out, reason: 'short' };
-  if (awayCos < FLICK.minAwayCos) return { ...out, reason: 'toward-you' };
+  if (heldMs < rule.minHoldMs) return { ...out, reason: 'short-hold' };
+  if (peak < rule.peakSpeed) return { ...out, reason: 'slow' };
+  if (releaseSpeed < rule.releaseSpeed || releaseSpeed < peak * rule.keepFraction) return { ...out, reason: 'stopped' };
+  if (travel < rule.minTravel) return { ...out, reason: 'short' };
+  if (awayCos < rule.minAwayCos) return { ...out, reason: 'toward-you' };
   return { ...out, flick: true, reason: 'flick' };
 }
 
