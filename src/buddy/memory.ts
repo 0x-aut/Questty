@@ -115,6 +115,7 @@ export function describeAction(a: BuddyAction, titleOf: (id: string) => string |
     case 'open_document':
       if ('doc_id' in a) return `open_document doc [${a.doc_id}]`;
       if ('card_id' in a) return `open_document notes of ${card(a.card_id)}`;
+      if ('source_url' in a) return `open_document web ${a.kind} "${clip(a.title, 40)}"${a.subtitle ? ` ${clip(a.subtitle, 40)}` : ''} from ${clip(a.source_url, 80)}`;
       return `open_document wrote "${clip(a.title, 40)}"`;
     default:
       return (a as { type: string }).type;
@@ -129,9 +130,10 @@ export function rememberTurn(
   const user = clip(turn.text, 300);
   if (user.length === 0) return;
   const titles = new Map(cards.map((c) => [c.id, c.title]));
-  // A written document body can be long: keep only a short head for the record.
+  // A written document body can be long and a web chapter is ~10-60k chars:
+  // keep only a short head for the record (the title, part and URL are kept whole).
   const actions = turn.actions.map((a) =>
-    a.type === 'open_document' && 'body' in a ? { ...a, body: a.body.slice(0, 1500) } : a,
+    a.type === 'open_document' && 'body' in a ? { ...a, body: a.body.slice(0, 'source_url' in a ? 300 : 1500) } : a,
   ) as BuddyAction[];
   const list = load();
   list.push({

@@ -1,0 +1,213 @@
+/**
+ * Server-only web helpers for the buddy's tools (web_search, read_page).
+ * The leading underscore keeps Vercel from deploying this file as a route.
+ *
+ * Provider: Firecrawl only (server env FIRECRAWL_API_KEY, never VITE_).
+ *  - Search: POST https://api.firecrawl.dev/v2/search
+ *      body { query, limit } -> { success, data: { web: [{ url, title, description }] } }
+ *  - Read:   POST https://api.firecrawl.dev/v2/scrape
+ *      body { url, formats: ['markdown'], onlyMainContent: true, timeout }
+ *      -> { success, data: { markdown, metadata: { title, url, statusCode } } }
+ *
+ * Every call has its own timeout and never throws: failures come back as a
+ * friendly { ok: false, error } the model can read. A scraped page that is
+ * really a maintenance / error / captcha page counts as a failure, so the
+ * model tries another source.
+ */
+import { serverEnv } from './_openai.js';
+
+export const PROVIDER_TIMEOUT_MS = 12_000;
+/** What the model gets to read from one page (the full page stays server-side). */
+export const MODEL_PAGE_CHARS = 20_000;
+/** What we keep of a page server-side (for slicing a section or chapter out of a long page). */
+export const MAX_PAGE_CHARS = 1_500_000;
+
+export type SearchHit = { url: string; title: string; description: string };
+export type SearchResult = { ok: true; provider: string; results: SearchHit[] } | { ok: false; error: string };
+export type PageResult = { ok: true; provider: string; url: string; title: string; markdown: string } | { ok: false; error: string };
+
+type FetchLike = typeof fetch;
+let fetchImpl: FetchLike = (...args) => fetch(...args);
+/** Tests: swap the network out. */
+export function setWebFetch(f: FetchLike | null): void {
+  fetchImpl = f ?? ((...args) => fetch(...args));
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const str = (v: unknown, n: number): string => (typeof v === 'string' ? v.slice(0, n) : '');
+
+/** Only public http(s) URLs; no credentials, no local/private hosts. */
+export function safeUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 2000) return null;
+  let u: URL;
+  try {
+    u = new URL(value.trim());
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  if (u.username || u.password) return null;
+  const h = u.hostname.toLowerCase();
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || /^(127\.|10\.|192\.168\.|169\.254\.|0\.)/u.test(h) || /^172\.(1[6-9]|2\d|3[01])\./u.test(h) || h.includes(':')) return null;
+  if (!h.includes('.')) return null;
+  return u.toString();
+}
+
+async function postJson(url: string, key: string, body: unknown, timeoutMs: number, signal?: AbortSignal): Promise<{ ok: boolean; status: number; json: unknown }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  signal?.addEventListener('abort', onAbort);
+  try {
+    const res = await fetchImpl(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    let json: unknown = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
+    return { ok: res.ok, status: res.status, json };
+  } catch {
+    return { ok: false, status: controller.signal.aborted ? 408 : 0, json: null };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+function hits(list: unknown): SearchHit[] {
+  if (!Array.isArray(list)) return [];
+  const out: SearchHit[] = [];
+  for (const r of list) {
+    if (!isRecord(r)) continue;
+    const url = safeUrl(r.url);
+    if (url === null) continue;
+    out.push({ url, title: str(r.title, 200), description: str(r.description ?? r.snippet, 400) });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+export async function webSearch(query: string, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<SearchResult> {
+  const q = query.replace(/\s+/gu, ' ').trim().slice(0, 400);
+  if (q.length === 0) return { ok: false, error: 'empty query' };
+  const key = serverEnv().FIRECRAWL_API_KEY;
+  if (!key) return { ok: false, error: 'Web search is not set up on the server (no FIRECRAWL_API_KEY).' };
+  const timeoutMs = Math.min(opts.timeoutMs ?? PROVIDER_TIMEOUT_MS, PROVIDER_TIMEOUT_MS);
+  const r = await postJson('https://api.firecrawl.dev/v2/search', key, { query: q, limit: 6 }, timeoutMs, opts.signal);
+  const data = r.ok && isRecord(r.json) && isRecord(r.json.data) ? r.json.data : null;
+  const results = data !== null ? hits(data.web) : [];
+  if (results.length > 0) return { ok: true, provider: 'firecrawl', results };
+  if (r.status > 0) console.warn('[web] firecrawl search', r.status);
+  return { ok: false, error: 'The search found nothing or the search service did not answer.' };
+}
+
+/**
+ * A scrape that "worked" but is really a maintenance, error or bot-check page
+ * (e.g. Project Gutenberg's "Temporarily Down for Maintenance"). Exported for tests.
+ */
+export function looksBroken(markdown: string, statusCode?: unknown): boolean {
+  if (typeof statusCode === 'number' && statusCode >= 400) return true;
+  const t = markdown.trim();
+  if (t.length < 400) return true;
+  const head = t.slice(0, 3000).toLowerCase();
+  const bad = /temporarily down|down for maintenance|under maintenance|access denied|403 forbidden|404 not found|page not found|are you a robot|verify you are human|captcha|cloudflare ray id|enable javascript and cookies|too many requests/u;
+  return t.length < 4000 && bad.test(head);
+}
+
+/**
+ * Drop navigation cruft above the text (Wikisource's "Jump to content",
+ * download links, header boxes): start at the first markdown heading that
+ * names a chapter, or a bare "CHAPTER III." line (Wikisource), on book sites
+ * only. Every page loses a wiki footer and leading skip/download links.
+ */
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+};
+
+export function stripNavCruft(markdown: string, url = ''): string {
+  // Wiki footer: everything from "Retrieved from" / "Hidden categories:" on.
+  const foot = markdown.search(/\n(Retrieved from "|Hidden categories:|Categories:\s*$)/mu);
+  if (foot > 2000) markdown = markdown.slice(0, foot);
+  const lines = markdown.split('\n');
+  const limit = Math.min(lines.length, 200);
+  // Book sites only: start at the chapter heading (other pages keep their intro).
+  const bookSite = /(^|\.)(wikisource\.org|gutenberg\.org|standardebooks\.org)$/iu.test(hostOf(url));
+  for (let i = 0; bookSite && i < limit; i += 1) {
+    if (/^#{1,4}\s+.*\b(chapter|chap\.)\b/iu.test(lines[i]) || /^\s*chapter\s+([ivxlcdm]+|\d+)\s*[.:]?\s*$/iu.test(lines[i])) return i === 0 ? markdown : lines.slice(i).join('\n');
+  }
+  // Otherwise (or no chapter heading): still drop the obvious skip-link / download lines at the top.
+  let i = 0;
+  while (i < limit && (lines[i].trim() === '' || /jump to (content|navigation|search)|^\s*\[?download|\bepub\b|\bmobi\b|\bpdf\b.*\]\(/iu.test(lines[i]))) i += 1;
+  return i === 0 ? markdown : lines.slice(i).join('\n');
+}
+
+export async function readPage(url: string, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<PageResult> {
+  const safe = safeUrl(url);
+  if (safe === null) return { ok: false, error: 'That is not a public web address.' };
+  const key = serverEnv().FIRECRAWL_API_KEY;
+  if (!key) return { ok: false, error: 'Reading web pages is not set up on the server (no FIRECRAWL_API_KEY).' };
+  const timeoutMs = Math.min(opts.timeoutMs ?? PROVIDER_TIMEOUT_MS, PROVIDER_TIMEOUT_MS);
+  const r = await postJson(
+    'https://api.firecrawl.dev/v2/scrape',
+    key,
+    { url: safe, formats: ['markdown'], onlyMainContent: true, timeout: Math.max(1000, timeoutMs - 500) },
+    timeoutMs,
+    opts.signal,
+  );
+  const data = r.ok && isRecord(r.json) && isRecord(r.json.data) ? r.json.data : null;
+  const md = data !== null ? str(data.markdown, MAX_PAGE_CHARS) : '';
+  const meta = data !== null && isRecord(data.metadata) ? data.metadata : {};
+  if (md.trim().length > 0 && !looksBroken(md, meta.statusCode)) {
+    return { ok: true, provider: 'firecrawl', url: safeUrl(meta.url) ?? safe, title: str(meta.title, 200), markdown: stripNavCruft(md, safe) };
+  }
+  if (md.trim().length > 0) {
+    console.warn('[web] firecrawl scrape looks like an error/maintenance page', safe);
+    return { ok: false, error: 'That page is down or blocked right now (maintenance or error page). Try another source.' };
+  }
+  if (r.status > 0) console.warn('[web] firecrawl scrape', r.status);
+  return { ok: false, error: 'I could not read that page. Try another source.' };
+}
+
+/**
+ * The part of a page the model reads: up to MODEL_PAGE_CHARS, starting at the
+ * first match of `find` (case-insensitive) when given, so the model can jump
+ * to "CHAPTER III" in a whole-book page.
+ */
+export function pageWindow(markdown: string, find?: string | null, size = MODEL_PAGE_CHARS): { text: string; offset: number; total: number } {
+  let start = 0;
+  if (typeof find === 'string' && find.trim().length > 0) {
+    const i = markdown.toLowerCase().indexOf(find.trim().toLowerCase());
+    if (i >= 0) start = Math.max(0, i - 200);
+  }
+  return { text: markdown.slice(start, start + size), offset: start, total: markdown.length };
+}
+
+/**
+ * Cut a section (or a chapter) out of a page: from the first match of `from` to the first
+ * match of `to` after it (both case-insensitive, both optional), capped.
+ */
+export function sliceBetween(markdown: string, from: string | null | undefined, to: string | null | undefined, cap: number): string {
+  const lower = markdown.toLowerCase();
+  let start = 0;
+  if (typeof from === 'string' && from.trim().length > 0) {
+    const i = lower.indexOf(from.trim().toLowerCase());
+    if (i >= 0) start = i;
+  }
+  let end = markdown.length;
+  if (typeof to === 'string' && to.trim().length > 0) {
+    const fromLen = typeof from === 'string' ? from.trim().length : 0;
+    const j = lower.indexOf(to.trim().toLowerCase(), start + Math.max(1, fromLen));
+    if (j > start) end = j;
+  }
+  return markdown.slice(start, Math.min(end, start + cap));
+}

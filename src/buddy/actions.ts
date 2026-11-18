@@ -8,7 +8,7 @@
  * IWSDK imports), so the harness unit-tests it directly.
  */
 
-import { cleanBody, cleanDocTitle, isKnownDocId } from '../documents.js';
+import { cleanBody, cleanDocTitle, cleanSourceUrl, cleanWebBody, isKnownDocId } from '../documents.js';
 
 export const BUDDY_CATEGORIES = ['today', 'later', 'before-leave', 'unsorted'] as const;
 export type BuddyCategory = (typeof BUDDY_CATEGORIES)[number];
@@ -49,7 +49,9 @@ export type BuddyAction =
    */
   | { type: 'open_document'; doc_id: string }
   | { type: 'open_document'; card_id: string }
-  | { type: 'open_document'; title: string; body: string };
+  | { type: 'open_document'; title: string; body: string }
+  /** Web text the buddy fetched (a chapter, or a summary for copyrighted books). */
+  | { type: 'open_document'; title: string; body: string; source_url: string; kind: 'full_text' | 'summary'; subtitle?: string };
 
 export type BuddyActionType = BuddyAction['type'];
 export const ACTION_TYPES: readonly BuddyActionType[] = [
@@ -226,6 +228,20 @@ export function validateAction(raw: unknown, cardIds: ReadonlySet<string>): Budd
     case 'show_streak':
       return { type: 'show_streak' };
     case 'open_document': {
+      if (typeof raw.source_url === 'string') {
+        // Web form: {title, subtitle?, source_url, text, kind}.
+        if (raw.doc_id != null || raw.card_id != null) return 'bad-document';
+        const url = cleanSourceUrl(raw.source_url);
+        const text = cleanWebBody(raw.text ?? raw.body);
+        const title = cleanDocTitle(raw.title);
+        const kind = raw.kind === 'full_text' || raw.kind === 'summary' ? raw.kind : null;
+        if (url === null) return 'bad-document';
+        if (text === null) return 'bad-body';
+        if (title === null) return 'bad-title';
+        if (kind === null) return 'bad-document';
+        const sub = cleanDocTitle(typeof raw.subtitle === 'string' ? raw.subtitle.slice(0, 120) : null);
+        return { type: 'open_document', title, body: text, source_url: url, kind, ...(sub !== null ? { subtitle: sub } : {}) };
+      }
       const hasBody = raw.body !== undefined && raw.body !== null;
       const hasDoc = raw.doc_id !== undefined && raw.doc_id !== null;
       const hasCard = raw.card_id !== undefined && raw.card_id !== null;

@@ -130,3 +130,55 @@ export async function callResponses(call: ResponsesCall): Promise<ResponsesResul
   if (text === null) return { ok: false, status: 502, error: 'invalid-model-response' };
   return { ok: true, text, usage: payload.usage };
 }
+
+/** One function call the model asked for (Responses API `function_call` output item). */
+export type FunctionCall = { call_id: string; name: string; arguments: string };
+
+export type RawCall = {
+  apiKey: string;
+  body: Record<string, unknown>;
+  signal: AbortSignal;
+};
+export type RawResult =
+  | { ok: true; output: unknown[]; text: string | null; calls: FunctionCall[]; usage?: unknown }
+  | { ok: false; status: number; error: string };
+
+/** The function calls in a Responses payload's output array. */
+export function functionCalls(output: unknown[]): FunctionCall[] {
+  const calls: FunctionCall[] = [];
+  for (const item of output) {
+    if (typeof item !== 'object' || item === null) continue;
+    const c = item as { type?: unknown; call_id?: unknown; name?: unknown; arguments?: unknown };
+    if (c.type !== 'function_call' || typeof c.call_id !== 'string' || typeof c.name !== 'string') continue;
+    calls.push({ call_id: c.call_id, name: c.name, arguments: typeof c.arguments === 'string' ? c.arguments : '{}' });
+  }
+  return calls;
+}
+
+/**
+ * A Responses call with a hand-built body (tool loops). Returns the whole
+ * output array so the caller can pass it back as input on the next turn
+ * (with store:false, reasoning items carry their encrypted content).
+ */
+export async function callResponsesRaw(call: RawCall): Promise<RawResult> {
+  const res = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${call.apiKey}`, 'Content-Type': 'application/json' },
+    signal: call.signal,
+    body: JSON.stringify(call.body),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const err = (await res.json()) as { error?: { code?: unknown; type?: unknown } };
+      detail = String(err.error?.code ?? err.error?.type ?? '');
+    } catch {
+      /* not JSON */
+    }
+    console.error('[api] OpenAI responses returned', res.status, detail);
+    return { ok: false, status: res.status, error: 'generation-failed' };
+  }
+  const payload = (await res.json()) as { output?: unknown; usage?: unknown };
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  return { ok: true, output, text: outputText(payload), calls: functionCalls(output), usage: payload.usage };
+}
