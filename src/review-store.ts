@@ -50,6 +50,15 @@ export function scheduledIds(): Set<string> {
   return new Set(Object.keys(store.due));
 }
 
+let reviewOpen = false;
+/** The evening review card is on screen (sent to /api/buddy so "not now" can mean the review). */
+export function setReviewOpen(on: boolean): void {
+  reviewOpen = on;
+}
+export function isReviewOpen(): boolean {
+  return reviewOpen;
+}
+
 let ritualRunning = false;
 /** The return ritual is on screen (the evening review waits for it to finish). */
 export function setRitualRunning(on: boolean): void {

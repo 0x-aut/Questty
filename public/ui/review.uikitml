@@ -1,7 +1,8 @@
 <!--
-  Evening review (PR 11): opens only on demand ("review my day",
-  "evening review"), never on its own. The X, "Later", or "close the review"
-  closes it for the day. Flick or crumple the cards you
+  Evening review (PR 11): offers itself after the review hour when cards are
+  open, and opens on demand ("review my day", "evening review"). The X,
+  "Not now", or "close the review" dismisses it: no automatic offer again that
+  day until asked. Flick or crumple the cards you
   finished; everything still open rolls to tomorrow with one pinch.
   Element ids: review-root, review-line, review-count, review-roll,
   review-roll-label, review-later, review-close. Like the return ritual it sits low and to the
@@ -120,7 +121,7 @@
       <span id="review-roll-label" class="roll-label">Roll 4 to tomorrow</span>
     </div>
     <div id="review-later" class="later">
-      <span class="later-label">Later</span>
+      <span class="later-label">Not now</span>
     </div>
   </div>
 </div>
