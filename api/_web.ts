@@ -19,7 +19,7 @@ import { serverEnv } from './_openai.js';
 export const PROVIDER_TIMEOUT_MS = 12_000;
 /** What the model gets to read from one page (the full page stays server-side). */
 export const MODEL_PAGE_CHARS = 20_000;
-/** What we keep of a page server-side (for slicing a chapter out of a long book). */
+/** What we keep of a page server-side (for slicing a section or chapter out of a long page). */
 export const MAX_PAGE_CHARS = 1_500_000;
 
 export type SearchHit = { url: string; title: string; description: string };
@@ -123,19 +123,29 @@ export function looksBroken(markdown: string, statusCode?: unknown): boolean {
 /**
  * Drop navigation cruft above the text (Wikisource's "Jump to content",
  * download links, header boxes): start at the first markdown heading that
- * names a chapter, or a bare "CHAPTER III." line (Wikisource), when there is
- * one in the first part of the page.
+ * names a chapter, or a bare "CHAPTER III." line (Wikisource), on book sites
+ * only. Every page loses a wiki footer and leading skip/download links.
  */
-export function stripNavCruft(markdown: string): string {
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+};
+
+export function stripNavCruft(markdown: string, url = ''): string {
   // Wiki footer: everything from "Retrieved from" / "Hidden categories:" on.
   const foot = markdown.search(/\n(Retrieved from "|Hidden categories:|Categories:\s*$)/mu);
   if (foot > 2000) markdown = markdown.slice(0, foot);
   const lines = markdown.split('\n');
   const limit = Math.min(lines.length, 200);
-  for (let i = 0; i < limit; i += 1) {
+  // Book sites only: start at the chapter heading (other pages keep their intro).
+  const bookSite = /(^|\.)(wikisource\.org|gutenberg\.org|standardebooks\.org)$/iu.test(hostOf(url));
+  for (let i = 0; bookSite && i < limit; i += 1) {
     if (/^#{1,4}\s+.*\b(chapter|chap\.)\b/iu.test(lines[i]) || /^\s*chapter\s+([ivxlcdm]+|\d+)\s*[.:]?\s*$/iu.test(lines[i])) return i === 0 ? markdown : lines.slice(i).join('\n');
   }
-  // No chapter heading: still drop the obvious skip-link / download lines at the top.
+  // Otherwise (or no chapter heading): still drop the obvious skip-link / download lines at the top.
   let i = 0;
   while (i < limit && (lines[i].trim() === '' || /jump to (content|navigation|search)|^\s*\[?download|\bepub\b|\bmobi\b|\bpdf\b.*\]\(/iu.test(lines[i]))) i += 1;
   return i === 0 ? markdown : lines.slice(i).join('\n');
@@ -158,7 +168,7 @@ export async function readPage(url: string, opts: { timeoutMs?: number; signal?:
   const md = data !== null ? str(data.markdown, MAX_PAGE_CHARS) : '';
   const meta = data !== null && isRecord(data.metadata) ? data.metadata : {};
   if (md.trim().length > 0 && !looksBroken(md, meta.statusCode)) {
-    return { ok: true, provider: 'firecrawl', url: safeUrl(meta.url) ?? safe, title: str(meta.title, 200), markdown: stripNavCruft(md) };
+    return { ok: true, provider: 'firecrawl', url: safeUrl(meta.url) ?? safe, title: str(meta.title, 200), markdown: stripNavCruft(md, safe) };
   }
   if (md.trim().length > 0) {
     console.warn('[web] firecrawl scrape looks like an error/maintenance page', safe);
@@ -183,7 +193,7 @@ export function pageWindow(markdown: string, find?: string | null, size = MODEL_
 }
 
 /**
- * Cut a chapter out of a page: from the first match of `from` to the first
+ * Cut a section (or a chapter) out of a page: from the first match of `from` to the first
  * match of `to` after it (both case-insensitive, both optional), capped.
  */
 export function sliceBetween(markdown: string, from: string | null | undefined, to: string | null | undefined, cap: number): string {

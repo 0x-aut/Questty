@@ -29,7 +29,7 @@ const WEB_HARD_MS = 32_000;
 const FINAL_RESERVE_MS = 8_000;
 export const MAX_TOOL_CALLS = 3;
 const MAX_TURNS = 5;
-/** Web text opened in the reading view (a chapter), after sanitizing. */
+/** Web text opened in the reading view (an article, docs page, chapter...), after sanitizing. */
 export const MAX_WEB_TEXT = 60_000;
 const KINDS = ['full_text', 'summary'] as const;
 const MAX_TEXT = 500;
@@ -203,17 +203,14 @@ const SYSTEM_PROMPT = [
   'Documents (PR 10):',
   '- open_document {doc_id | card_id | title+body}: open a document in the reading view. doc_id: one of the docs listed in the room state ("open my essay", "read the project brief"). card_id: that card\'s notes ("open the notes on the gym card"). title + body: when the user asks you to write something to read ("write an outline for my talk"); body is short plain markdown (headings, bullets), max ~300 words. Use exactly one of the three.',
   'Web (only when the tools web_search and read_page are available):',
-  '- Use the tools for anything that needs the internet: a book chapter, an article, a fact you do not know. Max 3 tool calls in total, so be direct: usually one web_search, then one read_page of the best result.',
-  '- For a book chapter, read one chapter page directly (you may skip web_search when you know the URL). Sources in this order:',
-  '  1. Standard Ebooks, one clean page per chapter: https://standardebooks.org/ebooks/<author-slug>/<book-slug>/text/chapter-<n> (e.g. https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice/text/chapter-3; the page starts with a heading like "## III").',
-  '  2. Wikisource: https://en.wikisource.org/wiki/<Book_Title>/Chapter_<n> (e.g. https://en.wikisource.org/wiki/Pride_and_Prejudice/Chapter_3).',
-  '  3. Project Gutenberg last (often the whole book on one page: pass find, e.g. "CHAPTER III", to read_page). It may be down for maintenance.',
-  '- If read_page returns an error (down, maintenance, blocked, not found), try the next source; do not give up after one failure.',
-  '- A per-chapter page (Standard Ebooks, Wikisource) IS the chapter: once read_page returns it (complete: true), answer right away with open_document, from_text and to_text null. Never read the same URL twice and never search for the end of a chapter page.',
-  '- Then open it with open_document {title, subtitle?, source_url, kind, from_text?, to_text?, text?}. title: the book or article ("Pride and Prejudice"); subtitle: the part ("Chapter 1") and author.',
-  '  kind "full_text": ONLY for public-domain or openly licensed text you read with read_page. source_url must be that page. Leave text null: the app takes the text from the page itself. from_text: the exact heading or first words where the chapter starts on the page (e.g. "Chapter 1" or "CHAPTER III"); to_text: the exact heading where the next chapter starts (e.g. "Chapter 2"), or null when the page is just this chapter.',
-  '  kind "summary": for copyrighted modern books (or when no free text exists). Never reproduce a copyrighted chapter: write a summary in text (plain markdown, max ~400 words) with at most a couple of short quotes, and set source_url to a page you found. Say in reply that it is a summary.',
-  '- If the tools fail or find nothing, use no action and say so briefly in reply. Never invent a URL; use only URLs the tools returned.',
+  '- Use the tools whenever the user wants something from the internet shown or read: an article, a Wikipedia entry, a docs page, a recipe, news, a book chapter, a fact you do not know. Max 3 tool calls in total, so be direct.',
+  '- When you know the page URL, read it directly (skip web_search), e.g. https://en.wikipedia.org/wiki/Meta_Quest_3. Otherwise one web_search, then one read_page of the best result. If read_page returns an error (down, maintenance, blocked, not found), try the next result or source; do not give up after one failure.',
+  '- Once read_page returns a page with complete: true you get no more tools: answer right away. Never read the same URL twice.',
+  '- Show what you read with open_document {title, subtitle?, source_url, kind, from_text?, to_text?, text?}. title: the page, article or book ("Meta Quest 3", "Pride and Prejudice"); subtitle: the site, section or part and author ("Wikipedia", "Chapter 3 - Jane Austen").',
+  '  kind "full_text": the page\'s own text, for anything freely readable you read with read_page (encyclopedia articles, docs, recipes, news and blog posts that are not paywalled, public-domain books). source_url must be that page. Leave text null: the app takes the text from the page itself (main content, cleaned). from_text / to_text: null for the whole page; to show only one section, the exact heading or first words where it starts and the exact heading where the next part starts (or null).',
+  '  kind "summary": for copyrighted books, song lyrics, paywalled or login-only pages, or when the user asks for a summary. Write it in text (plain markdown, max ~400 words) with at most a couple of short quotes; never reproduce a copyrighted book chapter or lyrics. source_url: a page the tools returned. Say in reply that it is a summary.',
+  '- Book chapters: read one chapter page directly. Sources in this order: 1. Standard Ebooks, one clean page per chapter: https://standardebooks.org/ebooks/<author-slug>/<book-slug>/text/chapter-<n> (e.g. https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice/text/chapter-3). 2. Wikisource: https://en.wikisource.org/wiki/<Book_Title>/Chapter_<n>. 3. Project Gutenberg last (often the whole book on one page: pass find, e.g. "CHAPTER III", and use from_text/to_text to cut the chapter out). A per-chapter page IS the chapter: from_text and to_text null.',
+  '- If the tools fail or find nothing, use no action and say so briefly in reply. Never invent a URL; use only URLs the tools returned or the user gave.',
   '- open_document for web text is the only action with source_url, kind, text, from_text, to_text; they are null everywhere else.',
   'Refer to cards ONLY by the exact ids given. Never invent ids. If unsure which card, use no action and ask in reply.',
   'You may be given the conversation so far. When the user says "again", "that", "it" or "the same for X", act on what the earlier turns refer to (same action, swapped card for X).',
@@ -224,16 +221,47 @@ const SYSTEM_PROMPT = [
 export type WebState = { pages: Map<string, string>; seen: Set<string> };
 export const emptyWeb = (): WebState => ({ pages: new Map(), seen: new Set() });
 
+/** Markdown tables (infoboxes, spec sheets) -> one plain line per row ("Codename - Stinson"); the reading view has no tables. */
+function tablesToLines(text: string): string {
+  return text
+    .split('\n')
+    .map((l) => {
+      const t = l.trim();
+      if (!t.startsWith('|')) return l;
+      if (/^\|[\s|:-]*\|?$/u.test(t)) return ''; // separator or empty row
+      const cells = t.replace(/^\||\|$/gu, '').split('|').map((c) => c.trim()).filter((c) => c.length > 0);
+      return cells.join(' - ');
+    })
+    .join('\n');
+}
+
+/** Drop back matter (References, External links, ...) when it starts in the later part of a page. */
+function cutBackMatter(text: string): string {
+  const re = /^#{1,4}\s*(references|external links|notes|footnotes|citations|sources|further reading|bibliography|see also)\s*$/gimu;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > text.length * 0.3) return text.slice(0, m.index);
+  }
+  return text;
+}
+
 /** Plain text / markdown for the reading view: no control chars, no HTML tags, capped. */
 export function cleanWebText(value: unknown, cap = MAX_WEB_TEXT): string | null {
   if (typeof value !== 'string') return null;
-  const text = value
+  const flatText = value
     .replace(/\r\n?/gu, '\n')
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/gu, '')
     .replace(/<\/?[a-z][^>]{0,200}>/giu, '')
     // Images and bare link clutter from scraped markdown.
     .replace(/!\[[^\]]{0,200}\]\([^)]{0,500}\)/gu, '')
+    // Wikipedia-style citation markers ([[1]](#cite_note-1), [\[1\]](...)) and [edit] links.
+    .replace(/\[\\?\[[^\]]{1,20}\\?\]\]\([^)]{0,500}\)/gu, '')
+    .replace(/\[edit\]\([^)]{0,500}\)/giu, '')
+    // Links -> their text (URLs may hold one level of parentheses and a "title").
+    .replace(/\[([^\]\n]{0,300})\]\([^()\s]*(?:\([^()\s]*\)[^()\s]*)*(?:\s+"[^"\n]{0,300}")?\)/gu, '$1')
+    .replace(/\\([[\]_*()#+\\-])/gu, '$1');
+  const text = cutBackMatter(tablesToLines(flatText))
     .replace(/\n{3,}/gu, '\n\n')
     .trim();
   if (text.length === 0) return null;
@@ -329,13 +357,13 @@ export const WEB_TOOLS = [
       type: 'object',
       additionalProperties: false,
       required: ['query'],
-      properties: { query: { type: 'string', description: 'The search query, e.g. "Pride and Prejudice chapter 1 wikisource".' } },
+      properties: { query: { type: 'string', description: 'The search query, e.g. "Meta Quest 3 wikipedia" or "Pride and Prejudice chapter 1 standard ebooks".' } },
     },
   },
   {
     type: 'function',
     name: 'read_page',
-    description: `Read a web page as markdown (up to ${MODEL_PAGE_CHARS} characters). Pass find to start reading at the first match of that text (e.g. "CHAPTER III" in a whole-book page).`,
+    description: `Read a web page as markdown (up to ${MODEL_PAGE_CHARS} characters). Pass find to start reading at the first match of that text (a section heading, or "CHAPTER III" in a whole-book page).`,
     strict: true,
     parameters: {
       type: 'object',
@@ -413,7 +441,7 @@ async function runTool(name: string, args: string, web: WebState, deps: WebDeps,
       total_chars: w.total,
       showing_from_char: w.offset,
       complete,
-      ...(complete ? { note: 'This is the whole page and you have no more tools: answer now. If it is the chapter, open_document with from_text/to_text null; if it is not, say so in reply.' } : {}),
+      ...(complete ? { note: 'This is the whole page and you have no more tools: answer now. If it is what the user asked for, open_document (from_text/to_text null for the whole page); if not, say so in reply.' } : {}),
       text: w.text,
     });
   }
@@ -434,7 +462,7 @@ export async function runToolLoop(call: LoopInput, deps: LoopDeps, signal: Abort
   for (const c of call.context) input.push({ role: 'developer', content: c });
   input.push({ role: 'user', content: call.input });
   let toolCalls = 0;
-  /** A read_page returned a whole (chapter) page: the next turn answers, no more tools. */
+  /** A read_page returned a whole page (article, chapter...): the next turn answers, no more tools. */
   let gotWholePage = false;
   for (let turn = 1; turn <= MAX_TURNS; turn += 1) {
     const final = gotWholePage || toolCalls >= MAX_TOOL_CALLS || deadline - now() < FINAL_RESERVE_MS || turn === MAX_TURNS;

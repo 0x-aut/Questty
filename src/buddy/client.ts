@@ -64,9 +64,9 @@ export async function askBuddyApi(
   }
 }
 
-/** A request that will probably need the web (a chapter, an article, a lookup). */
+/** A request that will probably need the web (an article, a docs page, a recipe, news, a chapter, a lookup). */
 export function looksLikeWeb(text: string): boolean {
-  return /\b(chapter|novel|article|search|look up|google|online|on the web|from the internet|fetch|wikipedia|gutenberg)\b/iu.test(text);
+  return /\b(chapter|novel|article|search|look up|pull up|google|online|on the web|from the internet|fetch|wikipedia|wiki|gutenberg|recipe|news|headlines|docs|documentation|website)\b/iu.test(text);
 }
 
 /** Test/dev: forget the "not configured" backoff. */

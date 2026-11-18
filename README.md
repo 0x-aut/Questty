@@ -69,16 +69,19 @@ Optional server variables (all have defaults): `OPENAI_TEXT_MODEL`,
 (`none|low|medium|high`, default `low`), `OPENAI_TRANSCRIBE_MODEL`,
 `OPENAI_LIVE_MODEL`, `OPENAI_LIVE_VOICE` (default `marin`).
 
-**Web tools (optional):** `FIRECRAWL_API_KEY` lets the buddy search the web
-and read a page before it answers ("Get chapter 3 of Pride and Prejudice and
-display it so I can read it"). Firecrawl only: search is `POST /v2/search`,
-reading a page is `POST /v2/scrape` (markdown, main content only). At most 3
-tool calls and ~25 s per request. For books the buddy goes straight to a
-per-chapter page: Standard Ebooks first, then Wikisource, Project Gutenberg
-last; a scrape that is really a maintenance/error/captcha page counts as a
-failure so it tries the next source. Public-domain chapters open as full text
-in the reading view, split into pages ("next page"); copyrighted books only get
-a short summary. Without the key the buddy behaves exactly as before.
+**Web tools (optional):** `FIRECRAWL_API_KEY` lets the buddy pull anything
+from the web into the reading view: an article, a Wikipedia entry, a docs page,
+a recipe, news, a book chapter ("Pull up the Wikipedia article on the Meta
+Quest 3 and show it to me", "Get chapter 3 of Pride and Prejudice"). Firecrawl
+only: search is `POST /v2/search`, reading a page is `POST /v2/scrape`
+(markdown, main content only). At most 3 tool calls and ~25 s per request. The
+page's main content is cleaned for reading (links flattened, citation markers,
+images and back matter like References / External links dropped, tables turned
+into lines); `from_text`/`to_text` can cut out one section. A scrape that is
+really a maintenance/error/captcha page counts as a failure, so the buddy tries
+another source. For books it goes to a per-chapter page: Standard Ebooks, then
+Wikisource, Project Gutenberg last. Copyrighted books, lyrics and paywalled
+pages only get a short summary. Without the key the buddy behaves exactly as before.
 
 **Vercel:** Project Settings -> Environment Variables -> add `OPENAI_API_KEY`
 (Production and Preview), then redeploy. The functions in `api/` run on

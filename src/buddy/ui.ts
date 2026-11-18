@@ -639,7 +639,7 @@ export class BuddySystem extends createSystem({
     const ids = new Set(cards.map((c) => c.id));
     let aiReply: string | null = null;
     let validated = { actions: [] as BuddyAction[], rejected: [] as Rejection[] };
-    // Web requests (a book chapter, an article) take several seconds: say so.
+    // Web requests (an article, a docs page, a chapter) take several seconds: say so.
     const fetching = window.setTimeout(() => {
       if (this.busy) this.say('Fetching that now...', { tag: 'FETCHING', sticky: true });
     }, looksLikeWeb(spoken) ? 300 : 3500);
