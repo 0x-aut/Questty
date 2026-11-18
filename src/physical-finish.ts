@@ -3,7 +3,7 @@
  *
  * Crumple the card in your hand (hold it, close your hand into a fist), press
  * it between two hands, or flick it away with a quick throw: it crumples into
- * a paper ball that arcs onto the trophy shelf, with the same chime, XP,
+ * a paper ball that arcs into the trash can (PR 12; was the trophy shelf), with the same chime, XP,
  * streak and flame flare as the Complete button. An Undo chip (and "undo" by
  * voice) puts the card back exactly where it was.
  *
@@ -14,6 +14,7 @@
 import {
   BufferAttribute,
   createSystem,
+  DistanceGrabbable,
   Grabbed,
   GrabSystem,
   IcosahedronGeometry,
@@ -43,6 +44,7 @@ import {
   type Vec,
 } from './finish-gesture.js';
 import { restoreCard, snapCard, type CardSnap } from './buddy/executor.js';
+import { TRASH_CAN_MOUTH } from './trash-can.js';
 
 type Hand = 'left' | 'right';
 type HeldState = {
@@ -60,6 +62,11 @@ const PAD_HOLD_MS = 300;
 const BALL_RADIUS = 0.032;
 const MAX_BALLS = 3;
 const FINGERS = ['middle-finger', 'ring-finger', 'pinky-finger'] as const;
+/**
+ * PR 12: a card let go this far from the head (horizontally, not over a
+ * surface) was thrown out of reach: it goes into the trash can (finished).
+ */
+const OUT_OF_REACH_M = 2.2;
 
 let ballGeometry: IcosahedronGeometry | undefined;
 let ballMaterial: MeshBasicMaterial | undefined;
@@ -315,8 +322,23 @@ export class PhysicalFinishSystem extends createSystem({
     // Pinning always wins: a release over a surface (or a fast drop onto one) is never a flick,
     // and the release then pins it there.
     const landing = landingTarget(e, this.world.player.gripSpaces[s.hand].getWorldPosition(new Vector3()));
-    const verdict = flickVerdict(this.samples[s.hand], head, now - s.since, landing !== null);
+    // PR 12: a pinch-ray / trigger drag (DistanceGrabbable) is never a flick. The card follows the ray,
+    // not the hand, so hand speed says nothing about a throw. With a mouse-driven emulator (the Immersive
+    // Web Emulator extension: left click = right trigger, the mouse swings the controller) a quick drag
+    // could read as a flick, crumple the card and fly it away. Only a card held in the hand can be flicked.
+    const rayDrag = e.hasComponent(DistanceGrabbable);
+    const verdict = rayDrag
+      ? { flick: false, reason: 'ray-drag', releaseSpeed: 0, peakSpeed: 0, travel: 0, awayCos: 0 }
+      : flickVerdict(this.samples[s.hand], head, now - s.since, landing !== null);
     if (landing !== null) holdLanding(cardId, landing);
+    // Thrown out of reach (released far away, not onto a surface): into the trash can.
+    if (landing === null && e.object3D != null) {
+      const p = e.object3D.getWorldPosition(this.tmpB);
+      if (Math.hypot(p.x - head[0], p.z - head[2]) > OUT_OF_REACH_M) {
+        this.verdicts.push({ ...verdict, flick: true, reason: 'out-of-reach', title: e.getValue(QuestCard, 'title') as string, at: Date.now() });
+        return this.finish(e, 'flick', null);
+      }
+    }
     this.verdicts.push({ ...verdict, title: e.getValue(QuestCard, 'title') as string, at: Date.now() });
     if (this.verdicts.length > 40) this.verdicts.shift();
     if (!verdict.flick) return false;
@@ -364,7 +386,7 @@ export class PhysicalFinishSystem extends createSystem({
 
   private throwBall(from: Vector3, velocity: Vector3 | null): void {
     const api = getBuddyFocusApi();
-    const shelf = api?.shelfPoint?.() ?? [0.65, 1.12, -1.2];
+    const shelf = api?.shelfPoint?.() ?? (TRASH_CAN_MOUTH.toArray() as [number, number, number]);
     let ball = this.balls.find((b) => b.done);
     if (ball === undefined && this.balls.length < MAX_BALLS) {
       const { geometry, material } = paperBall();

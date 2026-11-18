@@ -15,6 +15,7 @@ import {
   type Entity,
 } from '@iwsdk/core';
 import { QuestCard } from './quest-component.js';
+import { createTrashCan, TRASH_CAN_MOUTH } from './trash-can.js';
 import {
   allowFloatingFocus,
   canFocusCard,
@@ -91,8 +92,6 @@ const PAUSED_FADE_FACTOR = 0.4;
 const BLUR_OPACITY: Record<BlurLevel, number> = { off: 0, soft: 0.6, strong: 0.9 };
 /** PR 11: the calm scene replaces the room fully at Strong, nearly at Soft. */
 const CALM_OPACITY: Record<BlurLevel, number> = { off: 0, soft: 0.9, strong: 1 };
-const TROPHY_SHELF_ORIGIN = new Vector3(0.65, 0, -1.2);
-const TROPHY_SHELF_CARD_POSITION = new Vector3(0.65, 1.12, -1.2);
 const TIMER_RADIUS = 0.15;
 const TIMER_SEGMENTS = 96;
 /** Seated comfort: a little under arm's length from the eyes. */
@@ -191,8 +190,7 @@ export class SessionSystem extends createSystem({}) {
   private lastRingSegments = -1;
   private lastClockSecond = -1;
   private lastClockPaused = false;
-  private trophyShelfEntity: Entity | undefined;
-  private trophyShelfLoading = false;
+  private trashCanEntity: Entity | undefined;
   private pendingNudgeFor: Entity | undefined;
   private nudgeController: AbortController | undefined;
   private progress: ProgressState = getProgress();
@@ -232,8 +230,8 @@ export class SessionSystem extends createSystem({}) {
       restore: (snapshot) => this.buddyRestore(snapshot),
       complete: (entity, visual) => this.buddyComplete(entity, visual),
       shelfPoint: () => {
-        void this.loadTrophyShelf();
-        return TROPHY_SHELF_CARD_POSITION.toArray() as [number, number, number];
+        this.ensureTrashCan();
+        return TRASH_CAN_MOUTH.toArray() as [number, number, number];
       },
       revokeXp: (amount) => {
         this.progress = revokeXp(amount);
@@ -317,8 +315,8 @@ export class SessionSystem extends createSystem({}) {
         for (const material of this.timerDisk.materials) material.dispose();
         this.timerDisk = undefined;
       }
-      this.trophyShelfEntity?.dispose();
-      this.trophyShelfEntity = undefined;
+      this.trashCanEntity?.dispose();
+      this.trashCanEntity = undefined;
     });
   }
 
@@ -475,14 +473,14 @@ export class SessionSystem extends createSystem({}) {
       this.finishFocus(entity, 'manual', visual);
       return xp;
     }
-    void this.loadTrophyShelf();
+    this.ensureTrashCan();
     this.progress = awardXp(xp);
     this.updateProgressStatus();
     // The award's sound (chime, or the level-up fanfare instead) plays from XpBarSystem's onAward.
     setQuestCardState(entity, `Completed - +${xp} XP${bonusNote()}`);
     setCardActionMode(entity.getValue(QuestCard, 'cardId') as string, 'hidden');
     if (visual === 'crumple') crumpleQuestCard(entity);
-    else tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
+    else tweenQuestCardTo(entity, TRASH_CAN_MOUTH, 900);
     return xp;
   }
 
@@ -501,7 +499,7 @@ export class SessionSystem extends createSystem({}) {
   /** Complete (button) or the timer ran out: chime, mark done, award XP. */
   private finishFocus(entity: Entity, reason: 'manual' | 'timer' | 'away', visual: 'shelf' | 'crumple' = 'shelf'): void {
     if (this.state.phase !== 'focus' || this.activeCard !== entity) return;
-    void this.loadTrophyShelf();
+    this.ensureTrashCan();
     const xp = entity.getValue(QuestCard, 'xp') as number;
     const progress = awardXp(xp);
     this.progress = progress;
@@ -513,7 +511,7 @@ export class SessionSystem extends createSystem({}) {
     setQuestCardState(entity, `${prefix} - +${xp} XP${bonusNote()}`);
     setCardActionMode(cardId, 'hidden');
     if (visual === 'crumple') crumpleQuestCard(entity);
-    else tweenQuestCardTo(entity, TROPHY_SHELF_CARD_POSITION, 900);
+    else tweenQuestCardTo(entity, TRASH_CAN_MOUTH, 900);
     this.activeCard = undefined;
     // PR 11: each break asks for something different (far point, shoulders, water), in turn.
     const prompt = nextBreakPrompt(loadLastBreakPrompt());
@@ -951,23 +949,10 @@ export class SessionSystem extends createSystem({}) {
     });
   }
 
-  private async loadTrophyShelf(): Promise<void> {
-    if (this.trophyShelfEntity !== undefined || this.trophyShelfLoading) return;
-    this.trophyShelfLoading = true;
-    try {
-      const shelf = await this.world.assets.instantiate<Group>('plinth');
-      if (this.destroyed) {
-        shelf.removeFromParent();
-        return;
-      }
-      shelf.name = 'Trophy Shelf';
-      shelf.position.copy(TROPHY_SHELF_ORIGIN);
-      this.trophyShelfEntity = this.world.createTransformEntity(shelf);
-    } catch (error) {
-      console.warn('[session] Trophy shelf could not be loaded.', error);
-    } finally {
-      this.trophyShelfLoading = false;
-    }
+  /** PR 12: the trash can finished cards fly into (replaces the trophy plinth). */
+  private ensureTrashCan(): void {
+    if (this.trashCanEntity !== undefined || this.destroyed) return;
+    this.trashCanEntity = this.world.createTransformEntity(createTrashCan());
   }
 }
 
