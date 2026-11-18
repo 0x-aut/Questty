@@ -67,7 +67,7 @@ const CLOSE_WAIT_MS = 6_000;
  * audibly talking, and for a short tail after, the mic track is muted so the
  * headset speakers are not heard back as the user talking over it.
  */
-const ECHO_GATE = true;
+const ECHO_GATE = false; // off: keeps full duplex (barge-in). Turn on only if the buddy hears itself.
 const ECHO_GATE_LEVEL = 0.03;
 const ECHO_GATE_TAIL_MS = 250;
 
