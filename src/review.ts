@@ -2,15 +2,15 @@
  * PR 11: the evening review (rules in review-logic.ts, saved state in
  * review-store.ts).
  *
- * Once a day, at or after the review hour (default 6 pm, Settings cycles it),
- * or whenever the user asks ("review my day"), a small card appears low and to
- * the left, the open cards glow one by one, and the buddy says what is left.
+ * Only when the user asks ("review my day", "evening review"), a small card
+ * appears low and to the left (it never offers itself: an automatic offer at
+ * the review hour popped up right after the buddy added cards), the open cards glow one by one, and the buddy says what is left.
  * Finished cards are flicked (or crumpled) away with the physical-finish
  * gestures, which complete them with the usual chime and XP. "Roll N to
  * tomorrow" moves everything still open in Today / Unsorted / Before I leave
  * to Later with tomorrow's date; on that day those cards are promoted into
  * Today before the return ritual counts the room (the ritual never asks about
- * them). "Not now" closes it for the day. With the return ritual on screen the
+ * them). "Later", the X, or "close the review" closes it for the day. With the return ritual on screen the
  * review waits until the ritual is gone; it never starts during a focus.
  */
 import { createSystem, Matrix4, PokeInteractable, Quaternion, RayInteractable, UIKit, UIKitMLAsset, Vector3, type Entity } from '@iwsdk/core';
@@ -29,7 +29,6 @@ const SCALE = 0.065;
 const DISTANCE = 0.46;
 const DROP = 0.4;
 const SIDE_DEG = 16;
-const CHECK_MS = 15_000;
 const GLOW_STEP_MS = 700;
 /** It stays until answered, but not forever: after this it closes for the day. */
 const MAX_OPEN_MS = 180_000;
@@ -48,6 +47,12 @@ let starter: ((source: 'auto' | 'ask') => boolean) | undefined;
 /** Start the evening review now (the buddy's "review my day"). False when it cannot. */
 export function startEveningReview(): boolean {
   return starter?.('ask') ?? false;
+}
+
+let closer: (() => boolean) | undefined;
+/** Close the evening review for today (the buddy's "close the review"). False when none is open. */
+export function closeEveningReview(): boolean {
+  return closer?.() ?? false;
 }
 
 /**
@@ -73,7 +78,6 @@ export class ReviewSystem extends createSystem({
   private entity: Entity | undefined;
   private loading: Promise<void> | null = null;
   private run: Run | null = null;
-  private timer = 0;
   private opacity = 0;
   private lastOpacity = -1;
   private closing = false;
@@ -84,7 +88,7 @@ export class ReviewSystem extends createSystem({
 
   init(): void {
     starter = (source) => this.start(source);
-    this.timer = window.setInterval(() => this.check(), CHECK_MS);
+    closer = () => this.later();
     const xr = this.world.renderer.xr;
     const onStart = () => {
       // The return ritual (2.5 s after the session starts) promotes due cards itself and says so; this
@@ -94,13 +98,13 @@ export class ReviewSystem extends createSystem({
         const moved = promoteDueCards();
         if (moved.length > 0) this.log('promoted', moved.join(','));
       }, 6000);
-      window.setTimeout(() => this.check(), 6500);
+      // No automatic offer: the review only opens when the user asks for it.
     };
     xr.addEventListener('sessionstart', onStart);
     this.cleanupFuncs.push(
       () => {
         starter = undefined;
-        window.clearInterval(this.timer);
+        closer = undefined;
         xr.removeEventListener('sessionstart', onStart);
         this.entity?.dispose();
       },
@@ -146,17 +150,20 @@ export class ReviewSystem extends createSystem({
     return out;
   }
 
-  /** Auto offer: XR on, no ritual on screen, no focus running, once a day after the hour. */
+  /**
+   * Would an automatic offer be due now? Kept for the dev harness only: nothing
+   * calls it on a timer or on card changes any more, and it never opens the card.
+   */
   private check(): boolean {
     if (this.run !== null || !this.world.renderer.xr.isPresenting || isRitualRunning()) return false;
     if (loadFocusTimer() !== null) return false;
     const open = this.openCards().filter((c) => ROLLING.has(c.category) && getReviewStore().due[c.id] === undefined);
-    if (!reviewDue(Date.now(), getReviewStore(), open.length)) return false;
-    return this.start('auto');
+    return reviewDue(Date.now(), getReviewStore(), open.length);
   }
 
   private start(source: 'auto' | 'ask'): boolean {
-    if (this.run !== null) return false;
+    // Already on screen: asking again just keeps it.
+    if (this.run !== null) return this.run.answered === null && !this.closing;
     if (isRitualRunning()) {
       // Never on top of the welcome-back card: try again once it is gone.
       window.setTimeout(() => this.start(source), 3000);
@@ -216,6 +223,7 @@ export class ReviewSystem extends createSystem({
       this.entity.addComponent(PokeInteractable);
       panel.requireElementById('review-roll').addEventListener('click', () => this.roll());
       panel.requireElementById('review-later').addEventListener('click', () => this.later());
+      panel.requireElementById('review-close').addEventListener('click', () => this.later());
     })();
     return this.loading;
   }
@@ -309,7 +317,10 @@ export class ReviewSystem extends createSystem({
     }
     const want = this.closing ? 0 : 1;
     const step = 0.08;
-    this.opacity = want > this.opacity ? Math.min(1, this.opacity + step) : Math.max(0, this.opacity - step);
+    // Ease toward the wanted opacity and stop there. (This used to treat "already
+    // there" as "fade out", so a fully shown card dropped to 0.92 every other
+    // frame and bounced back to 1, re-setting opacity each frame: the flicker.)
+    if (this.opacity !== want) this.opacity = want > this.opacity ? Math.min(1, this.opacity + step) : Math.max(0, this.opacity - step);
     if (Math.abs(this.opacity - this.lastOpacity) > 0.04 || (this.opacity === 0 && this.lastOpacity !== 0) || (this.opacity === 1 && this.lastOpacity !== 1)) {
       this.lastOpacity = this.opacity;
       panel.getElementById('review-root')?.setProperties({ opacity: this.opacity } as never);

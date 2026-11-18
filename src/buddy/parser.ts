@@ -202,11 +202,17 @@ export const REVIEW_RE = /\b(evening review|review (my|the|to)?\s*day|(day|daily
 export function wantsEveningReview(text: string): boolean {
   return REVIEW_RE.test(normalize(text));
 }
+/** "close the review", "dismiss the evening review", "hide the review": closes it for the day. */
+export const CLOSE_REVIEW_RE = /\b(close|dismiss|hide|stop|cancel|end|skip|exit)( the| my| this| that)?( evening| daily| day)? review\b/iu;
+export function wantsCloseReview(text: string): boolean {
+  return CLOSE_REVIEW_RE.test(normalize(text));
+}
 
 export function classify(text: string): 'command' | 'dump' {
   const t = normalize(text);
   if (t.length === 0) return 'dump';
   if (REVIEW_RE.test(t) && t.split(' ').length <= 9) return 'command';
+  if (CLOSE_REVIEW_RE.test(t) && t.split(' ').length <= 9) return 'command';
   // "I need to X, Y and Z" or a long list is a dump even if a verb sneaks in.
   const commas = (t.match(/,/gu) ?? []).length;
   if (/^(okay |so |um |uh )*(today |later |tomorrow )?(i (need|have|got|want|should|must) to|i've got to|gotta)\b/iu.test(t)) return 'dump';
