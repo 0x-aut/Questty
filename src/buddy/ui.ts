@@ -57,7 +57,7 @@ import { classify, parseCommand, wantsEveningReview } from './parser.js';
 import { startEveningReview } from '../review.js';
 import { attachBuddyVoice, detachBuddyVoice, playBuddyCue, primeAudio } from '../sfx.js';
 import { setBuddySoundSource } from '../spatial-audio.js';
-import { askBuddyApi, resetBuddyApiBackoff, type FocusInfo } from './client.js';
+import { askBuddyApi, looksLikeWeb, resetBuddyApiBackoff, type FocusInfo } from './client.js';
 import { forgetConversation, lastActions, memoryPayload, memoryTurns, rememberTurn } from './memory.js';
 import { BuddyExecutor, type ExecResult, type Offer, type PlaceOutcome, type UndoEntry } from './executor.js';
 import { aimPoint, describeSpot, resolvePlace, whereLabel } from './spatial.js';
@@ -639,6 +639,10 @@ export class BuddySystem extends createSystem({
     const ids = new Set(cards.map((c) => c.id));
     let aiReply: string | null = null;
     let validated = { actions: [] as BuddyAction[], rejected: [] as Rejection[] };
+    // Web requests (a book chapter, an article) take several seconds: say so.
+    const fetching = window.setTimeout(() => {
+      if (this.busy) this.say('Fetching that now...', { tag: 'FETCHING', sticky: true });
+    }, looksLikeWeb(spoken) ? 300 : 3500);
     try {
       const reply = await askBuddyApi(spoken, cards, this.focusInfo());
       aiReply = cleanReply(reply.reply);
@@ -649,6 +653,8 @@ export class BuddySystem extends createSystem({
     } catch (error) {
       record.mode = 'offline';
       record.apiError = (error as { code?: string }).code ?? 'error';
+    } finally {
+      window.clearTimeout(fetching);
     }
     if (record.mode === 'offline') {
       aiReply = null;

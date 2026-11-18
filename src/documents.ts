@@ -28,7 +28,11 @@ export const NOTES_KEY = 'questty.notes.v1';
 export const DOC_VIEW_KEY = 'questty.docview.v1';
 export const MAX_BODY = 6000;
 export const MAX_DOC_TITLE = 60;
-const MAX_GENERATED = 12;
+const MAX_GENERATED = 24;
+/** Web text (a chapter the buddy fetched): the whole text, before it is split into pages. */
+export const MAX_WEB_BODY = 60_000;
+/** One page of web text in the reading view (the canvas tops out around 8k px). */
+export const WEB_PAGE_CHARS = 7_000;
 const MAX_NOTES = 80;
 
 export type GeneratedDoc = { id: string; title: string; body: string; at: number };
@@ -57,6 +61,74 @@ export function cleanBody(value: unknown): string | null {
   const text = value.replace(/\r\n?/gu, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/gu, '').replace(/[\u2014\u2013]/gu, '-').trim();
   if (text.length === 0) return null;
   return text.length > MAX_BODY ? `${text.slice(0, MAX_BODY - 3)}...` : text;
+}
+
+/** Clean web text (a fetched chapter or a summary): like cleanBody, with the larger web cap. */
+export function cleanWebBody(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  // eslint-disable-next-line no-control-regex
+  const text = value.replace(/\r\n?/gu, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/gu, '').replace(/<\/?[a-z][^>]{0,200}>/giu, '').trim();
+  if (text.length === 0) return null;
+  return text.length > MAX_WEB_BODY ? `${text.slice(0, MAX_WEB_BODY - 3)}...` : text;
+}
+
+/** A public http(s) URL or null. */
+export function cleanSourceUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 2000) return null;
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Split long text into pages at paragraph breaks (a single huge paragraph is cut at a space). */
+export function splitPages(text: string, size = WEB_PAGE_CHARS): string[] {
+  const pages: string[] = [];
+  let rest = text.trim();
+  while (rest.length > size) {
+    let cut = rest.lastIndexOf('\n\n', size);
+    if (cut < size * 0.5) cut = rest.lastIndexOf(' ', size);
+    if (cut < size * 0.5) cut = size;
+    pages.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest.length > 0) pages.push(rest);
+  return pages;
+}
+
+export type WebDocInput = { title: string; body: string; subtitle?: string; source_url: string; kind: 'full_text' | 'summary' };
+
+/**
+ * Save fetched web text as buddy documents, one per page, each with a header
+ * (subtitle, source host, a summary note) and a "next page" footer. Returns
+ * the saved pages, first page first.
+ */
+export function saveWebDoc(input: WebDocInput, now = Date.now()): GeneratedDoc[] {
+  let host = input.source_url;
+  try {
+    host = new URL(input.source_url).hostname.replace(/^www\./u, '');
+  } catch {
+    // keep the raw url
+  }
+  const parts = splitPages(input.body);
+  const n = parts.length;
+  const saved: GeneratedDoc[] = [];
+  // Save the last page first so page 1 ends up newest (top of the list).
+  for (let i = n - 1; i >= 0; i -= 1) {
+    const label = n > 1 ? ` (p. ${i + 1}/${n})` : '';
+    const title = `${input.title.slice(0, MAX_DOC_TITLE - label.length)}${label}`;
+    const head = [
+      `# ${input.title}`,
+      ...(input.subtitle ? [`## ${input.subtitle}`] : []),
+      `Source: ${host}${input.kind === 'summary' ? ' - summary, not the full text' : ''}${n > 1 ? ` - page ${i + 1} of ${n}` : ''}`,
+      '',
+    ];
+    const foot = i < n - 1 ? ['', `Say "next page" for page ${i + 2} of ${n}.`] : [];
+    saved.unshift(saveGeneratedDoc(title, [...head, parts[i], ...foot].join('\n'), now + i));
+  }
+  return saved;
 }
 
 export function cleanDocTitle(value: unknown): string | null {

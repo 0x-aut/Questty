@@ -66,9 +66,13 @@ export type ExecutorHost = {
   openDocument(request: DocRequest): Promise<DocOutcome>;
 };
 
-export type DocRequest = { doc_id: string } | { card_id: string } | { title: string; body: string };
+export type DocRequest =
+  | { doc_id: string }
+  | { card_id: string }
+  | { title: string; body: string }
+  | { title: string; body: string; source_url: string; kind: 'full_text' | 'summary'; subtitle?: string };
 export type DocOutcome =
-  | { ok: true; title: string; minutes: number; written: boolean; undo: () => void }
+  | { ok: true; title: string; minutes: number; written: boolean; undo: () => void; web?: { pages: number; kind: 'full_text' | 'summary' } }
   | { ok: false; reply: string };
 
 export type CardSnap = {
@@ -225,7 +229,9 @@ export class BuddyExecutor {
           if ('card_id' in action) result.touched.push(action.card_id);
           result.changed = true;
           replies.push(
-            out.written
+            out.web !== undefined
+              ? `${out.web.kind === 'summary' ? 'Here is a summary of' : 'Opened'} "${quote(out.title)}"${out.web.pages > 1 ? ` (page 1 of ${out.web.pages}; say "next page" to go on)` : ''}. Pinch and drag to scroll.`
+              : out.written
               ? `Wrote "${quote(out.title)}" and opened it. Pinch and drag to scroll.`
               : `Opened "${quote(out.title)}" (${out.minutes} min read). Pinch and drag to scroll.`,
           );

@@ -50,6 +50,7 @@ import {
   SAMPLE_DOCS,
   saveDocView,
   saveGeneratedDoc,
+  saveWebDoc,
   wrapText,
   type DocSource,
   type DocViewSaved,
@@ -214,7 +215,14 @@ export class DocViewSystem extends createSystem({}) {
     const prevPose = this.doc === null ? null : { p: this.center.clone(), q: this.quat.clone() };
     let next: OpenDoc | null = null;
     let written = false;
-    if ('body' in request) {
+    let web: { pages: number; kind: 'full_text' | 'summary' } | undefined;
+    if ('source_url' in request) {
+      const pages = saveWebDoc(request);
+      const g = pages[0];
+      next = { id: g.id, title: g.title, source: 'buddy', body: g.body };
+      written = true;
+      web = { pages: pages.length, kind: request.kind };
+    } else if ('body' in request) {
       const g = saveGeneratedDoc(request.title, request.body);
       next = { id: g.id, title: g.title, source: 'buddy', body: g.body };
       written = true;
@@ -245,6 +253,7 @@ export class DocViewSystem extends createSystem({}) {
       title: opened.title,
       minutes: readMinutes(opened.body),
       written,
+      ...(web !== undefined ? { web } : {}),
       undo: () => {
         if (previous !== null && prevPose !== null) void this.show(previous, { p: prevPose.p.toArray() as [number, number, number], q: prevPose.q.toArray() as [number, number, number, number] });
         else this.close();

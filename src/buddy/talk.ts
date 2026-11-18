@@ -285,7 +285,7 @@ export class TalkSession {
         if (id.length === 0) break;
         this.lastActivity = performance.now();
         // Cancel the generic spoken acknowledgement; the real result follows.
-        this.send({ type: 'session.thinking.append', delegation_id: id, content: 'Working on it in the room.' });
+        this.send({ type: 'session.thinking.append', delegation_id: id, content: 'Working on it in the room (web requests can take up to 30 seconds; say "Fetching that now." if it is one).' });
         const heardAt = performance.now();
         this.queue = this.queue.then(() => this.runDelegation(id, heardAt));
         break;

@@ -12,7 +12,8 @@ import { memoryPayload } from './memory.js';
 export type BuddyApiReply = { reply: unknown; actions: unknown };
 export type FocusInfo = { card_id: string; paused: boolean; remaining_min: number } | null;
 
-const TIMEOUT_MS = 9_000;
+// The server may search the web and read a page first (up to ~25 s, hard stop 32 s).
+const TIMEOUT_MS = 35_000;
 /** After the server says it has no key, skip it for a while (go straight to the offline parser). */
 const NOT_CONFIGURED_BACKOFF_MS = 60_000;
 let skipUntil = 0;
@@ -61,6 +62,11 @@ export async function askBuddyApi(
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+/** A request that will probably need the web (a chapter, an article, a lookup). */
+export function looksLikeWeb(text: string): boolean {
+  return /\b(chapter|novel|article|search|look up|google|online|on the web|from the internet|fetch|wikipedia|gutenberg)\b/iu.test(text);
 }
 
 /** Test/dev: forget the "not configured" backoff. */
