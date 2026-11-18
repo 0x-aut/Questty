@@ -69,16 +69,16 @@ Optional server variables (all have defaults): `OPENAI_TEXT_MODEL`,
 (`none|low|medium|high`, default `low`), `OPENAI_TRANSCRIBE_MODEL`,
 `OPENAI_LIVE_MODEL`, `OPENAI_LIVE_VOICE` (default `marin`).
 
-**Web tools (optional):** `FIRECRAWL_API_KEY` and/or `CONTEXT_DEV_API_KEY`
-let the buddy search the web and read a page before it answers ("Get chapter 1
-of Pride and Prejudice and display it so I can read it"). Search uses
-Context.dev (`POST /v1/web/search`) with Firecrawl (`POST /v2/search`) as the
-fallback; reading a page uses Firecrawl (`POST /v2/scrape`, markdown, main
-content only) with Context.dev (`POST /v1/web/scrape`) as the fallback. At most
-3 tool calls and ~25 s per request. Public-domain books (Wikisource, Project
-Gutenberg, Standard Ebooks) open as full text in the reading view, split into
-pages ("next page"); copyrighted books only get a short summary. Without
-either key the buddy behaves exactly as before.
+**Web tools (optional):** `FIRECRAWL_API_KEY` lets the buddy search the web
+and read a page before it answers ("Get chapter 3 of Pride and Prejudice and
+display it so I can read it"). Firecrawl only: search is `POST /v2/search`,
+reading a page is `POST /v2/scrape` (markdown, main content only). At most 3
+tool calls and ~25 s per request. For books the buddy goes straight to a
+per-chapter page: Standard Ebooks first, then Wikisource, Project Gutenberg
+last; a scrape that is really a maintenance/error/captcha page counts as a
+failure so it tries the next source. Public-domain chapters open as full text
+in the reading view, split into pages ("next page"); copyrighted books only get
+a short summary. Without the key the buddy behaves exactly as before.
 
 **Vercel:** Project Settings -> Environment Variables -> add `OPENAI_API_KEY`
 (Production and Preview), then redeploy. The functions in `api/` run on

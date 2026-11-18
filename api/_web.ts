@@ -2,20 +2,17 @@
  * Server-only web helpers for the buddy's tools (web_search, read_page).
  * The leading underscore keeps Vercel from deploying this file as a route.
  *
- * Providers (keys are server env vars, never VITE_):
- *  - Search: Context.dev POST https://api.context.dev/v1/web/search
- *      body { query, numResults } -> { results: [{ url, title, description }] }
- *    fallback Firecrawl POST https://api.firecrawl.dev/v2/search
+ * Provider: Firecrawl only (server env FIRECRAWL_API_KEY, never VITE_).
+ *  - Search: POST https://api.firecrawl.dev/v2/search
  *      body { query, limit } -> { success, data: { web: [{ url, title, description }] } }
- *  - Read: Firecrawl POST https://api.firecrawl.dev/v2/scrape
+ *  - Read:   POST https://api.firecrawl.dev/v2/scrape
  *      body { url, formats: ['markdown'], onlyMainContent: true, timeout }
- *      -> { success, data: { markdown, metadata: { title, url } } }
- *    fallback Context.dev POST https://api.context.dev/v1/web/scrape
- *      body { url, formats: { markdown: true } }
- *      -> { url, markdown: { success, data }, metadata: { title, finalUrl } }
+ *      -> { success, data: { markdown, metadata: { title, url, statusCode } } }
  *
  * Every call has its own timeout and never throws: failures come back as a
- * friendly { ok: false, error } the model can read.
+ * friendly { ok: false, error } the model can read. A scraped page that is
+ * really a maintenance / error / captcha page counts as a failure, so the
+ * model tries another source.
  */
 import { serverEnv } from './_openai.js';
 
@@ -99,63 +96,76 @@ function hits(list: unknown): SearchHit[] {
 export async function webSearch(query: string, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<SearchResult> {
   const q = query.replace(/\s+/gu, ' ').trim().slice(0, 400);
   if (q.length === 0) return { ok: false, error: 'empty query' };
-  const env = serverEnv();
+  const key = serverEnv().FIRECRAWL_API_KEY;
+  if (!key) return { ok: false, error: 'Web search is not set up on the server (no FIRECRAWL_API_KEY).' };
   const timeoutMs = Math.min(opts.timeoutMs ?? PROVIDER_TIMEOUT_MS, PROVIDER_TIMEOUT_MS);
-  const ctxKey = env.CONTEXT_DEV_API_KEY;
-  const fcKey = env.FIRECRAWL_API_KEY;
-  if (!ctxKey && !fcKey) return { ok: false, error: 'Web search is not set up on the server (no CONTEXT_DEV_API_KEY or FIRECRAWL_API_KEY).' };
-  if (ctxKey) {
-    const r = await postJson('https://api.context.dev/v1/web/search', ctxKey, { query: q, numResults: 6 }, timeoutMs, opts.signal);
-    const results = r.ok && isRecord(r.json) ? hits(r.json.results) : [];
-    if (results.length > 0) return { ok: true, provider: 'context.dev', results };
-    if (r.status > 0) console.warn('[web] context.dev search', r.status);
-  }
-  if (fcKey) {
-    const r = await postJson('https://api.firecrawl.dev/v2/search', fcKey, { query: q, limit: 6, timeout: timeoutMs }, timeoutMs, opts.signal);
-    const data = r.ok && isRecord(r.json) && isRecord(r.json.data) ? r.json.data : null;
-    const results = data !== null ? hits(data.web) : [];
-    if (results.length > 0) return { ok: true, provider: 'firecrawl', results };
-    if (r.status > 0) console.warn('[web] firecrawl search', r.status);
-  }
+  const r = await postJson('https://api.firecrawl.dev/v2/search', key, { query: q, limit: 6 }, timeoutMs, opts.signal);
+  const data = r.ok && isRecord(r.json) && isRecord(r.json.data) ? r.json.data : null;
+  const results = data !== null ? hits(data.web) : [];
+  if (results.length > 0) return { ok: true, provider: 'firecrawl', results };
+  if (r.status > 0) console.warn('[web] firecrawl search', r.status);
   return { ok: false, error: 'The search found nothing or the search service did not answer.' };
+}
+
+/**
+ * A scrape that "worked" but is really a maintenance, error or bot-check page
+ * (e.g. Project Gutenberg's "Temporarily Down for Maintenance"). Exported for tests.
+ */
+export function looksBroken(markdown: string, statusCode?: unknown): boolean {
+  if (typeof statusCode === 'number' && statusCode >= 400) return true;
+  const t = markdown.trim();
+  if (t.length < 400) return true;
+  const head = t.slice(0, 3000).toLowerCase();
+  const bad = /temporarily down|down for maintenance|under maintenance|access denied|403 forbidden|404 not found|page not found|are you a robot|verify you are human|captcha|cloudflare ray id|enable javascript and cookies|too many requests/u;
+  return t.length < 4000 && bad.test(head);
+}
+
+/**
+ * Drop navigation cruft above the text (Wikisource's "Jump to content",
+ * download links, header boxes): start at the first markdown heading that
+ * names a chapter, or a bare "CHAPTER III." line (Wikisource), when there is
+ * one in the first part of the page.
+ */
+export function stripNavCruft(markdown: string): string {
+  // Wiki footer: everything from "Retrieved from" / "Hidden categories:" on.
+  const foot = markdown.search(/\n(Retrieved from "|Hidden categories:|Categories:\s*$)/mu);
+  if (foot > 2000) markdown = markdown.slice(0, foot);
+  const lines = markdown.split('\n');
+  const limit = Math.min(lines.length, 200);
+  for (let i = 0; i < limit; i += 1) {
+    if (/^#{1,4}\s+.*\b(chapter|chap\.)\b/iu.test(lines[i]) || /^\s*chapter\s+([ivxlcdm]+|\d+)\s*[.:]?\s*$/iu.test(lines[i])) return i === 0 ? markdown : lines.slice(i).join('\n');
+  }
+  // No chapter heading: still drop the obvious skip-link / download lines at the top.
+  let i = 0;
+  while (i < limit && (lines[i].trim() === '' || /jump to (content|navigation|search)|^\s*\[?download|\bepub\b|\bmobi\b|\bpdf\b.*\]\(/iu.test(lines[i]))) i += 1;
+  return i === 0 ? markdown : lines.slice(i).join('\n');
 }
 
 export async function readPage(url: string, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<PageResult> {
   const safe = safeUrl(url);
   if (safe === null) return { ok: false, error: 'That is not a public web address.' };
-  const env = serverEnv();
+  const key = serverEnv().FIRECRAWL_API_KEY;
+  if (!key) return { ok: false, error: 'Reading web pages is not set up on the server (no FIRECRAWL_API_KEY).' };
   const timeoutMs = Math.min(opts.timeoutMs ?? PROVIDER_TIMEOUT_MS, PROVIDER_TIMEOUT_MS);
-  const ctxKey = env.CONTEXT_DEV_API_KEY;
-  const fcKey = env.FIRECRAWL_API_KEY;
-  if (!ctxKey && !fcKey) return { ok: false, error: 'Reading web pages is not set up on the server (no FIRECRAWL_API_KEY or CONTEXT_DEV_API_KEY).' };
-  if (fcKey) {
-    const r = await postJson(
-      'https://api.firecrawl.dev/v2/scrape',
-      fcKey,
-      { url: safe, formats: ['markdown'], onlyMainContent: true, timeout: Math.max(1000, timeoutMs - 500) },
-      timeoutMs,
-      opts.signal,
-    );
-    const data = r.ok && isRecord(r.json) && isRecord(r.json.data) ? r.json.data : null;
-    const md = data !== null ? str(data.markdown, MAX_PAGE_CHARS) : '';
-    if (md.trim().length > 0) {
-      const meta = data !== null && isRecord(data.metadata) ? data.metadata : {};
-      return { ok: true, provider: 'firecrawl', url: safeUrl(meta.url) ?? safe, title: str(meta.title, 200), markdown: md };
-    }
-    if (r.status > 0) console.warn('[web] firecrawl scrape', r.status);
+  const r = await postJson(
+    'https://api.firecrawl.dev/v2/scrape',
+    key,
+    { url: safe, formats: ['markdown'], onlyMainContent: true, timeout: Math.max(1000, timeoutMs - 500) },
+    timeoutMs,
+    opts.signal,
+  );
+  const data = r.ok && isRecord(r.json) && isRecord(r.json.data) ? r.json.data : null;
+  const md = data !== null ? str(data.markdown, MAX_PAGE_CHARS) : '';
+  const meta = data !== null && isRecord(data.metadata) ? data.metadata : {};
+  if (md.trim().length > 0 && !looksBroken(md, meta.statusCode)) {
+    return { ok: true, provider: 'firecrawl', url: safeUrl(meta.url) ?? safe, title: str(meta.title, 200), markdown: stripNavCruft(md) };
   }
-  if (ctxKey) {
-    const r = await postJson('https://api.context.dev/v1/web/scrape', ctxKey, { url: safe, formats: { markdown: true } }, timeoutMs, opts.signal);
-    const j = r.ok && isRecord(r.json) ? r.json : null;
-    const mdObj = j !== null && isRecord(j.markdown) ? j.markdown : null;
-    const md = mdObj !== null && mdObj.success !== false ? str(mdObj.data, MAX_PAGE_CHARS) : '';
-    if (md.trim().length > 0) {
-      const meta = j !== null && isRecord(j.metadata) ? j.metadata : {};
-      return { ok: true, provider: 'context.dev', url: safeUrl(j?.url) ?? safeUrl(meta.finalUrl) ?? safe, title: str(meta.title, 200), markdown: md };
-    }
-    if (r.status > 0) console.warn('[web] context.dev scrape', r.status);
+  if (md.trim().length > 0) {
+    console.warn('[web] firecrawl scrape looks like an error/maintenance page', safe);
+    return { ok: false, error: 'That page is down or blocked right now (maintenance or error page). Try another source.' };
   }
-  return { ok: false, error: 'I could not read that page.' };
+  if (r.status > 0) console.warn('[web] firecrawl scrape', r.status);
+  return { ok: false, error: 'I could not read that page. Try another source.' };
 }
 
 /**

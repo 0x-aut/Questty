@@ -204,7 +204,12 @@ const SYSTEM_PROMPT = [
   '- open_document {doc_id | card_id | title+body}: open a document in the reading view. doc_id: one of the docs listed in the room state ("open my essay", "read the project brief"). card_id: that card\'s notes ("open the notes on the gym card"). title + body: when the user asks you to write something to read ("write an outline for my talk"); body is short plain markdown (headings, bullets), max ~300 words. Use exactly one of the three.',
   'Web (only when the tools web_search and read_page are available):',
   '- Use the tools for anything that needs the internet: a book chapter, an article, a fact you do not know. Max 3 tool calls in total, so be direct: usually one web_search, then one read_page of the best result.',
-  '- For books prefer public-domain sources: Wikisource (one page per chapter, e.g. en.wikisource.org/wiki/Pride_and_Prejudice/Chapter_1), Project Gutenberg (gutenberg.org, often the whole book on one page: pass find, e.g. "CHAPTER III", to read_page), Standard Ebooks (standardebooks.org).',
+  '- For a book chapter, read one chapter page directly (you may skip web_search when you know the URL). Sources in this order:',
+  '  1. Standard Ebooks, one clean page per chapter: https://standardebooks.org/ebooks/<author-slug>/<book-slug>/text/chapter-<n> (e.g. https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice/text/chapter-3; the page starts with a heading like "## III").',
+  '  2. Wikisource: https://en.wikisource.org/wiki/<Book_Title>/Chapter_<n> (e.g. https://en.wikisource.org/wiki/Pride_and_Prejudice/Chapter_3).',
+  '  3. Project Gutenberg last (often the whole book on one page: pass find, e.g. "CHAPTER III", to read_page). It may be down for maintenance.',
+  '- If read_page returns an error (down, maintenance, blocked, not found), try the next source; do not give up after one failure.',
+  '- A per-chapter page (Standard Ebooks, Wikisource) IS the chapter: once read_page returns it (complete: true), answer right away with open_document, from_text and to_text null. Never read the same URL twice and never search for the end of a chapter page.',
   '- Then open it with open_document {title, subtitle?, source_url, kind, from_text?, to_text?, text?}. title: the book or article ("Pride and Prejudice"); subtitle: the part ("Chapter 1") and author.',
   '  kind "full_text": ONLY for public-domain or openly licensed text you read with read_page. source_url must be that page. Leave text null: the app takes the text from the page itself. from_text: the exact heading or first words where the chapter starts on the page (e.g. "Chapter 1" or "CHAPTER III"); to_text: the exact heading where the next chapter starts (e.g. "Chapter 2"), or null when the page is just this chapter.',
   '  kind "summary": for copyrighted modern books (or when no free text exists). Never reproduce a copyrighted chapter: write a summary in text (plain markdown, max ~400 words) with at most a couple of short quotes, and set source_url to a page you found. Say in reply that it is a summary.',
@@ -346,7 +351,7 @@ export const WEB_TOOLS = [
 
 export function webConfigured(): boolean {
   const env = serverEnv();
-  return Boolean(env.FIRECRAWL_API_KEY || env.CONTEXT_DEV_API_KEY);
+  return Boolean(env.FIRECRAWL_API_KEY);
 }
 
 export type WebDeps = {
@@ -390,7 +395,9 @@ async function runTool(name: string, args: string, web: WebState, deps: WebDeps,
   if (name === 'read_page') {
     const url = safeUrl(parsed.url);
     if (url === null) return JSON.stringify({ error: 'not a public web address' });
-    const r = await deps.read(url, { timeoutMs, signal });
+    // The same page twice in one request: answer from what we already read.
+    const cached = web.pages.get(url);
+    const r: PageResult = cached !== undefined ? { ok: true, provider: 'cache', url, title: '', markdown: cached } : await deps.read(url, { timeoutMs, signal });
     if (!r.ok) return JSON.stringify({ error: r.error });
     web.pages.set(url, r.markdown);
     web.seen.add(url);
@@ -399,7 +406,16 @@ async function runTool(name: string, args: string, web: WebState, deps: WebDeps,
       web.seen.add(r.url);
     }
     const w = pageWindow(r.markdown, typeof parsed.find === 'string' ? parsed.find : null);
-    return JSON.stringify({ url, title: r.title, total_chars: w.total, showing_from_char: w.offset, text: w.text });
+    const complete = w.offset === 0 && w.text.length >= w.total;
+    return JSON.stringify({
+      url,
+      title: r.title,
+      total_chars: w.total,
+      showing_from_char: w.offset,
+      complete,
+      ...(complete ? { note: 'This is the whole page and you have no more tools: answer now. If it is the chapter, open_document with from_text/to_text null; if it is not, say so in reply.' } : {}),
+      text: w.text,
+    });
   }
   return JSON.stringify({ error: `unknown tool ${name}` });
 }
@@ -418,8 +434,10 @@ export async function runToolLoop(call: LoopInput, deps: LoopDeps, signal: Abort
   for (const c of call.context) input.push({ role: 'developer', content: c });
   input.push({ role: 'user', content: call.input });
   let toolCalls = 0;
+  /** A read_page returned a whole (chapter) page: the next turn answers, no more tools. */
+  let gotWholePage = false;
   for (let turn = 1; turn <= MAX_TURNS; turn += 1) {
-    const final = toolCalls >= MAX_TOOL_CALLS || deadline - now() < FINAL_RESERVE_MS || turn === MAX_TURNS;
+    const final = gotWholePage || toolCalls >= MAX_TOOL_CALLS || deadline - now() < FINAL_RESERVE_MS || turn === MAX_TURNS;
     const body: Record<string, unknown> = {
       model: call.model,
       reasoning: { effort: call.effort },
@@ -447,6 +465,7 @@ export async function runToolLoop(call: LoopInput, deps: LoopDeps, signal: Abort
         const left = deadline - now() - FINAL_RESERVE_MS / 2;
         output = left < 1500 ? JSON.stringify({ error: 'out of time; answer now' }) : await runTool(c.name, c.arguments, web, deps.web, Math.min(12_000, left), signal);
       }
+      if (c.name === 'read_page' && output.includes('"complete":true')) gotWholePage = true;
       input.push({ type: 'function_call_output', call_id: c.call_id, output });
     }
   }
