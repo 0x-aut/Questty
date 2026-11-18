@@ -23,6 +23,7 @@ import { categoryLabel } from './parser.js';
 import { getProgress } from '../progress.js';
 import { dayKey, streakLine, viewStreak } from '../streak.js';
 import { pingFlame } from '../flame.js';
+import { closeEveningReview, startEveningReview } from '../review.js';
 
 export type UndoEntry = { label: string; run: () => Promise<string[]> };
 export type Offer = { label: string; action: BuddyAction };
@@ -210,6 +211,20 @@ export class BuddyExecutor {
             return [action.card_id];
           });
           log(true);
+          break;
+        }
+        case 'open_review': {
+          // The review card speaks for itself ("Evening review. 3 still open."); opens even if dismissed today.
+          const ok = startEveningReview();
+          if (!ok) replies.push("I can't start the review right now.");
+          log(ok, ok ? undefined : 'unavailable');
+          break;
+        }
+        case 'close_review': {
+          // Same dismissal as the "Not now" button: no automatic offer again today.
+          const ok = closeEveningReview(true);
+          replies.push(ok ? 'Okay, review closed for today. Say "review my day" to bring it back.' : 'No review is open.');
+          log(ok, ok ? undefined : 'not-open');
           break;
         }
         case 'show_streak': {
