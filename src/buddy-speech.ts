@@ -7,7 +7,7 @@
  * server key, or if that fails, the browser's own speech synthesis says it.
  * The caption bubble always shows the words too.
  */
-import { playBuddySpeech } from './sfx.js';
+import { isTalkActive, playBuddySpeech, stopBuddySpeech } from './sfx.js';
 
 const CACHE_PREFIX = 'questty.voice.v1.';
 const MAX_CACHE_CHARS = 400_000;
@@ -16,7 +16,7 @@ const inflight = new Map<string, Promise<ArrayBuffer | null>>();
 /** Lines whose preload failed: not fetched again ahead of time (speaking them still tries once). */
 const preloadFailed = new Set<string>();
 let serverOff = false;
-let speaking = false;
+let speakSeq = 0;
 const speechLog: Array<{ at: number; key: string; via: 'cache' | 'api' | 'browser' | 'none' }> = [];
 
 function cacheKey(text: string): string {
@@ -73,6 +73,7 @@ async function fetchLine(text: string, key: string): Promise<ArrayBuffer | null>
 }
 
 function browserSpeak(text: string): boolean {
+  if (isTalkActive()) return false;
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
   if (synth === undefined || typeof SpeechSynthesisUtterance === 'undefined') return false;
   try {
@@ -101,11 +102,13 @@ export function preloadBuddyLine(text: string): void {
 
 /**
  * Say `text` in the buddy's voice. `stillWanted` is checked once the audio is
- * ready (a break skipped meanwhile stays silent). One line at a time.
+ * ready (a break skipped meanwhile stays silent). One line at a time: a newer
+ * line replaces the one still playing. While a live talk session owns the
+ * voice, nothing is spoken (the caption still shows).
  */
 export async function speakBuddyLine(text: string, stillWanted: () => boolean = () => true): Promise<void> {
-  if (speaking) return;
-  speaking = true;
+  if (isTalkActive()) return;
+  const seq = (speakSeq += 1);
   const key = cacheKey(text);
   try {
     let via: 'cache' | 'api' | 'browser' | 'none' = memory.has(key) ? 'cache' : 'api';
@@ -115,15 +118,17 @@ export async function speakBuddyLine(text: string, stillWanted: () => boolean = 
       buf = await pending;
       if (buf !== null) memory.set(key, buf);
     }
-    if (!stillWanted()) return;
+    // A newer line was asked for meanwhile, talk took over, or the break ended.
+    if (seq !== speakSeq || isTalkActive() || !stillWanted()) return;
+    stopBuddySpeech();
     if (buf !== null && (await playBuddySpeech(buf, 'speech'))) {
       speechLog.push({ at: Date.now(), key, via });
       return;
     }
+    if (seq !== speakSeq || isTalkActive()) return;
     via = browserSpeak(text) ? 'browser' : 'none';
     speechLog.push({ at: Date.now(), key, via });
   } finally {
-    speaking = false;
     if (speechLog.length > 30) speechLog.shift();
   }
 }

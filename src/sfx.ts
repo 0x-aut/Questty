@@ -329,24 +329,84 @@ export function attachBuddyVoice(stream: MediaStream): boolean {
 }
 
 /**
+ * One voice owner: while a GPT-Live talk session is connecting or live, it
+ * owns the buddy's voice and spoken TTS lines stay silent (their captions
+ * still show). TTS lines also never overlap each other: a new line stops the
+ * one still playing.
+ */
+let talkActive = false;
+let speechSource: AudioBufferSourceNode | undefined;
+let speechDone: (() => void) | undefined;
+
+/** Stop the TTS line playing now (and the browser's own speech synthesis). */
+export function stopBuddySpeech(): void {
+  const src = speechSource;
+  speechSource = undefined;
+  if (src !== undefined) {
+    try {
+      src.stop();
+    } catch {
+      // not started yet / already ended
+    }
+    try {
+      src.disconnect();
+    } catch {
+      // ignore
+    }
+  }
+  speechDone?.();
+  speechDone = undefined;
+  try {
+    if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
+  } catch {
+    // ignore
+  }
+}
+
+/** Called from talk-session state changes: connecting/live = true; off/failed = false. */
+export function setTalkActive(active: boolean): void {
+  if (active && !talkActive) stopBuddySpeech();
+  talkActive = active;
+}
+
+export function isTalkActive(): boolean {
+  return talkActive;
+}
+
+/**
  * PR 11: play a spoken buddy line (decoded text-to-speech audio) from the orb,
- * on the same HRTF panner as the talk-mode voice. Resolves when it ends.
+ * on the same HRTF panner as the talk-mode voice. Resolves when it ends (or is
+ * stopped). True = it was handled here (also when skipped because talk owns
+ * the voice, so the caller does not fall back to browser speech).
  */
 export async function playBuddySpeech(encoded: ArrayBuffer, reason?: string): Promise<boolean> {
+  if (talkActive) return true;
   primeAudio();
   const c = ctx;
   if (c === undefined || voiceIn === undefined) return false;
   try {
     const buffer = await c.decodeAudioData(encoded.slice(0));
+    if (talkActive) return true; // talk started while decoding
+    stopBuddySpeech(); // one line at a time
     const src = c.createBufferSource();
     src.buffer = buffer;
     src.connect(voiceIn);
+    speechSource = src;
     record('buddy-voice', reason ?? 'speech', true);
     await new Promise<void>((resolve) => {
+      speechDone = resolve;
       src.onended = () => resolve();
       src.start(c.currentTime + 0.02);
     });
-    src.disconnect();
+    if (speechSource === src) {
+      speechSource = undefined;
+      speechDone = undefined;
+      try {
+        src.disconnect();
+      } catch {
+        // ignore
+      }
+    }
     return true;
   } catch {
     return false;
