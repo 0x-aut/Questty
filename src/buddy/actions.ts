@@ -42,6 +42,9 @@ export type BuddyAction =
   | { type: 'find'; card_id: string }
   /** PR 9: "what's my streak?" - the app answers from the saved streak. */
   | { type: 'show_streak' }
+  /** PR 18: open the evening review, or dismiss it for today (same path as its "Not now" button). */
+  | { type: 'open_review' }
+  | { type: 'close_review' }
   /**
    * PR 10: open a document in the reading view. Exactly one source: a known
    * document id (bundled sample or one the buddy wrote), a card (its notes),
@@ -70,6 +73,8 @@ export const ACTION_TYPES: readonly BuddyActionType[] = [
   'find',
   'show_streak',
   'open_document',
+  'open_review',
+  'close_review',
 ];
 
 /** What the buddy (AI or parser) is told about each card: compact, no poses. */
@@ -227,6 +232,10 @@ export function validateAction(raw: unknown, cardIds: ReadonlySet<string>): Budd
     }
     case 'show_streak':
       return { type: 'show_streak' };
+    case 'open_review':
+      return { type: 'open_review' };
+    case 'close_review':
+      return { type: 'close_review' };
     case 'open_document': {
       if (typeof raw.source_url === 'string') {
         // Web form: {title, subtitle?, source_url, text, kind}.

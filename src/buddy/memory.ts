@@ -118,6 +118,9 @@ export function describeAction(a: BuddyAction, titleOf: (id: string) => string |
       return `arrange -> ${a.target}${a.category ? ` (${a.category})` : ''}${a.card_ids ? ` ${a.card_ids.slice(0, 6).map((id) => card(id)).join(', ')}` : ''}`;
     case 'show_streak':
       return 'show_streak';
+    case 'open_review':
+    case 'close_review':
+      return a.type;
     case 'open_document':
       if ('doc_id' in a) return `open_document doc [${a.doc_id}]`;
       if ('card_id' in a) return `open_document notes of ${card(a.card_id)}`;

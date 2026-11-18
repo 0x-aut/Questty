@@ -2,15 +2,20 @@
  * PR 11: the evening review (rules in review-logic.ts, saved state in
  * review-store.ts).
  *
- * Once a day, at or after the review hour (default 6 pm, Settings cycles it),
- * or whenever the user asks ("review my day"), a small card appears low and to
- * the left, the open cards glow one by one, and the buddy says what is left.
+ * At or after the review hour (default 6 pm, Settings cycles it) with open
+ * cards, or whenever the user asks ("review my day", "evening review"), a small
+ * card appears low and to the left, the open cards glow one by one, and the
+ * buddy says what is left. The automatic offer is checked at session start and
+ * on a slow timer (never from card changes), never re-opens a card already on
+ * screen, and stays away for the rest of the day once the user dismissed it or
+ * it ran to an answer; asking always opens it.
  * Finished cards are flicked (or crumpled) away with the physical-finish
  * gestures, which complete them with the usual chime and XP. "Roll N to
  * tomorrow" moves everything still open in Today / Unsorted / Before I leave
  * to Later with tomorrow's date; on that day those cards are promoted into
  * Today before the return ritual counts the room (the ritual never asks about
- * them). "Not now" closes it for the day. With the return ritual on screen the
+ * them). "Not now", the X, or "close the review" dismisses it: no automatic
+ * offer again that day (saved as lastDismissedDay) until the user asks. With the return ritual on screen the
  * review waits until the ritual is gone; it never starts during a focus.
  */
 import { createSystem, Matrix4, PokeInteractable, Quaternion, RayInteractable, UIKit, UIKitMLAsset, Vector3, type Entity } from '@iwsdk/core';
@@ -23,7 +28,7 @@ import { loadFocusTimer } from './focus-store.js';
 import { dayKey } from './streak.js';
 import { playBuddyCue } from './sfx.js';
 import { promoteDue, reviewDue, reviewLine, rollPlan, withRolled, ROLLING, type ReviewCard, type RollStep } from './review-logic.js';
-import { getReviewStore, isRitualRunning, reloadReviewStore, saveReviewStore } from './review-store.js';
+import { getReviewStore, isRitualRunning, reloadReviewStore, saveReviewStore, setReviewOpen } from './review-store.js';
 
 const SCALE = 0.065;
 const DISTANCE = 0.46;
@@ -50,6 +55,17 @@ export function startEveningReview(): boolean {
   return starter?.('ask') ?? false;
 }
 
+let closer: ((quiet: boolean) => boolean) | undefined;
+/**
+ * Dismiss the evening review (the buddy's "close the review", "not now", or its
+ * close_review action): the same path as the "Not now" button and the X, so no
+ * automatic offer comes back today. `quiet` skips the spoken line when the
+ * caller says its own. False when none is open.
+ */
+export function closeEveningReview(quiet = false): boolean {
+  return closer?.(quiet) ?? false;
+}
+
 /**
  * Cards rolled to a day that has come: into Today. Called by the return ritual
  * before it counts the room, and by the review on each session start.
@@ -73,10 +89,10 @@ export class ReviewSystem extends createSystem({
   private entity: Entity | undefined;
   private loading: Promise<void> | null = null;
   private run: Run | null = null;
-  private timer = 0;
   private opacity = 0;
   private lastOpacity = -1;
   private closing = false;
+  private timer = 0;
   private readonly history: Array<{ at: number; event: string; detail?: string }> = [];
   private readonly head = new Vector3();
   private readonly fwd = new Vector3();
@@ -84,6 +100,8 @@ export class ReviewSystem extends createSystem({
 
   init(): void {
     starter = (source) => this.start(source);
+    closer = (quiet) => this.later(quiet);
+    // The automatic offer: a slow periodic check (the hour can pass mid-session). Card changes never trigger it.
     this.timer = window.setInterval(() => this.check(), CHECK_MS);
     const xr = this.world.renderer.xr;
     const onStart = () => {
@@ -100,6 +118,7 @@ export class ReviewSystem extends createSystem({
     this.cleanupFuncs.push(
       () => {
         starter = undefined;
+        closer = undefined;
         window.clearInterval(this.timer);
         xr.removeEventListener('sessionstart', onStart);
         this.entity?.dispose();
@@ -107,8 +126,18 @@ export class ReviewSystem extends createSystem({
       onCardEvent((type, entity) => {
         const run = this.run;
         if (run === null || run.answered !== null) return;
-        if (type !== 'completed' && type !== 'removed') return;
         const id = entity.getValue(QuestCard, 'cardId') as string;
+        // A card added (or moved into Today / Unsorted / Before I leave) while the review is
+        // open joins it: the count updates in place. This never opens or re-opens the review.
+        if (type === 'created' || type === 'categorized') {
+          const cat = entity.getValue(QuestCard, 'category') as string;
+          if (!ROLLING.has(cat) || run.open.includes(id) || getReviewStore().due[id] !== undefined) return;
+          run.open.push(id);
+          this.log('joined', id);
+          this.refresh();
+          return;
+        }
+        if (type !== 'completed' && type !== 'removed') return;
         if (!run.open.includes(id) || run.done.includes(id)) return;
         run.done.push(id);
         this.log(type === 'completed' ? 'done' : 'removed', id);
@@ -123,6 +152,7 @@ export class ReviewSystem extends createSystem({
           state: () => this.state(),
           start: () => this.start('ask'),
           check: () => this.check(),
+          due: () => this.dueNow(),
           roll: () => this.roll(),
           later: () => this.later(),
           store: () => JSON.parse(JSON.stringify(getReviewStore())),
@@ -146,18 +176,36 @@ export class ReviewSystem extends createSystem({
     return out;
   }
 
-  /** Auto offer: XR on, no ritual on screen, no focus running, once a day after the hour. */
+  /**
+   * The automatic offer: XR on, nothing open or fading, no ritual, no focus, at/after
+   * the review hour with open cards, and not on a day it was dismissed or answered.
+   */
   private check(): boolean {
-    if (this.run !== null || !this.world.renderer.xr.isPresenting || isRitualRunning()) return false;
+    if (this.run !== null || this.closing || !this.world.renderer.xr.isPresenting || isRitualRunning()) return false;
     if (loadFocusTimer() !== null) return false;
     const open = this.openCards().filter((c) => ROLLING.has(c.category) && getReviewStore().due[c.id] === undefined);
     if (!reviewDue(Date.now(), getReviewStore(), open.length)) return false;
     return this.start('auto');
   }
 
+  /** Would the automatic offer open now (harness only; opens nothing)? */
+  private dueNow(): boolean {
+    const open = this.openCards().filter((c) => ROLLING.has(c.category) && getReviewStore().due[c.id] === undefined);
+    return reviewDue(Date.now(), getReviewStore(), open.length);
+  }
+
   private start(source: 'auto' | 'ask'): boolean {
-    if (this.run !== null) return false;
+    // Already on screen: asking again just keeps it (never re-opened on top of itself).
+    if (this.run !== null && this.run.answered === null && !this.closing) return true;
+    // Fading out after a dismissal: only an explicit ask brings it back (a fresh run below).
+    if (this.run !== null) {
+      if (source !== 'ask') return false;
+      this.run = null;
+      this.closing = false;
+    }
     if (isRitualRunning()) {
+      // The automatic offer just waits for the next check.
+      if (source === 'auto') return false;
       // Never on top of the welcome-back card: try again once it is gone.
       window.setTimeout(() => this.start(source), 3000);
       return true;
@@ -166,6 +214,7 @@ export class ReviewSystem extends createSystem({
     const open = this.openCards().filter((c) => ROLLING.has(c.category) && due[c.id] === undefined);
     this.run = { source, startedAt: performance.now(), open: open.map((c) => c.id), done: [], glowed: 0, answered: null, rolled: [] };
     this.closing = false;
+    setReviewOpen(true);
     this.log('start', `${source} open=${open.length}`);
     void this.ensurePanel().then(() => {
       if (this.run === null || this.panel === undefined) return;
@@ -216,6 +265,7 @@ export class ReviewSystem extends createSystem({
       this.entity.addComponent(PokeInteractable);
       panel.requireElementById('review-roll').addEventListener('click', () => this.roll());
       panel.requireElementById('review-later').addEventListener('click', () => this.later());
+      panel.requireElementById('review-close').addEventListener('click', () => this.later());
     })();
     return this.loading;
   }
@@ -275,11 +325,12 @@ export class ReviewSystem extends createSystem({
     return true;
   }
 
-  later(): boolean {
+  later(quiet = false): boolean {
     const run = this.run;
     if (run === null || run.answered !== null) return false;
-    saveReviewStore({ ...getReviewStore(), lastDay: dayKey(Date.now()) });
-    announce('Okay. I will leave them be tonight.', { ms: 2500 });
+    // Dismissed: no automatic offer again today; "review my day" still opens it.
+    saveReviewStore({ ...getReviewStore(), lastDismissedDay: dayKey(Date.now()) });
+    if (!quiet) announce('Okay. I will leave them be tonight. Say "review my day" when you want it.', { ms: 3000 });
     this.log('later');
     this.finish('later');
     return true;
@@ -289,8 +340,9 @@ export class ReviewSystem extends createSystem({
     const run = this.run;
     if (run === null) return;
     if (run.answered === null) run.answered = how;
-    if (how !== 'roll' && how !== 'later') saveReviewStore({ ...getReviewStore(), lastDay: dayKey(Date.now()) });
+    if (how === 'timeout') saveReviewStore({ ...getReviewStore(), lastDay: dayKey(Date.now()) });
     this.closing = true;
+    setReviewOpen(false);
   }
 
   update(): void {
@@ -309,7 +361,10 @@ export class ReviewSystem extends createSystem({
     }
     const want = this.closing ? 0 : 1;
     const step = 0.08;
-    this.opacity = want > this.opacity ? Math.min(1, this.opacity + step) : Math.max(0, this.opacity - step);
+    // Ease toward the wanted opacity and stop there. (This used to treat "already
+    // there" as "fade out", so a fully shown card dropped to 0.92 every other
+    // frame and bounced back to 1, re-setting opacity each frame: the flicker.)
+    if (this.opacity !== want) this.opacity = want > this.opacity ? Math.min(1, this.opacity + step) : Math.max(0, this.opacity - step);
     if (Math.abs(this.opacity - this.lastOpacity) > 0.04 || (this.opacity === 0 && this.lastOpacity !== 0) || (this.opacity === 1 && this.lastOpacity !== 1)) {
       this.lastOpacity = this.opacity;
       panel.getElementById('review-root')?.setProperties({ opacity: this.opacity } as never);

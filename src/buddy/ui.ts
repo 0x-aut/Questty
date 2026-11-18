@@ -53,8 +53,9 @@ import {
   type DupAnswer,
 } from './dedupe.js';
 import type { DumpItem } from './bus.js';
-import { classify, parseCommand, wantsEveningReview } from './parser.js';
-import { startEveningReview } from '../review.js';
+import { brushesOffReview, classify, parseCommand, wantsCloseReview, wantsEveningReview } from './parser.js';
+import { isReviewOpen } from '../review-store.js';
+import { closeEveningReview, startEveningReview } from '../review.js';
 import { attachBuddyVoice, detachBuddyVoice, playBuddyCue, primeAudio } from '../sfx.js';
 import { setBuddySoundSource } from '../spatial-audio.js';
 import { askBuddyApi, looksLikeWeb, resetBuddyApiBackoff, type FocusInfo } from './client.js';
@@ -263,7 +264,8 @@ export class BuddySystem extends createSystem({
         return titles.flatMap((t, i) => (findDuplicate(t, cards) !== null ? [i] : []));
       },
       askDuplicates: (items, added) => this.askDumpDuplicates(items, added),
-      wantsAnswer: (text) => this.questionOpen() && answerKind(text) !== null,
+      // A pending question's answer, or a brush-off ("not now") while the evening review is up: the buddy, not a brain dump.
+      wantsAnswer: (text) => (this.questionOpen() && answerKind(text) !== null) || (isReviewOpen() && brushesOffReview(text)),
       dismissQuestion: () => {
         if (this.pendingDup !== undefined) this.dropDup('superseded');
       },
@@ -632,6 +634,15 @@ export class BuddySystem extends createSystem({
       forgetConversation();
       this.say("Okay, I've forgotten our conversation.", { tag: 'QUESTTY', ms: 3000 });
       return null;
+    }
+    // "close the review": closes it for today (checked first: "close the evening review" also names it).
+    // "not now", "later", "I'm done" while the review is on screen mean the review.
+    if (wantsCloseReview(spoken) || (isReviewOpen() && brushesOffReview(spoken))) {
+      const ok = closeEveningReview();
+      const rec: RunRecord = { text: spoken, source, mode: 'local', actions: [], rejected: [], reply: ok ? 'review closed' : 'no review open', log: [], at: Date.now() };
+      this.runs.push(rec);
+      if (!ok) this.say('No review is open.', { ms: 2500 });
+      return rec;
     }
     // PR 11: the evening review runs on the device (no API call).
     if (wantsEveningReview(spoken)) {

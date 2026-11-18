@@ -8,6 +8,7 @@
 import type { BuddyCard } from './actions.js';
 import { knownDocs } from '../documents.js';
 import { memoryPayload } from './memory.js';
+import { isReviewOpen } from '../review-store.js';
 
 export type BuddyApiReply = { reply: unknown; actions: unknown };
 export type FocusInfo = { card_id: string; paused: boolean; remaining_min: number } | null;
@@ -48,6 +49,8 @@ export async function askBuddyApi(
         focus,
         docs: knownDocs().slice(0, 20).map((d) => ({ id: d.id, title: d.title })),
         memory: memoryPayload(),
+        // PR 18: so "not now" / "get rid of this" can mean the evening review card.
+        review: { open: isReviewOpen() },
         ...(talk ? { talk: talk.slice(-1500) } : {}),
       }),
       signal: controller.signal,

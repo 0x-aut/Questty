@@ -318,7 +318,8 @@ export class RitualSystem extends createSystem({
     }
     const want = now < run.endsAt ? 1 : 0;
     const step = 1000 / FADE_MS / 60;
-    this.opacity = want > this.opacity ? Math.min(1, this.opacity + step * 2) : Math.max(0, this.opacity - step * 2);
+    // Ease toward the wanted opacity and stop there ("already there" must not count as "fade out").
+    if (this.opacity !== want) this.opacity = want > this.opacity ? Math.min(1, this.opacity + step * 2) : Math.max(0, this.opacity - step * 2);
     if (Math.abs(this.opacity - this.lastOpacity) > 0.04 || (this.opacity === 0 && this.lastOpacity !== 0) || (this.opacity === 1 && this.lastOpacity !== 1)) {
       this.lastOpacity = this.opacity;
       panel.getElementById('ritual-root')?.setProperties({ opacity: this.opacity } as never);

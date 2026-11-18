@@ -21,13 +21,18 @@ export const MAX_ROLL = 12;
 export type ReviewStore = {
   version: 1;
   hour: number;
-  /** Local day the review last ran (offered and answered, or skipped). */
+  /** Local day the review last ran to an answer (rolled, or timed out unanswered). */
   lastDay: string | null;
+  /**
+   * Local day the user last dismissed it ("Not now", the X, or "close the review").
+   * No automatic offer that day; asking ("review my day") still opens it.
+   */
+  lastDismissedDay: string | null;
   /** Rolled cards: card id -> local day it is due ('YYYY-MM-DD'). */
   due: Record<string, string>;
 };
 
-export const EMPTY_REVIEW: ReviewStore = { version: 1, hour: DEFAULT_REVIEW_HOUR, lastDay: null, due: {} };
+export const EMPTY_REVIEW: ReviewStore = { version: 1, hour: DEFAULT_REVIEW_HOUR, lastDay: null, lastDismissedDay: null, due: {} };
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/u;
 
@@ -37,13 +42,14 @@ export function parseReview(raw: string | null): ReviewStore {
     const v = JSON.parse(raw) as Partial<ReviewStore>;
     const hour = Number.isInteger(v.hour) && (v.hour as number) >= 0 && (v.hour as number) <= 23 ? (v.hour as number) : DEFAULT_REVIEW_HOUR;
     const lastDay = typeof v.lastDay === 'string' && DAY_RE.test(v.lastDay) ? v.lastDay : null;
+    const lastDismissedDay = typeof v.lastDismissedDay === 'string' && DAY_RE.test(v.lastDismissedDay) ? v.lastDismissedDay : null;
     const due: Record<string, string> = {};
     if (typeof v.due === 'object' && v.due !== null) {
       for (const [id, day] of Object.entries(v.due)) {
         if (typeof id === 'string' && id.length > 0 && id.length <= 64 && typeof day === 'string' && DAY_RE.test(day)) due[id] = day;
       }
     }
-    return { version: 1, hour, lastDay, due };
+    return { version: 1, hour, lastDay, lastDismissedDay, due };
   } catch {
     return { ...EMPTY_REVIEW, due: {} };
   }
@@ -56,10 +62,14 @@ export function tomorrowKey(now: number): string {
   return dayKey(next.getTime());
 }
 
-/** Should the review offer itself now? Once a day, at/after the hour, with something open. */
-export function reviewDue(now: number, store: Pick<ReviewStore, 'hour' | 'lastDay'>, openCount: number): boolean {
+/**
+ * Should the review offer itself now? At/after the hour, with something open,
+ * and not on a day it already ran to an answer or the user dismissed it.
+ */
+export function reviewDue(now: number, store: Pick<ReviewStore, 'hour' | 'lastDay'> & Partial<Pick<ReviewStore, 'lastDismissedDay'>>, openCount: number): boolean {
   if (openCount <= 0) return false;
-  if (store.lastDay === dayKey(now)) return false;
+  const today = dayKey(now);
+  if (store.lastDay === today || store.lastDismissedDay === today) return false;
   return new Date(now).getHours() >= store.hour;
 }
 
