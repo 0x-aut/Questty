@@ -18,6 +18,7 @@
  * level. A session ends on a second pinch, after ~60 s with no speech, or
  * after a hard cap, always with a graceful `session.close`.
  */
+import { memoryText } from './memory.js';
 
 export type TalkState = 'off' | 'connecting' | 'live' | 'closing' | 'failed';
 
@@ -153,7 +154,8 @@ export class TalkSession {
       const response = await fetch('/api/live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sdp }),
+        // Seed the session with the shared buddy memory (typed + spoken turns).
+        body: JSON.stringify({ sdp, memory: memoryText() }),
       });
       if (!response.ok) {
         let code = `http-${response.status}`;

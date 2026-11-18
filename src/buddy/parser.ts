@@ -15,7 +15,11 @@ export type ParseResult =
   | { kind: 'undo' }
   | { kind: 'accept' }
   | { kind: 'miss'; reply: string }
-  | { kind: 'dump' };
+  | { kind: 'dump' }
+  /** "do that again": replay the last actions from memory (offline fallback). */
+  | { kind: 'again' }
+  /** "forget our conversation": clear the buddy's memory (local, no API). */
+  | { kind: 'forget' };
 
 // ------------------------------------------------------------------ helpers
 
@@ -208,6 +212,8 @@ export function classify(text: string): 'command' | 'dump' {
   if (/^(okay |so |um |uh )*(today |later |tomorrow )?(i (need|have|got|want|should|must) to|i've got to|gotta)\b/iu.test(t)) return 'dump';
   if (COMMAND_START.test(t) && commas < 2) return 'command';
   if (/\b(streak|my flame|the flame)\b/iu.test(t) && t.split(' ').length <= 9) return 'command';
+  // Follow-ups that lean on the conversation so far ("do the same for the gym one", "again", "forget our conversation").
+  if (/^(again|repeat|same|forget (our|the|this|what|everything)|clear (our|the) (conversation|chat))\b|\b(do (that|it|this) again|the same (for|with|to)|same (for|with) the|that one too|as well)\b/iu.test(t) && commas < 2 && t.split(' ').length <= 12) return 'command';
   // PR 10: "open my essay", "read the project brief", "write an outline for my talk".
   const docVerb = /^(open|read|pull up|bring up|show me|show)\s+(.+)$/iu.exec(t);
   if (docVerb !== null && commas < 2 && (soundsLikeDoc(docVerb[2]) || /^(open|read)\b/iu.test(t) && /\b(card|notes?)$/iu.test(docVerb[2]))) return 'command';
@@ -246,6 +252,8 @@ export function parseCommand(input: string, cards: readonly BuddyCard[]): ParseR
   const focusing = cards.find((c) => c.state === 'focusing' || c.state === 'paused');
 
   if (/^undo\b|^take that back\b/u.test(lower)) return { kind: 'undo' };
+  if (/^(forget (our|the|this) (conversation|chat)|forget (what|everything) (we|i) said|clear (our|the) (conversation|chat))$/u.test(lower)) return { kind: 'forget' };
+  if (/^((please )?(do|say)? ?(that|it|this) again|again|repeat( that)?|same again|one more time)( please)?$/u.test(lower)) return { kind: 'again' };
   if (/^(yes|yeah|yep|sure|ok|okay|do it|go|start it|start the first one|let's go)$/u.test(lower)) return { kind: 'accept' };
 
   // ---- streak (PR 9): "what's my streak?", "how's my flame doing", "how many days in a row"
