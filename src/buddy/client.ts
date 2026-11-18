@@ -7,6 +7,7 @@
  */
 import type { BuddyCard } from './actions.js';
 import { knownDocs } from '../documents.js';
+import { memoryPayload } from './memory.js';
 
 export type BuddyApiReply = { reply: unknown; actions: unknown };
 export type FocusInfo = { card_id: string; paused: boolean; remaining_min: number } | null;
@@ -37,7 +38,7 @@ export async function askBuddyApi(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       // PR 10: the documents the buddy may open (ids + titles only, never their text).
-      body: JSON.stringify({ text: text.slice(0, 500), cards: cards.slice(0, 40), focus, docs: knownDocs().slice(0, 20).map((d) => ({ id: d.id, title: d.title })) }),
+      body: JSON.stringify({ text: text.slice(0, 500), cards: cards.slice(0, 40), focus, docs: knownDocs().slice(0, 20).map((d) => ({ id: d.id, title: d.title })), memory: memoryPayload() }),
       signal: controller.signal,
     });
     if (!response.ok) {

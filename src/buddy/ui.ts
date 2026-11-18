@@ -58,6 +58,7 @@ import { startEveningReview } from '../review.js';
 import { attachBuddyVoice, detachBuddyVoice, playBuddyCue, primeAudio } from '../sfx.js';
 import { setBuddySoundSource } from '../spatial-audio.js';
 import { askBuddyApi, resetBuddyApiBackoff, type FocusInfo } from './client.js';
+import { forgetConversation, lastActions, memoryPayload, memoryTurns, rememberTurn } from './memory.js';
 import { BuddyExecutor, type ExecResult, type Offer, type PlaceOutcome, type UndoEntry } from './executor.js';
 import { aimPoint, describeSpot, resolvePlace, whereLabel } from './spatial.js';
 import type { PlaceTarget } from './actions.js';
@@ -273,6 +274,8 @@ export class BuddySystem extends createSystem({
       if (type !== 'completed' && type !== 'removed') return;
       const id = entity.getValue(QuestCard, 'cardId') as string;
       this.removeBadge(id);
+      // The board was cleared: start the conversation fresh too.
+      if (type === 'removed') window.setTimeout(() => this.cardList().length === 0 && forgetConversation(), 0);
       if (this.plan !== null && type === 'removed') {
         // Keep numbers honest: the plan loses the card, the rest renumber.
         const next = this.plan.filter((x) => x !== id);
@@ -294,6 +297,8 @@ export class BuddySystem extends createSystem({
           undo: () => this.undo(),
           chip: (index: number) => this.onChip(index),
           resetApi: () => resetBuddyApiBackoff(),
+          memory: () => ({ payload: memoryPayload(), turns: memoryTurns() }),
+          forget: () => forgetConversation(),
           orb: (state: OrbState) => this.setOrb(state),
           say: (text: string) => this.say(text, { ms: 4000 }),
           bubbleObject: () => this.bubble?.panel ?? null,
@@ -582,8 +587,16 @@ export class BuddySystem extends createSystem({
     }
   }
 
-  /** One command, spoken or tapped. */
+  /** One command, spoken or tapped (talk-mode delegations come through here too). */
   async handle(text: string, source: 'voice' | 'tap'): Promise<RunRecord | null> {
+    const before = this.cardList();
+    const record = await this.handleTurn(text, source);
+    // Shared memory: every finished turn (typed, push-to-talk or talk mode) is remembered.
+    if (record !== null) rememberTurn(record, before);
+    return record;
+  }
+
+  private async handleTurn(text: string, source: 'voice' | 'tap'): Promise<RunRecord | null> {
     const spoken = text.trim();
     if (spoken.length === 0 || this.busy) return null;
     this.markUsed();
@@ -603,6 +616,11 @@ export class BuddySystem extends createSystem({
     }
     if (local.kind === 'accept') {
       await this.acceptOffer();
+      return null;
+    }
+    if (local.kind === 'forget') {
+      forgetConversation();
+      this.say("Okay, I've forgotten our conversation.", { tag: 'QUESTTY', ms: 3000 });
       return null;
     }
     // PR 11: the evening review runs on the device (no API call).
@@ -634,8 +652,10 @@ export class BuddySystem extends createSystem({
     }
     if (record.mode === 'offline') {
       aiReply = null;
-      if (local.kind === 'command') {
-        const v = validateActions(local.actions, ids);
+      // "do that again" offline: replay the last remembered actions (still validated against the room).
+      const offlineActions = local.kind === 'command' ? local.actions : local.kind === 'again' ? (lastActions() as unknown as Array<Record<string, unknown>>) : null;
+      if (offlineActions !== null && offlineActions.length > 0) {
+        const v = validateActions(offlineActions, ids);
         validated = { actions: v.actions, rejected: [...record.rejected, ...v.rejected] };
         record.rejected = validated.rejected;
       } else {
