@@ -58,7 +58,7 @@ import { startEveningReview } from '../review.js';
 import { attachBuddyVoice, detachBuddyVoice, playBuddyCue, primeAudio } from '../sfx.js';
 import { setBuddySoundSource } from '../spatial-audio.js';
 import { askBuddyApi, looksLikeWeb, resetBuddyApiBackoff, type FocusInfo } from './client.js';
-import { forgetConversation, lastActions, memoryPayload, memoryTurns, rememberTurn } from './memory.js';
+import { forgetConversation, lastActions, memoryPayload, memoryTurns, rememberNote, rememberTurn } from './memory.js';
 import { BuddyExecutor, type ExecResult, type Offer, type PlaceOutcome, type UndoEntry } from './executor.js';
 import { aimPoint, describeSpot, resolvePlace, whereLabel } from './spatial.js';
 import type { PlaceTarget } from './actions.js';
@@ -138,6 +138,8 @@ type RunRecord = {
   rejected: Rejection[];
   reply: string;
   log: ExecResult['log'];
+  /** Cards the executor created or acted on (memory focus: what "it" means next). */
+  touched?: string[];
   at: number;
 };
 
@@ -432,7 +434,7 @@ export class BuddySystem extends createSystem({
     primeAudio(); // inside the pinch: the spatial voice path may start
     const session = new TalkSession({
       voice: (stream) => attachBuddyVoice(stream),
-      command: (text, heardAt) => this.talkCommand(text, heardAt),
+      command: (text, heardAt, talk) => this.talkCommand(text, heardAt, talk),
       caption: (who, text) => this.sayCaption(who === 'you' ? `"${text}"` : text, who === 'you' ? 'YOU' : 'QUESTTY  -  TALKING'),
       state: (state, detail) => this.onTalkState(state, detail),
       levels: (out, inp) => {
@@ -474,7 +476,7 @@ export class BuddySystem extends createSystem({
    * once, and the repeat gets the first one's result back. Delegations queue,
    * so the time they were raised is what counts, not when they get to run.
    */
-  private talkCommand(text: string, heardAt = performance.now()): Promise<string> {
+  private talkCommand(text: string, heardAt = performance.now(), talk?: string): Promise<string> {
     const key = delegationKey(text);
     const last = this.lastDelegation;
     const within =
@@ -488,7 +490,7 @@ export class BuddySystem extends createSystem({
     this.delegationLog.push({ text, at: Date.now(), dropped: false, sinceLastMs: last !== undefined ? Math.round(heardAt - last.start) : null });
     if (this.delegationLog.length > 40) this.delegationLog.shift();
     const entry = { key, start: heardAt, end: 0, reply: Promise.resolve('') };
-    entry.reply = this.runTalkCommand(text).finally(() => {
+    entry.reply = this.runTalkCommand(text, talk).finally(() => {
       entry.end = performance.now();
     });
     this.lastDelegation = entry;
@@ -496,9 +498,9 @@ export class BuddySystem extends createSystem({
   }
 
   /** Same validated pipeline as a typed or push-to-talk command. */
-  private async runTalkCommand(text: string): Promise<string> {
+  private async runTalkCommand(text: string, talk?: string): Promise<string> {
     for (let i = 0; i < 40 && this.busy; i += 1) await new Promise((r) => window.setTimeout(r, 250));
-    const record = await this.handle(text, 'voice');
+    const record = await this.handle(text, 'voice', talk);
     if (this.talkLive()) this.setOrb('talking');
     if (record === null) return this.bubble?.text ?? 'Done.';
     return record.reply;
@@ -588,15 +590,16 @@ export class BuddySystem extends createSystem({
   }
 
   /** One command, spoken or tapped (talk-mode delegations come through here too). */
-  async handle(text: string, source: 'voice' | 'tap'): Promise<RunRecord | null> {
+  async handle(text: string, source: 'voice' | 'tap', talk?: string): Promise<RunRecord | null> {
     const before = this.cardList();
-    const record = await this.handleTurn(text, source);
-    // Shared memory: every finished turn (typed, push-to-talk or talk mode) is remembered.
-    if (record !== null) rememberTurn(record, before);
+    const record = await this.handleTurn(text, source, talk);
+    // Shared memory: every finished turn (typed, push-to-talk or talk mode) is remembered,
+    // with the ids of cards it created or touched (what "it" / "that one" mean next).
+    if (record !== null) rememberTurn(record, before, this.cardList());
     return record;
   }
 
-  private async handleTurn(text: string, source: 'voice' | 'tap'): Promise<RunRecord | null> {
+  private async handleTurn(text: string, source: 'voice' | 'tap', talk?: string): Promise<RunRecord | null> {
     const spoken = text.trim();
     if (spoken.length === 0 || this.busy) return null;
     this.markUsed();
@@ -611,11 +614,16 @@ export class BuddySystem extends createSystem({
     const cards = this.cardList();
     const local = parseCommand(spoken, cards);
     if (local.kind === 'undo') {
+      const had = this.undoStack.length > 0;
+      const undone = memoryTurns().reverse().find((t) => t.actions.length > 0)?.did.join('; ') ?? 'the last change';
       await this.undo();
+      // Keep it in the conversation, or the next turn still thinks the undone change stands.
+      rememberNote(spoken, had ? 'Undone.' : 'Nothing to undo.', had ? `undo: reverted (${undone})` : 'undo: nothing to undo', source);
       return null;
     }
     if (local.kind === 'accept') {
       await this.acceptOffer();
+      rememberNote(spoken, this.bubble?.text ?? 'Done.', 'accepted the offer', source);
       return null;
     }
     if (local.kind === 'forget') {
@@ -644,7 +652,7 @@ export class BuddySystem extends createSystem({
       if (this.busy) this.say('Fetching that now...', { tag: 'FETCHING', sticky: true });
     }, looksLikeWeb(spoken) ? 300 : 3500);
     try {
-      const reply = await askBuddyApi(spoken, cards, this.focusInfo());
+      const reply = await askBuddyApi(spoken, cards, this.focusInfo(), undefined, talk);
       aiReply = cleanReply(reply.reply);
       validated = validateActions(reply.actions, ids);
       record.rejected = validated.rejected;
@@ -714,6 +722,7 @@ export class BuddySystem extends createSystem({
       return record;
     }
     record.log = result.log;
+    record.touched = [...result.touched];
     const allOk = result.log.length > 0 && result.log.every((l) => l.ok) && result.confirm === undefined;
     // Spatial results are grounded in the room (where it landed, where it is): the executor's line wins.
     const spatial = validated.actions.some((a) => a.type === 'place_card' || a.type === 'arrange' || a.type === 'find' || a.type === 'focus_on' || a.type === 'show_streak' || a.type === 'open_document');

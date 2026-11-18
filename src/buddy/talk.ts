@@ -28,7 +28,7 @@ export type TalkHost = {
    * line to say. `heardAt` is when GPT-Live raised the delegation
    * (performance.now()), so the host can drop a repeated hearing (PR 8).
    */
-  command(text: string, heardAt: number): Promise<string>;
+  command(text: string, heardAt: number, talk?: string): Promise<string>;
   /** Captions for the bubble: who is speaking and the text so far. */
   caption(who: 'you' | 'buddy', text: string): void;
   state(state: TalkState, detail?: string): void;
@@ -74,7 +74,11 @@ export class TalkSession {
   private raf = 0;
   private lastActivity = 0;
   private closeTimer = 0;
-  private youSinceDelegation = '';
+  /** User transcript fragments not yet handed to a delegation, with their session-timeline start. */
+  private pending: Array<{ text: string; start: number | null }> = [];
+  private lastInputAt = 0;
+  /** The live conversation as finished lines ("User: ..." / "Buddy: ..."), for context on short follow-ups. */
+  private convo: string[] = [];
   private youLine = '';
   private buddyLine = '';
   private lastSpeaker: 'you' | 'buddy' | null = null;
@@ -261,10 +265,14 @@ export class TalkSession {
       case 'session.input_transcript.delta': {
         const delta = typeof event.delta === 'string' ? event.delta : '';
         this.lastActivity = performance.now();
-        if (this.lastSpeaker !== 'you') this.youLine = '';
+        this.lastInputAt = performance.now();
+        if (this.lastSpeaker !== 'you') {
+          this.closeLine();
+          this.youLine = '';
+        }
         this.lastSpeaker = 'you';
         this.youLine += delta;
-        this.youSinceDelegation += delta;
+        this.pending.push({ text: delta, start: typeof event.start_ms === 'number' ? event.start_ms : null });
         this.debug.you = this.youLine.trim();
         this.host.caption('you', this.youLine.trim());
         break;
@@ -272,7 +280,10 @@ export class TalkSession {
       case 'session.output_transcript.delta': {
         const delta = typeof event.delta === 'string' ? event.delta : '';
         this.lastActivity = performance.now();
-        if (this.lastSpeaker !== 'buddy') this.buddyLine = '';
+        if (this.lastSpeaker !== 'buddy') {
+          this.closeLine();
+          this.buddyLine = '';
+        }
         this.lastSpeaker = 'buddy';
         this.buddyLine += delta;
         this.debug.buddy = this.buddyLine.trim();
@@ -287,7 +298,8 @@ export class TalkSession {
         // Cancel the generic spoken acknowledgement; the real result follows.
         this.send({ type: 'session.thinking.append', delegation_id: id, content: 'Working on it in the room (web requests can take up to 30 seconds; say "Fetching that now." if it is one).' });
         const heardAt = performance.now();
-        this.queue = this.queue.then(() => this.runDelegation(id, heardAt));
+        const offset = typeof event.offset_ms === 'number' ? event.offset_ms : null;
+        this.queue = this.queue.then(() => this.runDelegation(id, heardAt, offset));
         break;
       }
       case 'session.usage.updated': {
@@ -313,17 +325,41 @@ export class TalkSession {
     }
   }
 
-  private async runDelegation(id: string, heardAt: number): Promise<void> {
-    // Transcript deltas can trail the delegation event a little.
-    if (this.youSinceDelegation.trim().length === 0) await delay(600);
-    const text = this.youSinceDelegation.trim();
-    this.youSinceDelegation = '';
+  /** Finish the current caption line into the conversation log (kept short). */
+  private closeLine(): void {
+    const line = this.lastSpeaker === 'you' ? this.youLine.trim() : this.lastSpeaker === 'buddy' ? this.buddyLine.trim() : '';
+    if (line.length === 0) return;
+    this.convo.push(`${this.lastSpeaker === 'you' ? 'User' : 'Buddy'}: ${line.slice(-300)}`);
+    if (this.convo.length > 12) this.convo.shift();
+  }
+
+  /** The last few lines of the live conversation, the user's current line included. */
+  private convoTail(): string {
+    const lines = [...this.convo];
+    const cur = this.lastSpeaker === 'you' ? this.youLine.trim() : this.lastSpeaker === 'buddy' ? this.buddyLine.trim() : '';
+    if (cur.length > 0) lines.push(`${this.lastSpeaker === 'you' ? 'User' : 'Buddy'}: ${cur.slice(-300)}`);
+    return lines.slice(-8).join('\n').slice(-1500);
+  }
+
+  private async runDelegation(id: string, heardAt: number, offset: number | null): Promise<void> {
+    // Client delegation carries no task text: the request is what the user said
+    // up to the delegation. Transcript deltas trail the event, so wait until the
+    // transcript has been quiet for a moment (max ~1.5 s) before taking it.
+    const started = performance.now();
+    await delay(250);
+    while (performance.now() - started < 1500 && (this.pending.length === 0 || performance.now() - this.lastInputAt < 350)) await delay(100);
+    // Only the words spoken before the delegation belong to it; anything later
+    // (the user already saying the next thing) waits for the next delegation.
+    const cut = offset === null ? -1 : this.pending.findIndex((p) => p.start !== null && p.start > offset + 300);
+    const mine = cut < 0 ? this.pending : this.pending.slice(0, cut);
+    this.pending = cut < 0 ? [] : this.pending.slice(cut);
+    const text = mine.map((p) => p.text).join('').replace(/\s+/gu, ' ').trim().slice(-500);
     let reply: string;
     if (text.length === 0) {
       reply = "I didn't catch what to do. Ask the user to say it again.";
     } else {
       try {
-        reply = await this.host.command(text, heardAt);
+        reply = await this.host.command(text, heardAt, this.convoTail());
       } catch {
         reply = 'That did not work. Nothing changed.';
       }
