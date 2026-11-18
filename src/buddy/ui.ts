@@ -454,7 +454,7 @@ export class BuddySystem extends createSystem({
     } else if (state === 'live') {
       this.setOrb('talking');
       playBuddyCue('talk-live');
-      this.say("I'm here. Tell me what to move or start.", { tag: 'QUESTTY  -  TALKING', ms: 5000 });
+      this.say("I'm here. Talk to me; say a task and I'll make it a card.", { tag: 'QUESTTY  -  TALKING', ms: 5000 });
     } else if (state === 'off') {
       detachBuddyVoice();
       if (this.orb.state === 'talking' || this.orb.state === 'thinking') this.setOrb('idle');
@@ -621,7 +621,9 @@ export class BuddySystem extends createSystem({
       rememberNote(spoken, had ? 'Undone.' : 'Nothing to undo.', had ? `undo: reverted (${undone})` : 'undo: nothing to undo', source);
       return null;
     }
-    if (local.kind === 'accept') {
+    // "yes" with no offer on screen answers the buddy's own last question
+    // ("Want a card for that?"): the API resolves it from the conversation.
+    if (local.kind === 'accept' && this.pendingOffer !== undefined) {
       await this.acceptOffer();
       rememberNote(spoken, this.bubble?.text ?? 'Done.', 'accepted the offer', source);
       return null;
